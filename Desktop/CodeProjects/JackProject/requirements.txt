@@ -1,0 +1,8 @@
+flask
+apscheduler
+requests
+gunicorn
+pybaseball
+pandas
+scikit-learn
+numpy

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DailyPredictionMLB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark bg-dark px-3 py-2">
+  <span class="navbar-brand fw-bold fs-4">⚾ DailyPredictionMLB</span>
+  <div class="d-flex align-items-center gap-3">
+    <span id="date-label" class="text-white-50 small"></span>
+    <button id="refresh-btn" class="btn btn-outline-light btn-sm">Refresh Baselines</button>
+  </div>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────────────── -->
+<div class="container-xl py-4">
+
+  <div id="loading" class="text-center py-5">
+    <div class="spinner-border text-secondary mb-3" role="status"></div>
+    <p class="text-muted">Fetching today's predictions…</p>
+  </div>
+
+  <div id="no-games" class="text-center py-5 d-none">
+    <p class="fs-4 text-muted">No MLB games scheduled today.</p>
+    <p class="text-muted small">Check back tomorrow, or use <code>?date=YYYY-MM-DD</code> to view another date.</p>
+  </div>
+
+  <div id="error-box" class="alert alert-danger d-none" role="alert"></div>
+
+  <div id="games-grid" class="row g-3 d-none"></div>
+
+</div>
+
+<!-- ── Card template (hidden, cloned by JS) ──────────────────────── -->
+<template id="card-template">
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold matchup-label"></span>
+        <span class="badge bg-secondary game-time-badge"></span>
+      </div>
+      <div class="card-body p-0">
+
+        <!-- Stats table -->
+        <table class="table table-sm table-borderless mb-0 stats-table">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Stat</th>
+              <th class="text-center away-header"></th>
+              <th class="text-center home-header"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="sp-row">
+              <td class="ps-3 text-muted small">Starting Pitcher</td>
+              <td class="text-center small away-sp"></td>
+              <td class="text-center small home-sp"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">ERA / xFIP / SIERA</td>
+              <td class="text-center small away-sp-line"></td>
+              <td class="text-center small home-sp-line"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">Team OBP (30g)</td>
+              <td class="text-center small away-obp"></td>
+              <td class="text-center small home-obp"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">Team SLG (30g)</td>
+              <td class="text-center small away-slg"></td>
+              <td class="text-center small home-slg"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">Hits/G (30g)</td>
+              <td class="text-center small away-hits"></td>
+              <td class="text-center small home-hits"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">Runs/G (10g recent)</td>
+              <td class="text-center small away-runs"></td>
+              <td class="text-center small home-runs"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small">Bullpen ERA</td>
+              <td class="text-center small away-bp"></td>
+              <td class="text-center small home-bp"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Win probability bar -->
+        <div class="px-3 pt-3 pb-2">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="small fw-semibold away-prob-label"></span>
+            <span class="small fw-semibold home-prob-label"></span>
+          </div>
+          <div class="progress" style="height: 18px;">
+            <div class="progress-bar bg-primary away-bar" role="progressbar"></div>
+            <div class="progress-bar bg-danger home-bar" role="progressbar"></div>
+          </div>
+          <div class="d-flex justify-content-between mt-2">
+            <span class="badge rounded-pill away-badge"></span>
+            <span class="winner-badge badge rounded-pill bg-warning text-dark"></span>
+            <span class="badge rounded-pill home-badge"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  // ── Helpers ──────────────────────────────────────────────────────
+  function pct(v)   { return (v * 100).toFixed(1) + "%"; }
+  function fmt3(v)  { return (v || 0).toFixed(3); }
+  function fmt2(v)  { return (v || 0).toFixed(2); }
+  function fmt1(v)  { return (v || 0).toFixed(1); }
+
+  function shortName(full) {
+    if (!full || full === "TBD") return "TBD";
+    const parts = full.trim().split(" ");
+    if (parts.length < 2) return full;
+    return parts[0][0] + ". " + parts.slice(1).join(" ");
+  }
+
+  // ── Date label ───────────────────────────────────────────────────
+  const urlDate = new URLSearchParams(window.location.search).get("date");
+  const displayDate = urlDate
+    ? new Date(urlDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    : new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  document.getElementById("date-label").textContent = displayDate;
+
+  // ── Refresh baselines button ──────────────────────────────────────
+  document.getElementById("refresh-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("refresh-btn");
+    btn.disabled = true;
+    btn.textContent = "Refreshing…";
+    try {
+      const res = await fetch("/api/refresh", { method: "POST" });
+      const data = await res.json();
+      if (data.status === "ok") {
+        btn.textContent = "Done ✓";
+        setTimeout(() => loadPredictions(), 800);
+      } else {
+        btn.textContent = "Error";
+        console.error(data.message);
+      }
+    } catch (e) {
+      btn.textContent = "Error";
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = "Refresh Baselines"; }, 3000);
+  });
+
+  // ── Build one game card ───────────────────────────────────────────
+  function buildCard(game) {
+    const tmpl = document.getElementById("card-template");
+    const node  = tmpl.content.cloneNode(true);
+    const q = sel => node.querySelector(sel);
+
+    const homeWin  = game.predicted_winner === "Home";
+    const awayName = game.away_team_name || game.away_team || "Away";
+    const homeName = game.home_team_name || game.home_team || "Home";
+
+    q(".matchup-label").textContent = `${awayName} @ ${homeName}`;
+    q(".game-time-badge").textContent = game.game_time_et || game.status || "";
+
+    q(".away-header").textContent = `AWAY (${game.away_team || ""})`;
+    q(".home-header").textContent = `HOME (${game.home_team || ""})`;
+
+    // Pitcher
+    q(".away-sp").textContent = shortName(game.away_sp_name);
+    q(".home-sp").textContent = shortName(game.home_sp_name);
+    q(".away-sp-line").textContent = `${fmt2(game.away_sp_era)} / ${fmt2(game.away_sp_xfip)} / ${fmt2(game.away_sp_siera)}`;
+    q(".home-sp-line").textContent = `${fmt2(game.home_sp_era)} / ${fmt2(game.home_sp_xfip)} / ${fmt2(game.home_sp_siera)}`;
+
+    // Team stats — highlight better side
+    function setCells(awayEl, homeEl, awayVal, homeVal, lowerIsBetter) {
+      awayEl.textContent = awayVal;
+      homeEl.textContent = homeVal;
+      const aN = parseFloat(awayVal), hN = parseFloat(homeVal);
+      if (!isNaN(aN) && !isNaN(hN) && aN !== hN) {
+        const awayBetter = lowerIsBetter ? aN < hN : aN > hN;
+        awayEl.classList.add(awayBetter ? "text-success" : "text-danger");
+        homeEl.classList.add(awayBetter ? "text-danger" : "text-success");
+      }
+    }
+
+    setCells(q(".away-obp"),  q(".home-obp"),  fmt3(game.away_obp),  fmt3(game.home_obp),  false);
+    setCells(q(".away-slg"),  q(".home-slg"),  fmt3(game.away_slg),  fmt3(game.home_slg),  false);
+    setCells(q(".away-hits"), q(".home-hits"), fmt1(game.away_hits_pg), fmt1(game.home_hits_pg), false);
+    setCells(q(".away-runs"), q(".home-runs"), fmt1(game.away_runs_pg), fmt1(game.home_runs_pg), false);
+    setCells(q(".away-bp"),   q(".home-bp"),   fmt2(game.away_bp_era),  fmt2(game.home_bp_era),  true);
+
+    // Probability bar
+    const awayPct = Math.round((game.away_win_prob || 0.5) * 100);
+    const homePct = 100 - awayPct;
+
+    q(".away-bar").style.width = awayPct + "%";
+    q(".away-bar").setAttribute("aria-valuenow", awayPct);
+
+    q(".home-bar").style.width = homePct + "%";
+    q(".home-bar").setAttribute("aria-valuenow", homePct);
+
+    q(".away-prob-label").textContent = awayName;
+    q(".home-prob-label").textContent = homeName;
+
+    q(".away-badge").textContent = awayPct + "%";
+    q(".away-badge").classList.add(homeWin ? "bg-secondary" : "bg-primary");
+    q(".home-badge").textContent = homePct + "%";
+    q(".home-badge").classList.add(homeWin ? "bg-danger" : "bg-secondary");
+
+    const winnerLabel = homeWin ? `${homeName} favored` : `${awayName} favored`;
+    q(".winner-badge").textContent = winnerLabel;
+
+    return node;
+  }
+
+  // ── Load predictions ─────────────────────────────────────────────
+  async function loadPredictions() {
+    const loading  = document.getElementById("loading");
+    const noGames  = document.getElementById("no-games");
+    const errorBox = document.getElementById("error-box");
+    const grid     = document.getElementById("games-grid");
+
+    loading.classList.remove("d-none");
+    noGames.classList.add("d-none");
+    errorBox.classList.add("d-none");
+    grid.classList.add("d-none");
+    grid.innerHTML = "";
+
+    const apiUrl = urlDate ? `/api/predictions?date=${urlDate}` : "/api/predictions";
+
+    try {
+      const res  = await fetch(apiUrl);
+      const data = await res.json();
+
+      loading.classList.add("d-none");
+
+      if (data.error) {
+        errorBox.textContent = "Error: " + data.error;
+        errorBox.classList.remove("d-none");
+        return;
+      }
+
+      const playable = (data.games || []).filter(g => !g.skipped);
+
+      if (playable.length === 0) {
+        noGames.classList.remove("d-none");
+        return;
+      }
+
+      for (const game of playable) {
+        grid.appendChild(buildCard(game));
+      }
+      grid.classList.remove("d-none");
+
+    } catch (e) {
+      loading.classList.add("d-none");
+      errorBox.textContent = "Failed to load predictions. Is the server running?";
+      errorBox.classList.remove("d-none");
+    }
+  }
+
+  loadPredictions();
+</script>
+
+</body>
+</html>

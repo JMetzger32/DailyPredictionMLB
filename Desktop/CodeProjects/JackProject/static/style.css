@@ -1,0 +1,83 @@
+/* DailyPredictionMLB — custom styles */
+
+body {
+  background-color: #f4f6f9;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ── Navbar ───────────────────────────────────────────── */
+.navbar-brand {
+  letter-spacing: -0.5px;
+}
+
+/* ── Game cards ───────────────────────────────────────── */
+.card {
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12) !important;
+}
+
+.card-header {
+  background-color: #1e2329;
+  color: #fff;
+  padding: 0.6rem 1rem;
+}
+
+.matchup-label {
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+}
+
+.game-time-badge {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+/* ── Stats table ──────────────────────────────────────── */
+.stats-table thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.stats-table tbody td {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.stats-table tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* ── Progress bar ─────────────────────────────────────── */
+.progress {
+  border-radius: 6px;
+  background-color: #e9ecef;
+}
+
+.progress-bar {
+  transition: width 0.6s ease;
+  font-size: 0.75rem;
+}
+
+/* ── Badges ───────────────────────────────────────────── */
+.winner-badge {
+  font-size: 0.75rem;
+}
+
+/* ── Responsive tweaks ────────────────────────────────── */
+@media (max-width: 576px) {
+  .stats-table thead th,
+  .stats-table tbody td {
+    font-size: 0.75rem;
+  }
+}
