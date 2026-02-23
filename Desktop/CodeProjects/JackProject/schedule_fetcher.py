@@ -8,6 +8,7 @@ Usage:
 
 import requests
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 import unicodedata
 import re
 
@@ -167,11 +168,7 @@ def get_todays_schedule(target_date=None):
             if game_time_utc:
                 try:
                     dt_utc = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
-                    # Convert to ET (UTC-4 during EDT, UTC-5 during EST)
-                    # Simple approximation: April-October is EDT (UTC-4)
-                    offset_hours = -4
-                    from datetime import timedelta
-                    dt_et = dt_utc + timedelta(hours=offset_hours)
+                    dt_et = dt_utc.astimezone(ZoneInfo("America/New_York"))
                     game_time_et = dt_et.strftime("%-I:%M %p ET")
                 except Exception:
                     game_time_et = game_time_utc
