@@ -6,3 +6,4 @@ pybaseball
 pandas
 scikit-learn
 numpy
+seaborn
