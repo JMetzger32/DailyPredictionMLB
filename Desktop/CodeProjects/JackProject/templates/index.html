@@ -12,9 +12,11 @@
 <!-- ── Navbar ────────────────────────────────────────────────────── -->
 <nav class="navbar navbar-dark bg-dark px-3 py-2">
   <span class="navbar-brand fw-bold fs-4">⚾ DailyPredictionMLB</span>
-  <div class="d-flex align-items-center gap-3">
-    <span id="date-label" class="text-white-50 small"></span>
-    <button id="refresh-btn" class="btn btn-outline-light btn-sm">Refresh Baselines</button>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <button id="prev-day" class="btn btn-outline-light btn-sm">&#8249;</button>
+    <input type="date" id="date-picker" class="form-control form-control-sm date-input" />
+    <button id="next-day" class="btn btn-outline-light btn-sm">&#8250;</button>
+    <button id="refresh-btn" class="btn btn-outline-light btn-sm ms-2">Refresh Baselines</button>
   </div>
 </nav>
 
@@ -28,10 +30,19 @@
 
   <div id="no-games" class="text-center py-5 d-none">
     <p class="fs-4 text-muted">No MLB games scheduled today.</p>
-    <p class="text-muted small">Check back tomorrow, or use <code>?date=YYYY-MM-DD</code> to view another date.</p>
+    <p class="text-muted small">Check back tomorrow, or use the date picker to view another date.</p>
   </div>
 
   <div id="error-box" class="alert alert-danger d-none" role="alert"></div>
+
+  <div id="spring-banner" class="alert alert-warning d-none" role="alert">
+    ⚾ <strong>Spring Training</strong> — These predictions use 2025 regular-season baselines.
+    Rosters and pitcher usage differ from the regular season; treat confidence levels loosely.
+  </div>
+
+  <div id="filter-bar" class="d-flex flex-wrap gap-2 mb-3 d-none">
+    <button class="btn btn-sm btn-primary filter-pill active" data-team="all">All Games</button>
+  </div>
 
   <div id="games-grid" class="row g-3 d-none"></div>
 
@@ -63,32 +74,56 @@
               <td class="text-center small home-sp"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">ERA / xFIP / SIERA</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="ERA: earned runs per 9 innings · xFIP: park-neutral FIP using expected HR rate · SIERA: adds batted-ball quality">
+                ERA / xFIP / SIERA
+              </td>
               <td class="text-center small away-sp-line"></td>
               <td class="text-center small home-sp-line"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">Team OBP (30g)</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="On-Base Percentage — how often batters reach base, 30-game rolling average">
+                Team OBP (30g)
+              </td>
               <td class="text-center small away-obp"></td>
               <td class="text-center small home-obp"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">Team SLG (30g)</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Slugging Percentage — total bases per at-bat, 30-game rolling average">
+                Team SLG (30g)
+              </td>
               <td class="text-center small away-slg"></td>
               <td class="text-center small home-slg"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">Hits/G (30g)</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Hits per game, 30-game rolling average">
+                Hits/G (30g)
+              </td>
               <td class="text-center small away-hits"></td>
               <td class="text-center small home-hits"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">Runs/G (10g recent)</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Runs scored per game, 10-game rolling average (recent form indicator)">
+                Runs/G (10g recent)
+              </td>
               <td class="text-center small away-runs"></td>
               <td class="text-center small home-runs"></td>
             </tr>
             <tr>
-              <td class="ps-3 text-muted small">Bullpen ERA</td>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Relief pitchers' ERA — excludes the starting pitcher">
+                Bullpen ERA
+              </td>
               <td class="text-center small away-bp"></td>
               <td class="text-center small home-bp"></td>
             </tr>
@@ -117,6 +152,7 @@
   </div>
 </template>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   // ── Helpers ──────────────────────────────────────────────────────
   function pct(v)   { return (v * 100).toFixed(1) + "%"; }
@@ -131,12 +167,32 @@
     return parts[0][0] + ". " + parts.slice(1).join(" ");
   }
 
-  // ── Date label ───────────────────────────────────────────────────
+  function toISODate(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  // ── Date picker setup ─────────────────────────────────────────────
   const urlDate = new URLSearchParams(window.location.search).get("date");
-  const displayDate = urlDate
-    ? new Date(urlDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
-    : new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  document.getElementById("date-label").textContent = displayDate;
+  const picker  = document.getElementById("date-picker");
+
+  picker.value = urlDate || toISODate(new Date());
+
+  picker.addEventListener("change", () => {
+    const val = picker.value;
+    window.location.href = val === toISODate(new Date()) ? "/" : "/?date=" + val;
+  });
+
+  document.getElementById("prev-day").addEventListener("click", () => {
+    const d = new Date(picker.value + "T12:00:00");
+    d.setDate(d.getDate() - 1);
+    window.location.href = "/?date=" + toISODate(d);
+  });
+
+  document.getElementById("next-day").addEventListener("click", () => {
+    const d = new Date(picker.value + "T12:00:00");
+    d.setDate(d.getDate() + 1);
+    window.location.href = "/?date=" + toISODate(d);
+  });
 
   // ── Refresh baselines button ──────────────────────────────────────
   document.getElementById("refresh-btn").addEventListener("click", async () => {
@@ -205,7 +261,6 @@
 
     q(".away-bar").style.width = awayPct + "%";
     q(".away-bar").setAttribute("aria-valuenow", awayPct);
-
     q(".home-bar").style.width = homePct + "%";
     q(".home-bar").setAttribute("aria-valuenow", homePct);
 
@@ -217,23 +272,72 @@
     q(".home-badge").textContent = homePct + "%";
     q(".home-badge").classList.add(homeWin ? "bg-danger" : "bg-secondary");
 
-    const winnerLabel = homeWin ? `${homeName} favored` : `${awayName} favored`;
-    q(".winner-badge").textContent = winnerLabel;
+    q(".winner-badge").textContent = homeWin ? `${homeName} favored` : `${awayName} favored`;
+
+    // Initialize Bootstrap tooltips (must happen after node is appended — deferred below)
+    node._tooltipEls = node.querySelectorAll("[data-bs-toggle='tooltip']");
 
     return node;
   }
 
+  // ── Team filter ───────────────────────────────────────────────────
+  function renderFilterPills(games) {
+    const bar = document.getElementById("filter-bar");
+    bar.querySelectorAll(".filter-pill:not([data-team='all'])").forEach(el => el.remove());
+
+    const teams = new Set();
+    games.forEach(g => {
+      if (g.away_team_name) teams.add(g.away_team_name);
+      if (g.home_team_name) teams.add(g.home_team_name);
+    });
+
+    [...teams].sort().forEach(team => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-sm btn-outline-secondary filter-pill";
+      btn.dataset.team = team;
+      btn.textContent = team;
+      btn.addEventListener("click", () => applyFilter(team));
+      bar.appendChild(btn);
+    });
+
+    bar.querySelector("[data-team='all']").addEventListener("click", () => applyFilter("all"));
+    bar.classList.remove("d-none");
+  }
+
+  function applyFilter(team) {
+    document.querySelectorAll(".filter-pill").forEach(p => {
+      p.classList.remove("active", "btn-primary");
+      p.classList.add("btn-outline-secondary");
+    });
+    const activePill = document.querySelector(`.filter-pill[data-team="${CSS.escape(team)}"]`);
+    if (activePill) {
+      activePill.classList.remove("btn-outline-secondary");
+      activePill.classList.add("active", "btn-primary");
+    }
+
+    document.querySelectorAll("#games-grid > .col-12").forEach(col => {
+      if (team === "all") {
+        col.classList.remove("d-none");
+      } else {
+        const label = col.querySelector(".matchup-label")?.textContent || "";
+        col.classList.toggle("d-none", !label.includes(team));
+      }
+    });
+  }
+
   // ── Load predictions ─────────────────────────────────────────────
   async function loadPredictions() {
-    const loading  = document.getElementById("loading");
-    const noGames  = document.getElementById("no-games");
-    const errorBox = document.getElementById("error-box");
-    const grid     = document.getElementById("games-grid");
+    const loading      = document.getElementById("loading");
+    const noGames      = document.getElementById("no-games");
+    const errorBox     = document.getElementById("error-box");
+    const grid         = document.getElementById("games-grid");
+    const springBanner = document.getElementById("spring-banner");
 
     loading.classList.remove("d-none");
     noGames.classList.add("d-none");
     errorBox.classList.add("d-none");
     grid.classList.add("d-none");
+    springBanner.classList.add("d-none");
     grid.innerHTML = "";
 
     const apiUrl = urlDate ? `/api/predictions?date=${urlDate}` : "/api/predictions";
@@ -257,10 +361,23 @@
         return;
       }
 
+      // Spring training banner
+      if (playable.some(g => g.game_type === "S")) {
+        springBanner.classList.remove("d-none");
+      }
+
       for (const game of playable) {
-        grid.appendChild(buildCard(game));
+        const node = buildCard(game);
+        grid.appendChild(node);
       }
       grid.classList.remove("d-none");
+
+      // Initialize tooltips now that nodes are in the DOM
+      grid.querySelectorAll("[data-bs-toggle='tooltip']").forEach(el => {
+        new bootstrap.Tooltip(el, { trigger: "hover" });
+      });
+
+      renderFilterPills(playable);
 
     } catch (e) {
       loading.classList.add("d-none");

@@ -74,6 +74,35 @@ body {
   font-size: 0.75rem;
 }
 
+/* ── Date picker ──────────────────────────────────────── */
+.date-input {
+  width: 145px;
+  background-color: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.date-input:focus {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+
+.date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+}
+
+/* ── Filter pills ─────────────────────────────────────── */
+.filter-pill {
+  border-radius: 20px;
+}
+
+.filter-pill.active {
+  font-weight: 600;
+}
+
 /* ── Responsive tweaks ────────────────────────────────── */
 @media (max-width: 576px) {
   .stats-table thead th,

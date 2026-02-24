@@ -180,6 +180,7 @@ def get_todays_schedule(target_date=None):
                 "game_time_utc":     game_time_utc,
                 "game_time_et":      game_time_et,
                 "status":            status,
+                "game_type":         game.get("gameType", "R"),
                 "away_team":         away_retro,
                 "home_team":         home_retro,
                 "away_team_name":    away_full,
