@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Season Record — DailyPredictionMLB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark bg-dark px-3 py-2">
+  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
+  <span class="text-white-50 small">Season Accuracy Record</span>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────────────── -->
+<div class="container-xl py-4">
+
+  <div id="loading" class="text-center py-5">
+    <div class="spinner-border text-secondary mb-3" role="status"></div>
+    <p class="text-muted">Loading accuracy data…</p>
+  </div>
+
+  <div id="content" class="d-none">
+
+    <!-- Overall summary cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-primary" id="rs-correct">—</div>
+          <div class="text-muted small">RS Correct</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-secondary" id="rs-games">—</div>
+          <div class="text-muted small">RS Games Predicted</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold accuracy-pct" id="rs-pct">—</div>
+          <div class="text-muted small">RS Accuracy</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-warning" id="st-pct">—</div>
+          <div class="text-muted small">Spring Training Acc.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="accuracy-tabs">
+      <li class="nav-item">
+        <button class="nav-link active" id="tab-rs" onclick="showTab('rs')">Regular Season</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="tab-st" onclick="showTab('st')">Spring Training</button>
+      </li>
+    </ul>
+
+    <!-- Regular Season table -->
+    <div id="pane-rs">
+      <div id="rs-no-data" class="text-center py-4 text-muted d-none">
+        No regular season predictions yet. Check back after Opening Day.
+      </div>
+      <table class="table table-sm table-hover align-middle" id="rs-table" style="display:none">
+        <thead class="table-dark">
+          <tr>
+            <th class="ps-3">#</th>
+            <th>Team</th>
+            <th class="text-center">Correct</th>
+            <th class="text-center">Games</th>
+            <th class="text-center">Accuracy</th>
+            <th style="width:180px">Bar</th>
+          </tr>
+        </thead>
+        <tbody id="rs-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Spring Training table -->
+    <div id="pane-st" class="d-none">
+      <div id="st-no-data" class="text-center py-4 text-muted d-none">
+        No spring training predictions recorded yet.
+      </div>
+      <table class="table table-sm table-hover align-middle" id="st-table" style="display:none">
+        <thead class="table-dark">
+          <tr>
+            <th class="ps-3">#</th>
+            <th>Team</th>
+            <th class="text-center">Correct</th>
+            <th class="text-center">Games</th>
+            <th class="text-center">Accuracy</th>
+            <th style="width:180px">Bar</th>
+          </tr>
+        </thead>
+        <tbody id="st-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div id="error-box" class="alert alert-danger d-none mt-3" role="alert"></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  function showTab(tab) {
+    document.getElementById("pane-rs").classList.toggle("d-none", tab !== "rs");
+    document.getElementById("pane-st").classList.toggle("d-none", tab !== "st");
+    document.getElementById("tab-rs").classList.toggle("active", tab === "rs");
+    document.getElementById("tab-st").classList.toggle("active", tab === "st");
+  }
+
+  function accuracyColor(pct) {
+    if (pct >= 0.60) return "text-success";
+    if (pct >= 0.50) return "text-warning";
+    return "text-danger";
+  }
+
+  function barColor(pct) {
+    if (pct >= 0.60) return "bg-success";
+    if (pct >= 0.50) return "bg-warning";
+    return "bg-danger";
+  }
+
+  function buildTable(tbodyId, teams, noDataId, tableId) {
+    const tbody = document.getElementById(tbodyId);
+    const noData = document.getElementById(noDataId);
+    const table  = document.getElementById(tableId);
+
+    if (!teams || teams.length === 0) {
+      noData.classList.remove("d-none");
+      return;
+    }
+
+    table.style.display = "";
+    tbody.innerHTML = "";
+
+    teams.forEach((t, i) => {
+      const pct     = t.accuracy;
+      const pctStr  = (pct * 100).toFixed(1) + "%";
+      const color   = accuracyColor(pct);
+      const barCol  = barColor(pct);
+      const barPct  = Math.round(pct * 100);
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="ps-3 text-muted">${i + 1}</td>
+        <td class="fw-semibold">${t.name}</td>
+        <td class="text-center">${t.correct}</td>
+        <td class="text-center">${t.games}</td>
+        <td class="text-center fw-bold ${color}">${pctStr}</td>
+        <td>
+          <div class="progress" style="height:14px;">
+            <div class="progress-bar ${barCol}" style="width:${barPct}%;font-size:0.7rem;">${pctStr}</div>
+          </div>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadAccuracy() {
+    try {
+      const res  = await fetch("/api/accuracy");
+      const data = await res.json();
+
+      document.getElementById("loading").classList.add("d-none");
+      document.getElementById("content").classList.remove("d-none");
+
+      const rs = data.regular_season;
+      const st = data.spring_training;
+
+      // Summary cards
+      document.getElementById("rs-correct").textContent = rs.overall.correct;
+      document.getElementById("rs-games").textContent   = rs.overall.games;
+
+      const rsPctEl = document.getElementById("rs-pct");
+      if (rs.overall.games > 0) {
+        const rsPct = (rs.overall.accuracy * 100).toFixed(1) + "%";
+        rsPctEl.textContent = rsPct;
+        rsPctEl.className = "fs-2 fw-bold " + accuracyColor(rs.overall.accuracy);
+      } else {
+        rsPctEl.textContent = "—";
+      }
+
+      const stPctEl = document.getElementById("st-pct");
+      if (st.overall.games > 0) {
+        stPctEl.textContent = (st.overall.accuracy * 100).toFixed(1) + "%";
+        stPctEl.className = "fs-2 fw-bold " + accuracyColor(st.overall.accuracy);
+      } else {
+        stPctEl.textContent = "—";
+      }
+
+      buildTable("rs-tbody", rs.teams, "rs-no-data", "rs-table");
+      buildTable("st-tbody", st.teams, "st-no-data", "st-table");
+
+      // Default to spring training tab if no RS games yet
+      if (rs.overall.games === 0 && st.overall.games > 0) {
+        showTab("st");
+      }
+
+    } catch (e) {
+      document.getElementById("loading").classList.add("d-none");
+      const err = document.getElementById("error-box");
+      err.textContent = "Failed to load accuracy data. Is the server running?";
+      err.classList.remove("d-none");
+    }
+  }
+
+  loadAccuracy();
+</script>
+
+</body>
+</html>

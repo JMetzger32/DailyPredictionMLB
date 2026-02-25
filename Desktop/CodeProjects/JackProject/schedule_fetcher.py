@@ -192,3 +192,35 @@ def get_todays_schedule(target_date=None):
     # Sort by game time
     games.sort(key=lambda g: g.get("game_time_utc") or "")
     return games
+
+
+def get_game_results(target_date):
+    """
+    Fetch final scores for completed games on target_date.
+
+    Returns a dict keyed by game_pk:
+      { game_pk: {"final": bool, "away_score": int|None, "home_score": int|None} }
+    """
+    date_str = target_date.strftime("%Y-%m-%d")
+    try:
+        resp = requests.get(
+            MLB_SCHEDULE_URL,
+            params={"sportId": 1, "date": date_str, "hydrate": "linescore"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[schedule_fetcher] get_game_results error: {e}")
+        return {}
+
+    results = {}
+    for date_entry in data.get("dates", []):
+        for game in date_entry.get("games", []):
+            pk     = game.get("gamePk")
+            status = game.get("status", {}).get("detailedState", "")
+            final  = status in ("Final", "Game Over", "Completed Early")
+            away_score = game.get("teams", {}).get("away", {}).get("score")
+            home_score = game.get("teams", {}).get("home", {}).get("score")
+            results[pk] = {"final": final, "away_score": away_score, "home_score": home_score}
+    return results

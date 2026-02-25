@@ -16,7 +16,8 @@
     <button id="prev-day" class="btn btn-outline-light btn-sm">&#8249;</button>
     <input type="date" id="date-picker" class="form-control form-control-sm date-input" />
     <button id="next-day" class="btn btn-outline-light btn-sm">&#8250;</button>
-    <button id="refresh-btn" class="btn btn-outline-light btn-sm ms-2">Refresh Baselines</button>
+    <a href="/accuracy" class="btn btn-outline-light btn-sm ms-1">Season Record</a>
+    <button id="refresh-btn" class="btn btn-outline-light btn-sm">Refresh Baselines</button>
   </div>
 </nav>
 
@@ -147,6 +148,9 @@
           </div>
         </div>
 
+        <!-- Result banner (shown for past dates when results are available) -->
+        <div class="result-banner d-none px-3 pb-3 small fw-semibold"></div>
+
       </div>
     </div>
   </div>
@@ -273,6 +277,19 @@
     q(".home-badge").classList.add(homeWin ? "bg-danger" : "bg-secondary");
 
     q(".winner-badge").textContent = homeWin ? `${homeName} favored` : `${awayName} favored`;
+
+    // Result banner for past dates (when actual results are in the log)
+    if (game.actual_winner !== null && game.actual_winner !== undefined) {
+      const scoreStr = `Final: ${awayName} ${game.away_score} — ${homeName} ${game.home_score}`;
+      const verdict  = game.correct ? "✅ Model correct" : "❌ Model incorrect";
+      const banner   = q(".result-banner");
+      banner.textContent = `${scoreStr}  ·  ${verdict}`;
+      banner.classList.remove("d-none");
+      banner.classList.add(game.correct ? "text-success" : "text-danger");
+      // Add colored left border to card
+      const card = q(".card");
+      card.style.borderLeft = `4px solid ${game.correct ? "#198754" : "#dc3545"}`;
+    }
 
     // Initialize Bootstrap tooltips (must happen after node is appended — deferred below)
     node._tooltipEls = node.querySelectorAll("[data-bs-toggle='tooltip']");
