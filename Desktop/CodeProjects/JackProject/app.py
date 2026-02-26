@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta
 from flask import Flask, jsonify, render_template, request
 
 from MLBModel import predict_game, _default_sp_stats
-from schedule_fetcher import get_todays_schedule, find_pitcher_by_name, RETRO_TO_FULL_NAME
+from schedule_fetcher import get_todays_schedule, get_game_results, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__)
 
@@ -230,10 +230,18 @@ def predictions():
 
     # Load any stored results for this date
     log = _load_log()
-    log_by_pk = {entry["game_pk"]: entry for entry in log.get(target_date.isoformat(), [])}
+    date_str = target_date.isoformat()
+    log_by_pk = {entry["game_pk"]: entry for entry in log.get(date_str, [])}
+
+    # Fetch live scores so completed games show results immediately
+    try:
+        live_results = get_game_results(target_date)
+    except Exception:
+        live_results = {}
 
     games_raw = get_todays_schedule(target_date)
     predictions_out = []
+    log_changed = False
 
     for game in games_raw:
         home = game.get("home_team")
@@ -268,8 +276,39 @@ def predictions():
             predictions_out.append({**game, "skipped": True, "skip_reason": str(e)})
             continue
 
-        # Attach stored results if available (past date viewing)
-        stored = log_by_pk.get(game.get("game_pk"), {})
+        # Determine actual results — use stored log first, then overlay live scores
+        pk     = game.get("game_pk")
+        stored = log_by_pk.get(pk, {})
+        live_r = live_results.get(pk, {})
+
+        actual_winner = stored.get("actual_winner")
+        away_score    = stored.get("away_score")
+        home_score    = stored.get("home_score")
+        correct       = stored.get("correct")
+
+        # If not yet resolved in log but game is now final, use live score
+        if (actual_winner is None
+                and live_r.get("final")
+                and live_r.get("away_score") is not None
+                and live_r.get("home_score") is not None):
+            away_score = live_r["away_score"]
+            home_score = live_r["home_score"]
+            if away_score == home_score:
+                actual_winner = "Tie"
+                correct       = None
+            else:
+                actual        = "Home" if home_score > away_score else "Away"
+                actual_winner = actual
+                correct       = (result["predicted_winner"] == actual)
+            # Persist back to log so accuracy tracker stays current
+            if pk in log_by_pk:
+                log_by_pk[pk].update({
+                    "away_score":    away_score,
+                    "home_score":    home_score,
+                    "actual_winner": actual_winner,
+                    "correct":       correct,
+                })
+                log_changed = True
 
         predictions_out.append({
             **game,
@@ -296,12 +335,16 @@ def predictions():
             "away_hits_pg":     round(away_ts.get("hits_per_game",  8.5),   1),
             "away_runs_pg":     round(away_ts.get("recent_runs_per_game", 4.5), 1),
             "away_bp_era":      round(away_ts.get("bullpen_era",    4.20),  2),
-            # Actual results (null if game hasn't been played / results not yet fetched)
-            "actual_winner":    stored.get("actual_winner"),
-            "away_score":       stored.get("away_score"),
-            "home_score":       stored.get("home_score"),
-            "correct":          stored.get("correct"),
+            "actual_winner":    actual_winner,
+            "away_score":       away_score,
+            "home_score":       home_score,
+            "correct":          correct,
         })
+
+    # Persist any live results we just resolved back to the log
+    if log_changed:
+        log[date_str] = list(log_by_pk.values())
+        _save_log(log)
 
     return jsonify({
         "date":         target_date.isoformat(),
