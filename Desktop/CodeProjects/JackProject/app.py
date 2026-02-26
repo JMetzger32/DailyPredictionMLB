@@ -108,9 +108,13 @@ def update_yesterday_results():
         if r and r["final"] and r["away_score"] is not None and r["home_score"] is not None:
             entry["away_score"] = r["away_score"]
             entry["home_score"] = r["home_score"]
-            actual = "Home" if r["home_score"] > r["away_score"] else "Away"
-            entry["actual_winner"] = actual
-            entry["correct"] = (entry["predicted_winner"] == actual)
+            if r["home_score"] == r["away_score"]:
+                entry["actual_winner"] = "Tie"
+                entry["correct"] = None  # ties excluded from accuracy
+            else:
+                actual = "Home" if r["home_score"] > r["away_score"] else "Away"
+                entry["actual_winner"] = actual
+                entry["correct"] = (entry["predicted_winner"] == actual)
             changed = True
 
     if changed:

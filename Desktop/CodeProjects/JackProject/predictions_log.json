@@ -915,9 +915,9 @@
       "predicted_winner": "Home",
       "away_win_prob": 0.477,
       "home_win_prob": 0.523,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
+      "actual_winner": "Tie",
+      "away_score": 6,
+      "home_score": 6,
       "correct": null
     },
     {

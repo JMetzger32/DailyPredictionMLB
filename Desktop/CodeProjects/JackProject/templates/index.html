@@ -281,14 +281,18 @@
     // Result banner for past dates (when actual results are in the log)
     if (game.actual_winner !== null && game.actual_winner !== undefined) {
       const scoreStr = `Final: ${awayName} ${game.away_score} — ${homeName} ${game.home_score}`;
-      const verdict  = game.correct ? "✅ Model correct" : "❌ Model incorrect";
       const banner   = q(".result-banner");
-      banner.textContent = `${scoreStr}  ·  ${verdict}`;
       banner.classList.remove("d-none");
-      banner.classList.add(game.correct ? "text-success" : "text-danger");
-      // Add colored left border to card
-      const card = q(".card");
-      card.style.borderLeft = `4px solid ${game.correct ? "#198754" : "#dc3545"}`;
+      if (game.actual_winner === "Tie") {
+        banner.textContent = `${scoreStr}  ·  Tie (not counted in accuracy)`;
+        banner.classList.add("text-secondary");
+        q(".card").style.borderLeft = "4px solid #6c757d";
+      } else {
+        const verdict = game.correct ? "✅ Model correct" : "❌ Model incorrect";
+        banner.textContent = `${scoreStr}  ·  ${verdict}`;
+        banner.classList.add(game.correct ? "text-success" : "text-danger");
+        q(".card").style.borderLeft = `4px solid ${game.correct ? "#198754" : "#dc3545"}`;
+      }
     }
 
     // Initialize Bootstrap tooltips (must happen after node is appended — deferred below)
