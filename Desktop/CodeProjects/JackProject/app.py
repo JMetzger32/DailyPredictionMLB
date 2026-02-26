@@ -308,7 +308,17 @@ def predictions():
                     "actual_winner": actual_winner,
                     "correct":       correct,
                 })
-                log_changed = True
+            else:
+                # Game wasn't logged yet (8 AM job missed) — create full entry now
+                entry = _build_prediction_entry(game, result)
+                entry.update({
+                    "away_score":    away_score,
+                    "home_score":    home_score,
+                    "actual_winner": actual_winner,
+                    "correct":       correct,
+                })
+                log_by_pk[pk] = entry
+            log_changed = True
 
         predictions_out.append({
             **game,
