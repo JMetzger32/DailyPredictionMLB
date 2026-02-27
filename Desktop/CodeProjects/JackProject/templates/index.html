@@ -11,7 +11,7 @@
 
 <!-- ── Navbar ────────────────────────────────────────────────────── -->
 <nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <span class="navbar-brand fw-bold fs-4">⚾ DailyPredictionMLB</span>
+  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
   <div class="d-flex align-items-center gap-2 flex-wrap">
     <button id="prev-day" class="btn btn-outline-light btn-sm">&#8249;</button>
     <input type="date" id="date-picker" class="form-control form-control-sm date-input" />
@@ -37,12 +37,20 @@
   <div id="error-box" class="alert alert-danger d-none" role="alert"></div>
 
   <div id="spring-banner" class="alert alert-warning d-none" role="alert">
-    ⚾ <strong>Spring Training</strong> — These predictions use 2025 regular-season baselines.
+    ⚾ <strong>Spring Training</strong> — These predictions use regular-season baselines.
     Rosters and pitcher usage differ from the regular season; treat confidence levels loosely.
   </div>
 
-  <div id="filter-bar" class="d-flex flex-wrap gap-2 mb-3 d-none">
-    <button class="btn btn-sm btn-primary filter-pill active" data-team="all">All Games</button>
+  <!-- Filter bar + confidence toggle -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div id="filter-bar" class="d-flex flex-wrap gap-2 d-none">
+      <button class="btn btn-sm btn-primary filter-pill active" data-team="all">All Games</button>
+    </div>
+    <div id="confidence-toggle-wrap" class="d-none ms-auto">
+      <button id="confidence-toggle" class="btn btn-sm btn-outline-warning">
+        ⚡ High Confidence Only (≥60%)
+      </button>
+    </div>
   </div>
 
   <div id="games-grid" class="row g-3 d-none"></div>
@@ -53,9 +61,12 @@
 <template id="card-template">
   <div class="col-12 col-lg-6">
     <div class="card shadow-sm h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span class="fw-semibold matchup-label"></span>
-        <span class="badge bg-secondary game-time-badge"></span>
+      <div class="card-header d-flex justify-content-between align-items-center gap-2">
+        <span class="fw-semibold matchup-label" style="font-size:0.88rem;"></span>
+        <div class="d-flex align-items-center gap-1 flex-shrink-0">
+          <span class="badge bg-warning text-dark st-badge d-none" style="font-size:0.65rem;">ST</span>
+          <span class="badge bg-secondary game-time-badge"></span>
+        </div>
       </div>
       <div class="card-body p-0">
 
@@ -159,7 +170,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   // ── Helpers ──────────────────────────────────────────────────────
-  function pct(v)   { return (v * 100).toFixed(1) + "%"; }
   function fmt3(v)  { return (v || 0).toFixed(3); }
   function fmt2(v)  { return (v || 0).toFixed(2); }
   function fmt1(v)  { return (v || 0).toFixed(1); }
@@ -178,24 +188,25 @@
   // ── Date picker setup ─────────────────────────────────────────────
   const urlDate = new URLSearchParams(window.location.search).get("date");
   const picker  = document.getElementById("date-picker");
+  const todayStr = toISODate(new Date());
 
-  picker.value = urlDate || toISODate(new Date());
+  picker.value = urlDate || todayStr;
 
   picker.addEventListener("change", () => {
     const val = picker.value;
-    window.location.href = val === toISODate(new Date()) ? "/" : "/?date=" + val;
+    window.location.href = val === todayStr ? "/predictions" : "/predictions?date=" + val;
   });
 
   document.getElementById("prev-day").addEventListener("click", () => {
     const d = new Date(picker.value + "T12:00:00");
     d.setDate(d.getDate() - 1);
-    window.location.href = "/?date=" + toISODate(d);
+    window.location.href = "/predictions?date=" + toISODate(d);
   });
 
   document.getElementById("next-day").addEventListener("click", () => {
     const d = new Date(picker.value + "T12:00:00");
     d.setDate(d.getDate() + 1);
-    window.location.href = "/?date=" + toISODate(d);
+    window.location.href = "/predictions?date=" + toISODate(d);
   });
 
   // ── Refresh baselines button ──────────────────────────────────────
@@ -219,6 +230,17 @@
     setTimeout(() => { btn.disabled = false; btn.textContent = "Refresh Baselines"; }, 3000);
   });
 
+  // ── Confidence filter state ───────────────────────────────────────
+  let confidenceOnly = false;
+
+  document.getElementById("confidence-toggle").addEventListener("click", () => {
+    confidenceOnly = !confidenceOnly;
+    const btn = document.getElementById("confidence-toggle");
+    btn.classList.toggle("btn-warning", confidenceOnly);
+    btn.classList.toggle("btn-outline-warning", !confidenceOnly);
+    applyVisibility();
+  });
+
   // ── Build one game card ───────────────────────────────────────────
   function buildCard(game) {
     const tmpl = document.getElementById("card-template");
@@ -228,16 +250,43 @@
     const homeWin  = game.predicted_winner === "Home";
     const awayName = game.away_team_name || game.away_team || "Away";
     const homeName = game.home_team_name || game.home_team || "Home";
+    const isST     = game.game_type === "S";
 
-    q(".matchup-label").textContent = `${awayName} @ ${homeName}`;
-    q(".game-time-badge").textContent = game.game_time_et || game.status || "";
+    // Matchup label with team records
+    const awayRec = (game.away_wins !== undefined)
+      ? ` (${game.away_wins}-${game.away_losses})` : "";
+    const homeRec = (game.home_wins !== undefined)
+      ? ` (${game.home_wins}-${game.home_losses})` : "";
+    q(".matchup-label").textContent = `${awayName}${awayRec} @ ${homeName}${homeRec}`;
 
-    q(".away-header").textContent = `AWAY (${game.away_team || ""})`;
-    q(".home-header").textContent = `HOME (${game.home_team || ""})`;
+    // Spring Training badge
+    if (isST) q(".st-badge").classList.remove("d-none");
 
-    // Pitcher
-    q(".away-sp").textContent = shortName(game.away_sp_name);
-    q(".home-sp").textContent = shortName(game.home_sp_name);
+    // Status badge: 🔴 LIVE / ✅ Final / game time
+    const liveStatuses  = ["In Progress", "Warmup", "Pre-Game", "Manager Challenge"];
+    const finalStatuses = ["Final", "Game Over", "Completed Early"];
+    const badge = q(".game-time-badge");
+    if (liveStatuses.includes(game.status)) {
+      badge.textContent = "🔴 LIVE";
+      badge.classList.replace("bg-secondary", "bg-danger");
+    } else if (finalStatuses.includes(game.status)) {
+      badge.textContent = "✅ Final";
+      badge.classList.replace("bg-secondary", "bg-dark");
+    } else {
+      badge.textContent = game.game_time_et || game.status || "";
+    }
+
+    // Column headers with team records
+    q(".away-header").textContent = `AWAY (${game.away_team || ""})${awayRec}`;
+    q(".home-header").textContent = `HOME (${game.home_team || ""})${homeRec}`;
+
+    // Pitcher with W-L record
+    const awaySpWL = (game.away_sp_wins + game.away_sp_losses > 0)
+      ? ` (${game.away_sp_wins}-${game.away_sp_losses})` : "";
+    const homeSpWL = (game.home_sp_wins + game.home_sp_losses > 0)
+      ? ` (${game.home_sp_wins}-${game.home_sp_losses})` : "";
+    q(".away-sp").textContent = shortName(game.away_sp_name) + awaySpWL;
+    q(".home-sp").textContent = shortName(game.home_sp_name) + homeSpWL;
     q(".away-sp-line").textContent = `${fmt2(game.away_sp_era)} / ${fmt2(game.away_sp_xfip)} / ${fmt2(game.away_sp_siera)}`;
     q(".home-sp-line").textContent = `${fmt2(game.home_sp_era)} / ${fmt2(game.home_sp_xfip)} / ${fmt2(game.home_sp_siera)}`;
 
@@ -301,6 +350,21 @@
     return node;
   }
 
+  // ── Visibility (team filter + confidence filter combined) ─────────
+  let activeTeamFilter = "all";
+
+  function applyVisibility() {
+    document.querySelectorAll("#games-grid > .col-12").forEach(col => {
+      const matchup = col.querySelector(".matchup-label")?.textContent || "";
+      const maxProb = parseFloat(col.dataset.maxProb || "0");
+
+      const passTeam = activeTeamFilter === "all" || matchup.includes(activeTeamFilter);
+      const passConf = !confidenceOnly || maxProb >= 0.60;
+
+      col.classList.toggle("d-none", !(passTeam && passConf));
+    });
+  }
+
   // ── Team filter ───────────────────────────────────────────────────
   function renderFilterPills(games) {
     const bar = document.getElementById("filter-bar");
@@ -317,33 +381,32 @@
       btn.className = "btn btn-sm btn-outline-secondary filter-pill";
       btn.dataset.team = team;
       btn.textContent = team;
-      btn.addEventListener("click", () => applyFilter(team));
+      btn.addEventListener("click", () => {
+        activeTeamFilter = team;
+        setActivePill(team);
+        applyVisibility();
+      });
       bar.appendChild(btn);
     });
 
-    bar.querySelector("[data-team='all']").addEventListener("click", () => applyFilter("all"));
+    bar.querySelector("[data-team='all']").addEventListener("click", () => {
+      activeTeamFilter = "all";
+      setActivePill("all");
+      applyVisibility();
+    });
     bar.classList.remove("d-none");
   }
 
-  function applyFilter(team) {
+  function setActivePill(team) {
     document.querySelectorAll(".filter-pill").forEach(p => {
       p.classList.remove("active", "btn-primary");
       p.classList.add("btn-outline-secondary");
     });
-    const activePill = document.querySelector(`.filter-pill[data-team="${CSS.escape(team)}"]`);
-    if (activePill) {
-      activePill.classList.remove("btn-outline-secondary");
-      activePill.classList.add("active", "btn-primary");
+    const active = document.querySelector(`.filter-pill[data-team="${CSS.escape(team)}"]`);
+    if (active) {
+      active.classList.remove("btn-outline-secondary");
+      active.classList.add("active", "btn-primary");
     }
-
-    document.querySelectorAll("#games-grid > .col-12").forEach(col => {
-      if (team === "all") {
-        col.classList.remove("d-none");
-      } else {
-        const label = col.querySelector(".matchup-label")?.textContent || "";
-        col.classList.toggle("d-none", !label.includes(team));
-      }
-    });
   }
 
   // ── Load predictions ─────────────────────────────────────────────
@@ -390,6 +453,9 @@
       for (const game of playable) {
         const node = buildCard(game);
         grid.appendChild(node);
+        // Store max win prob on the column wrapper for confidence filter
+        const col = grid.lastElementChild;
+        col.dataset.maxProb = Math.max(game.home_win_prob || 0.5, game.away_win_prob || 0.5);
       }
       grid.classList.remove("d-none");
 
@@ -399,6 +465,7 @@
       });
 
       renderFilterPills(playable);
+      document.getElementById("confidence-toggle-wrap").classList.remove("d-none");
 
     } catch (e) {
       loading.classList.add("d-none");

@@ -312,14 +312,16 @@ def fetch_sp_baselines(season, games_played):
                .replace("-", "_"))
 
         sp_baselines[key] = {
-            "name":  name,
-            "era":   safe(row, "ERA",  4.0),
-            "whip":  safe(row, "WHIP", 1.3),
-            "xfip":  safe(row, "xFIP", 4.0),
-            "siera": safe(row, "SIERA",4.0),
-            "so9":   safe(row, "K/9",  8.0),
-            "bb9":   safe(row, "BB/9", 3.0),
-            "hr9":   safe(row, "HR/9", 1.2),
+            "name":   name,
+            "era":    safe(row, "ERA",  4.0),
+            "whip":   safe(row, "WHIP", 1.3),
+            "xfip":   safe(row, "xFIP", 4.0),
+            "siera":  safe(row, "SIERA",4.0),
+            "so9":    safe(row, "K/9",  8.0),
+            "bb9":    safe(row, "BB/9", 3.0),
+            "hr9":    safe(row, "HR/9", 1.2),
+            "wins":   int(safe(row, "W", 0)),
+            "losses": int(safe(row, "L", 0)),
         }
 
     return sp_baselines

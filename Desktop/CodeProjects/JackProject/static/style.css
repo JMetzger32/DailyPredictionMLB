@@ -103,6 +103,21 @@ body {
   font-weight: 600;
 }
 
+/* ── Home / landing page ──────────────────────────────── */
+.home-page {
+  min-height: 100vh;
+  background: url('/static/baseballBackground.webp') center/cover no-repeat fixed;
+  background-color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+}
+
+.hero-overlay {
+  min-height: 100vh;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 2rem;
+}
+
 /* ── Responsive tweaks ────────────────────────────────── */
 @media (max-width: 576px) {
   .stats-table thead th,

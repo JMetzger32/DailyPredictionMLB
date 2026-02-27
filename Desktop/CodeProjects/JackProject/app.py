@@ -195,6 +195,11 @@ except ImportError:
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/")
+def home():
+    return render_template("home.html")
+
+
+@app.route("/predictions")
 def index():
     return render_template("index.html")
 
@@ -332,9 +337,13 @@ def predictions():
             "home_sp_era":      round(home_sp.get("era",   4.0), 2),
             "home_sp_xfip":     round(home_sp.get("xfip",  4.0), 2),
             "home_sp_siera":    round(home_sp.get("siera", 4.0), 2),
+            "home_sp_wins":     home_sp.get("wins",   0),
+            "home_sp_losses":   home_sp.get("losses", 0),
             "away_sp_era":      round(away_sp.get("era",   4.0), 2),
             "away_sp_xfip":     round(away_sp.get("xfip",  4.0), 2),
             "away_sp_siera":    round(away_sp.get("siera", 4.0), 2),
+            "away_sp_wins":     away_sp.get("wins",   0),
+            "away_sp_losses":   away_sp.get("losses", 0),
             "home_obp":         round(home_ts.get("obp",            0.318), 3),
             "home_slg":         round(home_ts.get("slg",            0.400), 3),
             "home_hits_pg":     round(home_ts.get("hits_per_game",  8.5),   1),

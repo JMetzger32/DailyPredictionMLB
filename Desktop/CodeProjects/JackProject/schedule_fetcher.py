@@ -175,6 +175,9 @@ def get_todays_schedule(target_date=None):
 
             status = game.get("status", {}).get("detailedState", "Scheduled")
 
+            away_rec = away_info.get("leagueRecord", {})
+            home_rec = home_info.get("leagueRecord", {})
+
             games.append({
                 "game_pk":           game.get("gamePk"),
                 "game_time_utc":     game_time_utc,
@@ -187,6 +190,10 @@ def get_todays_schedule(target_date=None):
                 "home_team_name":    home_full,
                 "away_pitcher_name": away_pitcher,
                 "home_pitcher_name": home_pitcher,
+                "away_wins":         away_rec.get("wins",   0),
+                "away_losses":       away_rec.get("losses", 0),
+                "home_wins":         home_rec.get("wins",   0),
+                "home_losses":       home_rec.get("losses", 0),
             })
 
     # Sort by game time
