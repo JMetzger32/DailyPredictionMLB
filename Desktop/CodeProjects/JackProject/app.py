@@ -20,13 +20,14 @@ Run locally:
 import json
 import os
 import pickle
+import time
 import traceback
 from datetime import date, datetime, timedelta
 
 from flask import Flask, jsonify, render_template, request
 
 from MLBModel import predict_game, _default_sp_stats
-from schedule_fetcher import get_todays_schedule, get_game_results, find_pitcher_by_name, RETRO_TO_FULL_NAME
+from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__)
 
@@ -49,6 +50,40 @@ def load_artifacts():
 
 
 load_artifacts()
+
+# ---------------------------------------------------------------------------
+# Schedule cache  (avoids hitting the MLB API on every page load)
+# ---------------------------------------------------------------------------
+_schedule_cache: dict = {}   # {date_str: {"ts": float, "games": list, "results": dict}}
+_CACHE_TTL      = 120        # seconds — today / future dates
+_CACHE_TTL_PAST = 600        # seconds — historical dates (scores won't change)
+
+ODDS_API_KEY    = os.environ.get("ODDS_API_KEY", "")
+_odds_cache: dict = {}       # {date_str: {"ts": float, "odds": dict}}
+_ODDS_CACHE_TTL = 1800       # 30 minutes — saves API credits
+
+
+def _get_schedule_cached(target_date):
+    """Return (games, live_results) from cache or MLB API."""
+    date_str = target_date.isoformat()
+    cached   = _schedule_cache.get(date_str)
+    ttl      = _CACHE_TTL if target_date >= date.today() else _CACHE_TTL_PAST
+    if cached and (time.monotonic() - cached["ts"]) < ttl:
+        return cached["games"], cached["results"]
+    games, results = get_schedule_and_results(target_date)
+    _schedule_cache[date_str] = {"ts": time.monotonic(), "games": games, "results": results}
+    return games, results
+
+
+def _get_odds_cached():
+    """Return today's odds map from cache or The Odds API (1 credit per call)."""
+    today  = date.today().isoformat()
+    cached = _odds_cache.get(today)
+    if cached and (time.monotonic() - cached["ts"]) < _ODDS_CACHE_TTL:
+        return cached["odds"]
+    odds = get_mlb_odds(ODDS_API_KEY)
+    _odds_cache[today] = {"ts": time.monotonic(), "odds": odds}
+    return odds
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +227,43 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Odds helpers
+# ---------------------------------------------------------------------------
+def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
+    """
+    Look up odds for (away_retro, home_retro) and compute bet rating.
+    Returns a dict with away_ml, home_ml, away_implied, home_implied, bet_rating.
+    All values are None when no odds are available.
+    """
+    game_odds  = odds_map.get((away_retro, home_retro), {})
+    away_ml    = game_odds.get("away_ml")
+    home_ml    = game_odds.get("home_ml")
+    away_impl  = game_odds.get("away_implied")
+    home_impl  = game_odds.get("home_implied")
+
+    bet_rating = None
+    if away_impl is not None and home_impl is not None:
+        predicted  = pred_result["predicted_winner"]
+        model_prob  = pred_result["home_win_prob"] if predicted == "Home" else pred_result["away_win_prob"]
+        market_prob = home_impl                    if predicted == "Home" else away_impl
+        edge = model_prob - market_prob
+        if edge > 0.05:
+            bet_rating = "good"
+        elif edge < -0.05:
+            bet_rating = "bad"
+        else:
+            bet_rating = "unsure"
+
+    return {
+        "away_ml":      away_ml,
+        "home_ml":      home_ml,
+        "away_implied": away_impl,
+        "home_implied": home_impl,
+        "bet_rating":   bet_rating,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/")
@@ -238,13 +310,12 @@ def predictions():
     date_str = target_date.isoformat()
     log_by_pk = {entry["game_pk"]: entry for entry in log.get(date_str, [])}
 
-    # Fetch live scores so completed games show results immediately
-    try:
-        live_results = get_game_results(target_date)
-    except Exception:
-        live_results = {}
+    # One cached API call for both schedule and live scores
+    games_raw, live_results = _get_schedule_cached(target_date)
 
-    games_raw = get_todays_schedule(target_date)
+    # Fetch odds only for today (past dates no longer have live odds)
+    odds_map = _get_odds_cached() if target_date == date.today() else {}
+
     predictions_out = []
     log_changed = False
 
@@ -358,6 +429,7 @@ def predictions():
             "away_score":       away_score,
             "home_score":       home_score,
             "correct":          correct,
+            **_compute_odds_fields(away, home, result, odds_map),
         })
 
     # Persist any live results we just resolved back to the log

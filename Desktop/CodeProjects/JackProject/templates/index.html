@@ -159,6 +159,9 @@
           </div>
         </div>
 
+        <!-- Odds row — always shown; "No Odds Available" when API has no data -->
+        <div class="odds-row d-flex justify-content-between align-items-center px-3 pb-2"></div>
+
         <!-- Result banner (shown for past dates when results are available) -->
         <div class="result-banner d-none px-3 pb-3 small fw-semibold"></div>
 
@@ -326,6 +329,28 @@
     q(".home-badge").classList.add(homeWin ? "bg-danger" : "bg-secondary");
 
     q(".winner-badge").textContent = homeWin ? `${homeName} favored` : `${awayName} favored`;
+
+    // Odds row — always rendered
+    const oddsRow = q(".odds-row");
+    if (game.away_ml != null && game.home_ml != null) {
+      const awayOddsStr = game.away_ml > 0 ? `+${game.away_ml}` : `${game.away_ml}`;
+      const homeOddsStr = game.home_ml > 0 ? `+${game.home_ml}` : `${game.home_ml}`;
+      const ratingsMap = {
+        good:   { cls: "bg-success text-white",       text: "✓ Value Bet" },
+        unsure: { cls: "bg-warning text-dark",         text: "~ Toss-Up"  },
+        bad:    { cls: "bg-danger text-white",         text: "✗ No Value"  },
+      };
+      const rating = game.bet_rating ? ratingsMap[game.bet_rating] : null;
+      const badgeHtml = rating
+        ? `<span class="badge bet-badge ${rating.cls}">${rating.text}</span>`
+        : `<span class="text-muted" style="font-size:0.72rem;">—</span>`;
+      oddsRow.innerHTML = `
+        <span class="odds-tag">${awayOddsStr}</span>
+        ${badgeHtml}
+        <span class="odds-tag">${homeOddsStr}</span>`;
+    } else {
+      oddsRow.innerHTML = `<span class="text-muted w-100 text-center" style="font-size:0.72rem;">No Odds Available</span>`;
+    }
 
     // Result banner for past dates (when actual results are in the log)
     if (game.actual_winner !== null && game.actual_winner !== undefined) {
