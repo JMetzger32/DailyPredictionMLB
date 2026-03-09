@@ -157,21 +157,26 @@ def update_yesterday_results():
         print(f"[app] Updated results for {yesterday}")
 
 
-def log_todays_predictions():
-    """Run today's predictions and save them to the log (skipped if already logged)."""
-    today = date.today().isoformat()
-    log = _load_log()
-    if today in log:
-        return  # already logged today
+def _log_predictions_for_date(target_date, log=None):
+    """
+    Run predictions for target_date and add to log.
+    For past dates, also immediately resolves results.
+    Returns the log (possibly modified). Skips if date already in log.
+    """
+    date_str = target_date.isoformat()
+    if log is None:
+        log = _load_log()
+    if date_str in log:
+        return log  # already logged
 
     team_baselines = _artifacts.get("team_baselines", {})
     sp_baselines   = _artifacts.get("sp_baselines", {})
     lr_model       = _artifacts.get("lr_model")
     scaler         = _artifacts.get("scaler")
     if lr_model is None:
-        return
+        return log
 
-    games_raw = get_todays_schedule(date.today())
+    games_raw = get_todays_schedule(target_date)
     entries = []
     for game in games_raw:
         home = game.get("home_team")
@@ -192,9 +197,93 @@ def log_todays_predictions():
         except Exception:
             continue
 
-    log[today] = entries
+    if not entries:
+        return log
+
+    # For past dates, immediately attach final results
+    if target_date < date.today():
+        try:
+            from schedule_fetcher import get_game_results
+            results = get_game_results(target_date)
+            for entry in entries:
+                r = results.get(entry["game_pk"])
+                if r and r["final"] and r["away_score"] is not None:
+                    entry["away_score"] = r["away_score"]
+                    entry["home_score"] = r["home_score"]
+                    if r["home_score"] == r["away_score"]:
+                        entry["actual_winner"] = "Tie"
+                        entry["correct"] = None
+                    else:
+                        actual = "Home" if r["home_score"] > r["away_score"] else "Away"
+                        entry["actual_winner"] = actual
+                        entry["correct"] = (entry["predicted_winner"] == actual)
+        except Exception as e:
+            print(f"[app] Could not resolve results for {date_str}: {e}")
+
+    log[date_str] = entries
+    print(f"[app] Backfilled {len(entries)} predictions for {date_str}")
+    return log
+
+
+def _resolve_unresolved_for_date(log, target_date):
+    """Resolve any unresolved entries for a specific past date. Returns True if changed."""
+    from schedule_fetcher import get_game_results
+    date_str = target_date.isoformat()
+    entries = log.get(date_str, [])
+    unresolved = [e for e in entries if e.get("correct") is None and e.get("actual_winner") is None]
+    if not unresolved:
+        return False
+    try:
+        results = get_game_results(target_date)
+    except Exception as e:
+        print(f"[app] get_game_results failed for {date_str}: {e}")
+        return False
+    changed = False
+    for entry in unresolved:
+        r = results.get(entry["game_pk"])
+        if r and r["final"] and r["away_score"] is not None:
+            entry["away_score"] = r["away_score"]
+            entry["home_score"] = r["home_score"]
+            if r["home_score"] == r["away_score"]:
+                entry["actual_winner"] = "Tie"
+                entry["correct"] = None
+            else:
+                actual = "Home" if r["home_score"] > r["away_score"] else "Away"
+                entry["actual_winner"] = actual
+                entry["correct"] = (entry["predicted_winner"] == actual)
+            changed = True
+    return changed
+
+
+def _auto_heal_log(days=7):
+    """
+    For the last `days` days (excluding today):
+    - Backfill any dates missing from the log entirely
+    - Resolve any unresolved entries
+    Saves log once if anything changed.
+    """
+    log = _load_log()
+    changed = False
+    for i in range(1, days + 1):
+        target = date.today() - timedelta(days=i)
+        date_str = target.isoformat()
+        if date_str not in log:
+            log = _log_predictions_for_date(target, log)
+            if date_str in log:
+                changed = True
+        else:
+            if _resolve_unresolved_for_date(log, target):
+                changed = True
+    if changed:
+        _save_log(log)
+        print(f"[app] _auto_heal_log: log updated")
+
+
+def log_todays_predictions():
+    """Run today's predictions and save them to the log (skipped if already logged)."""
+    log = _log_predictions_for_date(date.today())
     _save_log(log)
-    print(f"[app] Logged {len(entries)} predictions for {today}")
+    print(f"[app] Logged predictions for {date.today().isoformat()}")
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +538,10 @@ def accuracy():
     """
     Returns per-team season accuracy from predictions_log.json.
     Splits regular season (game_type=R) and spring training (game_type=S).
+    Auto-heals the log before computing: resolves unresolved entries and
+    backfills missing days for the last 7 days.
     """
+    _auto_heal_log(days=7)
     log = _load_log()
 
     def compute_stats(entries):
