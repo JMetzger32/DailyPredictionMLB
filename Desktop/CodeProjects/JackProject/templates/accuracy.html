@@ -76,10 +76,11 @@
           <tr>
             <th class="ps-3">#</th>
             <th>Team</th>
-            <th class="text-center">Correct</th>
-            <th class="text-center">Games</th>
-            <th class="text-center">Accuracy</th>
-            <th style="width:180px">Bar</th>
+            <th class="text-center">Actual W-L</th>
+            <th class="text-center">Win Pred %</th>
+            <th class="text-center">Loss Pred %</th>
+            <th class="text-center">Overall %</th>
+            <th style="width:140px">Bar</th>
           </tr>
         </thead>
         <tbody id="rs-tbody"></tbody>
@@ -96,10 +97,11 @@
           <tr>
             <th class="ps-3">#</th>
             <th>Team</th>
-            <th class="text-center">Correct</th>
-            <th class="text-center">Games</th>
-            <th class="text-center">Accuracy</th>
-            <th style="width:180px">Bar</th>
+            <th class="text-center">Actual W-L</th>
+            <th class="text-center">Win Pred %</th>
+            <th class="text-center">Loss Pred %</th>
+            <th class="text-center">Overall %</th>
+            <th style="width:140px">Bar</th>
           </tr>
         </thead>
         <tbody id="st-tbody"></tbody>
@@ -147,18 +149,25 @@
     tbody.innerHTML = "";
 
     teams.forEach((t, i) => {
-      const pct     = t.accuracy;
-      const pctStr  = (pct * 100).toFixed(1) + "%";
-      const color   = accuracyColor(pct);
-      const barCol  = barColor(pct);
-      const barPct  = Math.round(pct * 100);
+      const pct    = t.accuracy;
+      const pctStr = (pct * 100).toFixed(1) + "%";
+      const color  = accuracyColor(pct);
+      const barCol = barColor(pct);
+      const barPct = Math.round(pct * 100);
+
+      function predCell(val, total) {
+        if (val == null || total == null || total === 0) return '<span class="text-muted">—</span>';
+        return `<span class="${accuracyColor(val)}">${(val * 100).toFixed(1)}%</span>`
+             + `<span class="text-muted" style="font-size:0.75rem;"> (${Math.round(val * total)}/${total})</span>`;
+      }
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="ps-3 text-muted">${i + 1}</td>
         <td class="fw-semibold">${t.name}</td>
-        <td class="text-center">${t.correct}</td>
-        <td class="text-center">${t.games}</td>
+        <td class="text-center fw-semibold">${t.actual_record || "—"}</td>
+        <td class="text-center">${predCell(t.win_pred_pct,  t.win_pred_total)}</td>
+        <td class="text-center">${predCell(t.loss_pred_pct, t.loss_pred_total)}</td>
         <td class="text-center fw-bold ${color}">${pctStr}</td>
         <td>
           <div class="progress" style="height:14px;">

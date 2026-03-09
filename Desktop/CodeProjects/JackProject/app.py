@@ -456,25 +456,72 @@ def accuracy():
         team_stats = {}
         total_games = total_correct = 0
         for entry in entries:
-            if entry.get("correct") is None:
-                continue  # game not yet resolved
-            total_games += 1
-            if entry["correct"]:
-                total_correct += 1
+            actual    = entry.get("actual_winner")
+            predicted = entry.get("predicted_winner")
+            correct   = entry.get("correct")
+
             for side in ("away", "home"):
                 team_code = entry.get(f"{side}_team")
                 team_name = entry.get(f"{side}_team_name") or RETRO_TO_FULL_NAME.get(team_code, team_code)
                 if not team_code:
                     continue
                 if team_code not in team_stats:
-                    team_stats[team_code] = {"team": team_code, "name": team_name, "games": 0, "correct": 0}
-                team_stats[team_code]["games"] += 1
-                if entry["correct"]:
-                    team_stats[team_code]["correct"] += 1
+                    team_stats[team_code] = {
+                        "team": team_code, "name": team_name,
+                        "games": 0, "correct": 0,
+                        "actual_wins": 0, "actual_losses": 0, "actual_ties": 0,
+                        "win_pred_total": 0, "win_pred_correct": 0,
+                        "loss_pred_total": 0, "loss_pred_correct": 0,
+                    }
+                s = team_stats[team_code]
+
+                # Actual team W-L-T (counts all resolved games including ties)
+                if actual == "Tie":
+                    s["actual_ties"] += 1
+                elif actual is not None:
+                    team_side = "Home" if side == "home" else "Away"
+                    if actual == team_side:
+                        s["actual_wins"] += 1
+                    else:
+                        s["actual_losses"] += 1
+
+                # Win/loss prediction accuracy (skip unresolved and ties)
+                if correct is None:
+                    continue
+                s["games"] += 1
+                if correct:
+                    s["correct"] += 1
+                team_side = "Home" if side == "home" else "Away"
+                if predicted == team_side:
+                    s["win_pred_total"] += 1
+                    if correct:
+                        s["win_pred_correct"] += 1
+                else:
+                    s["loss_pred_total"] += 1
+                    if correct:
+                        s["loss_pred_correct"] += 1
+
+            if correct is None:
+                continue
+            total_games += 1
+            if correct:
+                total_correct += 1
+
+        def _pct(num, den):
+            return round(num / den, 3) if den else None
 
         teams_list = sorted(
             [
-                {**s, "accuracy": round(s["correct"] / s["games"], 3) if s["games"] else 0}
+                {
+                    **s,
+                    "accuracy":       _pct(s["correct"], s["games"]) or 0,
+                    "win_pred_pct":   _pct(s["win_pred_correct"],  s["win_pred_total"]),
+                    "loss_pred_pct":  _pct(s["loss_pred_correct"], s["loss_pred_total"]),
+                    "actual_record":  (
+                        f"{s['actual_wins']}-{s['actual_losses']}"
+                        + (f"-{s['actual_ties']}" if s["actual_ties"] else "")
+                    ),
+                }
                 for s in team_stats.values()
             ],
             key=lambda x: (-x["accuracy"], -x["games"])
@@ -483,7 +530,7 @@ def accuracy():
             "overall": {
                 "games":    total_games,
                 "correct":  total_correct,
-                "accuracy": round(total_correct / total_games, 3) if total_games else 0,
+                "accuracy": _pct(total_correct, total_games) or 0,
             },
             "teams": teams_list,
         }
