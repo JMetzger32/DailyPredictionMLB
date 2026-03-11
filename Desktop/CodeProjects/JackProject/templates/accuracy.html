@@ -61,8 +61,10 @@
       <li class="nav-item">
         <button class="nav-link active" id="tab-rs" onclick="showTab('rs')">Regular Season</button>
       </li>
-      <li class="nav-item">
-        <button class="nav-link" id="tab-st" onclick="showTab('st')">Spring Training</button>
+      <li class="nav-item" id="tab-st-wrap">
+        <button class="nav-link text-muted" id="tab-st" onclick="showTab('st')">
+          Spring Training <span class="badge bg-secondary ms-1" style="font-size:0.65rem;">Archived</span>
+        </button>
       </li>
     </ul>
 
@@ -213,8 +215,12 @@
       buildTable("rs-tbody", rs.teams, "rs-no-data", "rs-table");
       buildTable("st-tbody", st.teams, "st-no-data", "st-table");
 
-      // Default to spring training tab if no RS games yet
-      if (rs.overall.games === 0 && st.overall.games > 0) {
+      // Once RS has games, lock to RS tab and hide ST from default view
+      if (rs.overall.games > 0) {
+        showTab("rs");
+        // Demote ST tab — still accessible but visually secondary
+        document.getElementById("tab-st-wrap").classList.add("ms-auto");
+      } else if (st.overall.games > 0) {
         showTab("st");
       }
 

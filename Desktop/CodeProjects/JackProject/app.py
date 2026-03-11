@@ -304,12 +304,24 @@ def run_daily_update():
         traceback.print_exc()
 
 
+def resolve_todays_completed_games():
+    """Persist results of any games that finished today. Called every 30 min."""
+    try:
+        log = _load_log()
+        if _resolve_unresolved_for_date(log, date.today()):
+            _save_log(log)
+            print(f"[app] Interval job: resolved completed games for {date.today().isoformat()}")
+    except Exception as e:
+        print(f"[app] resolve_todays_completed_games failed: {e}")
+
+
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_daily_update, "cron", hour=8, minute=0)
+    scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
     scheduler.start()
-    print("[app] APScheduler started — daily update at 8:00 AM")
+    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min")
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
