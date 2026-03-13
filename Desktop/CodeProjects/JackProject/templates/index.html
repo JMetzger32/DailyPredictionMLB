@@ -369,6 +369,14 @@
       }
     }
 
+    // Click anywhere on card → open detail modal
+    q(".card").style.cursor = "pointer";
+    q(".card").addEventListener("click", (e) => {
+      // Don't trigger if user clicked a button inside the card
+      if (e.target.closest("button, a")) return;
+      openGameModal(game);
+    });
+
     // Initialize Bootstrap tooltips (must happen after node is appended — deferred below)
     node._tooltipEls = node.querySelectorAll("[data-bs-toggle='tooltip']");
 
@@ -500,8 +508,108 @@
   }
 
   loadPredictions();
+
+  // ── Game Detail Modal ─────────────────────────────────────────────
+  function openGameModal(game) {
+    const awayName = game.away_team_name || game.away_team;
+    const homeName = game.home_team_name || game.home_team;
+    const pickName = game.predicted_winner === "Home" ? homeName : awayName;
+
+    document.getElementById("modal-matchup").textContent = `${awayName} @ ${homeName}`;
+    document.getElementById("modal-pick-team").textContent = pickName;
+
+    // Feature contributions — horizontal bars
+    const contribs = game.feature_contributions || [];
+    const contribEl = document.getElementById("modal-contributions");
+    if (contribs.length === 0) {
+      contribEl.innerHTML = '<p class="text-muted small">No contribution data available.</p>';
+    } else {
+      const maxAbs = Math.max(...contribs.map(c => Math.abs(c.contribution)));
+      contribEl.innerHTML = contribs.map(c => {
+        const pct   = Math.round((Math.abs(c.contribution) / maxAbs) * 100);
+        const color = c.favors === "home" ? "bg-primary" : "bg-danger";
+        const dir   = c.favors === "home"
+          ? `↑ favors <strong>${homeName}</strong>`
+          : `↓ favors <strong>${awayName}</strong>`;
+        return `
+          <div class="mb-2">
+            <div class="d-flex justify-content-between small mb-1">
+              <span>${c.label}</span>
+              <span class="text-muted">${dir}</span>
+            </div>
+            <div class="progress" style="height:10px;">
+              <div class="progress-bar ${color}" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    // Feature detail table
+    const tbody = document.getElementById("modal-feature-tbody");
+    tbody.innerHTML = contribs.map(c => {
+      const badgeCls = c.favors === "home" ? "bg-primary" : "bg-danger";
+      const favorName = c.favors === "home" ? homeName : awayName;
+      return `<tr>
+        <td>${c.label}</td>
+        <td class="text-center">${c.raw_diff > 0 ? "+" : ""}${c.raw_diff.toFixed(3)}</td>
+        <td class="text-center"><span class="badge ${badgeCls}">${favorName}</span></td>
+      </tr>`;
+    }).join("");
+
+    // Season stats snapshot
+    document.getElementById("modal-away-stats").innerHTML = `
+      <strong>${awayName}</strong><br>
+      OBP: ${game.away_obp} · SLG: ${game.away_slg}<br>
+      Runs/G: ${game.away_runs_pg} · Bullpen ERA: ${game.away_bp_era}<br>
+      SP: ${game.away_sp_name} (ERA ${game.away_sp_era} / xFIP ${game.away_sp_xfip})`;
+    document.getElementById("modal-home-stats").innerHTML = `
+      <strong>${homeName}</strong><br>
+      OBP: ${game.home_obp} · SLG: ${game.home_slg}<br>
+      Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
+      SP: ${game.home_sp_name} (ERA ${game.home_sp_era} / xFIP ${game.home_sp_xfip})`;
+
+    new bootstrap.Modal(document.getElementById("gameDetailModal")).show();
+  }
 </script>
 
+<!-- ── Game Detail Modal ────────────────────────────────────────────── -->
+<div class="modal fade" id="gameDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modal-matchup"></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Why the model chose -->
+        <h6 class="fw-bold mb-3">Why the model favors <span id="modal-pick-team" class="text-primary"></span></h6>
+        <div id="modal-contributions" class="mb-4"></div>
+
+        <!-- Feature breakdown table -->
+        <h6 class="fw-bold mb-2">Feature Breakdown <span class="text-muted fw-normal small">(positive diff = favors home)</span></h6>
+        <table class="table table-sm table-hover mb-4">
+          <thead class="table-dark">
+            <tr>
+              <th>Feature</th>
+              <th class="text-center">Home − Away</th>
+              <th class="text-center">Favors</th>
+            </tr>
+          </thead>
+          <tbody id="modal-feature-tbody"></tbody>
+        </table>
+
+        <!-- Season stats snapshot -->
+        <h6 class="fw-bold mb-2">Season Stats Snapshot</h6>
+        <div class="row g-3">
+          <div class="col-6 p-3 bg-light rounded small" id="modal-away-stats"></div>
+          <div class="col-6 p-3 bg-light rounded small" id="modal-home-stats"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="site-credit">Website made by Jack Metzger</div>
 

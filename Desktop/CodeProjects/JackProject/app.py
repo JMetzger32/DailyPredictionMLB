@@ -33,6 +33,10 @@ app = Flask(__name__)
 
 ARTIFACTS_PATH    = os.environ.get("ARTIFACTS_PATH", "mlb_model_artifacts.pkl")
 PREDICTIONS_LOG   = os.environ.get("PREDICTIONS_LOG", "predictions_log.json")
+SUBSCRIBERS_PATH  = os.environ.get("SUBSCRIBERS_PATH", "subscribers.json")
+PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH", "picks_log.json")
+SENDGRID_API_KEY  = os.environ.get("SENDGRID_API_KEY", "")
+FROM_EMAIL        = os.environ.get("FROM_EMAIL", "picks@dailypredictionmlb.com")
 
 # ---------------------------------------------------------------------------
 # Artifact loading
@@ -100,6 +104,63 @@ def _load_log():
 def _save_log(log):
     with open(PREDICTIONS_LOG, "w") as f:
         json.dump(log, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Subscriber helpers
+# ---------------------------------------------------------------------------
+def _load_subscribers():
+    try:
+        with open(SUBSCRIBERS_PATH) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+def _save_subscribers(subs):
+    with open(SUBSCRIBERS_PATH, "w") as f:
+        json.dump(subs, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Picks log helpers
+# ---------------------------------------------------------------------------
+def _load_picks():
+    try:
+        with open(PICKS_LOG_PATH) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def _save_picks(picks):
+    with open(PICKS_LOG_PATH, "w") as f:
+        json.dump(picks, f, indent=2)
+
+
+def _resolve_picks_for_date(target_date):
+    """Update correct/actual_winner for all users' picks on target_date from the log."""
+    date_str = target_date.isoformat()
+    log = _load_log()
+    log_entries = {e["game_pk"]: e for e in log.get(date_str, [])}
+    if not log_entries:
+        return
+    picks = _load_picks()
+    changed = False
+    for user_picks in picks.values():
+        for entry in user_picks.get(date_str, []):
+            if entry.get("correct") is not None:
+                continue
+            log_e = log_entries.get(entry["game_pk"])
+            if log_e and log_e.get("actual_winner") is not None:
+                entry["actual_winner"] = log_e["actual_winner"]
+                if log_e["actual_winner"] == "Tie":
+                    entry["correct"] = None
+                else:
+                    entry["correct"] = (entry["pick"] == log_e["actual_winner"])
+                changed = True
+    if changed:
+        _save_picks(picks)
 
 
 def _build_prediction_entry(game, result):
@@ -277,6 +338,9 @@ def _auto_heal_log(days=7):
     if changed:
         _save_log(log)
         print(f"[app] _auto_heal_log: log updated")
+    # Resolve picks for any recently-healed dates
+    for i in range(1, days + 1):
+        _resolve_picks_for_date(date.today() - timedelta(days=i))
 
 
 def log_todays_predictions():
@@ -284,6 +348,161 @@ def log_todays_predictions():
     log = _log_predictions_for_date(date.today())
     _save_log(log)
     print(f"[app] Logged predictions for {date.today().isoformat()}")
+
+
+# ---------------------------------------------------------------------------
+# Email sender
+# ---------------------------------------------------------------------------
+def _build_email_html(subscriber_email, top_picks, yesterday_entries, yesterday_str, today):
+    """Build the HTML body for the daily email."""
+    picks_data = _load_picks()
+    user_picks_yesterday = picks_data.get(subscriber_email, {}).get(yesterday_str, [])
+
+    # Today's top picks section
+    if top_picks:
+        picks_rows = "".join(
+            f"<tr><td>{p['away_team_name']} @ {p['home_team_name']}</td>"
+            f"<td><strong>{p['pick_team']}</strong></td>"
+            f"<td>{round(p['confidence_pct'])}%</td>"
+            f"<td>{p.get('game_time_et', '')}</td></tr>"
+            for p in top_picks
+        )
+        today_section = f"""
+        <h3 style="color:#1e2329;">⚾ Today's Top Picks — {today.strftime('%B %-d, %Y')}</h3>
+        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:14px;">
+          <thead><tr style="background:#1e2329;color:#fff;">
+            <th align="left">Matchup</th><th>Model Pick</th><th>Confidence</th><th>Time (ET)</th>
+          </tr></thead>
+          <tbody>{picks_rows}</tbody>
+        </table>"""
+    else:
+        today_section = f"<p>No high-confidence games scheduled for {today.strftime('%B %-d')}.</p>"
+
+    # Yesterday's recap section
+    if yesterday_entries:
+        correct = sum(1 for e in yesterday_entries if e.get("correct"))
+        total   = len(yesterday_entries)
+        acc_pct = round(100 * correct / total) if total else 0
+        recap_rows = "".join(
+            f"<tr><td>{e.get('away_team_name','?')} @ {e.get('home_team_name','?')}</td>"
+            f"<td>{e.get('away_score','?')}–{e.get('home_score','?')}</td>"
+            f"<td>{'✅' if e.get('correct') else ('🔘' if e.get('correct') is None else '❌')}</td></tr>"
+            for e in yesterday_entries
+        )
+        yesterday_section = f"""
+        <h3 style="color:#1e2329;margin-top:24px;">📊 Yesterday's Results — {yesterday_str}</h3>
+        <p>Model: <strong>{correct}/{total} ({acc_pct}%)</strong></p>
+        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:#1e2329;color:#fff;">
+            <th align="left">Game</th><th>Score</th><th>Result</th>
+          </tr></thead>
+          <tbody>{recap_rows}</tbody>
+        </table>"""
+    else:
+        yesterday_section = ""
+
+    # User picks section
+    if user_picks_yesterday:
+        u_correct = sum(1 for p in user_picks_yesterday if p.get("correct"))
+        u_total   = len(user_picks_yesterday)
+        u_pct     = round(100 * u_correct / u_total) if u_total else 0
+        user_rows = "".join(
+            f"<tr><td>{p.get('away_team_name','?')} @ {p.get('home_team_name','?')}</td>"
+            f"<td>{p['pick']}</td>"
+            f"<td>{'✅' if p.get('correct') else ('🔘' if p.get('correct') is None else '❌')}</td></tr>"
+            for p in user_picks_yesterday
+        )
+        user_section = f"""
+        <h3 style="color:#1e2329;margin-top:24px;">🎯 Your Picks Yesterday</h3>
+        <p>You went <strong>{u_correct}/{u_total} ({u_pct}%)</strong></p>
+        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:#1e2329;color:#fff;">
+            <th align="left">Game</th><th>Your Pick</th><th>Result</th>
+          </tr></thead>
+          <tbody>{user_rows}</tbody>
+        </table>"""
+    else:
+        user_section = ""
+
+    return f"""
+    <html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#333;">
+      <h2 style="background:#1e2329;color:#fff;padding:12px 16px;border-radius:8px;margin:0 0 16px;">
+        ⚾ DailyPredictionMLB
+      </h2>
+      {today_section}
+      {yesterday_section}
+      {user_section}
+      <hr style="margin-top:24px;border:none;border-top:1px solid #e0e0e0;">
+      <p style="font-size:12px;color:#999;margin-top:8px;">
+        <a href="https://dailypredictionmlb.onrender.com">View full predictions</a> ·
+        <a href="https://dailypredictionmlb.onrender.com/unsubscribe?email={subscriber_email}">Unsubscribe</a>
+      </p>
+    </body></html>"""
+
+
+def send_daily_email():
+    """Send the daily picks email to all subscribers."""
+    if not SENDGRID_API_KEY:
+        print("[email] SENDGRID_API_KEY not set — skipping email.")
+        return
+    subs = _load_subscribers()
+    if not subs:
+        return
+
+    today     = date.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    log       = _load_log()
+    yesterday_entries = [e for e in log.get(yesterday, []) if e.get("actual_winner") is not None]
+
+    # Build top picks: run predictions, keep confidence >= 0.55, top 5
+    team_baselines = _artifacts.get("team_baselines", {})
+    sp_baselines   = _artifacts.get("sp_baselines", {})
+    lr_model       = _artifacts.get("lr_model")
+    scaler         = _artifacts.get("scaler")
+    top_picks = []
+    if lr_model:
+        try:
+            games_raw, _ = _get_schedule_cached(today)
+            for game in games_raw:
+                home, away = game.get("home_team"), game.get("away_team")
+                if not home or not away:
+                    continue
+                home_ts = dict(team_baselines.get(home, {}))
+                away_ts = dict(team_baselines.get(away, {}))
+                if not home_ts or not away_ts:
+                    continue
+                home_sp_id = find_pitcher_by_name(game.get("home_pitcher_name"), sp_baselines)
+                away_sp_id = find_pitcher_by_name(game.get("away_pitcher_name"), sp_baselines)
+                home_sp = dict(sp_baselines[home_sp_id]) if home_sp_id and home_sp_id in sp_baselines else _default_sp_stats()
+                away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
+                result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler)
+                if result["confidence"] >= 0.10:  # confidence=0.10 means 55% win prob
+                    pick_team = game.get("home_team_name") if result["predicted_winner"] == "Home" else game.get("away_team_name")
+                    top_picks.append({**game, "pick_team": pick_team,
+                                      "confidence_pct": max(result["home_win_prob"], result["away_win_prob"]) * 100})
+            top_picks = sorted(top_picks, key=lambda x: -x["confidence_pct"])[:5]
+        except Exception as e:
+            print(f"[email] Failed to build top picks: {e}")
+
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        for sub in subs:
+            body = _build_email_html(sub["email"], top_picks, yesterday_entries, yesterday, today)
+            msg  = Mail(
+                from_email=FROM_EMAIL,
+                to_emails=sub["email"],
+                subject=f"⚾ DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
+                html_content=body,
+            )
+            try:
+                sg.send(msg)
+            except Exception as e:
+                print(f"[email] Failed to send to {sub['email']}: {e}")
+        print(f"[email] Sent daily email to {len(subs)} subscribers.")
+    except ImportError:
+        print("[email] sendgrid package not installed.")
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +517,7 @@ def run_daily_update():
         load_artifacts()
         update_yesterday_results()
         log_todays_predictions()
+        send_daily_email()
         print("[app] Daily update complete.")
     except Exception as e:
         print(f"[app] Daily update failed: {e}")
@@ -311,6 +531,7 @@ def resolve_todays_completed_games():
         if _resolve_unresolved_for_date(log, date.today()):
             _save_log(log)
             print(f"[app] Interval job: resolved completed games for {date.today().isoformat()}")
+        _resolve_picks_for_date(date.today())
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
 
@@ -325,6 +546,103 @@ try:
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
+
+
+# ---------------------------------------------------------------------------
+# Feature contribution helpers
+# ---------------------------------------------------------------------------
+FEATURE_LABELS = {
+    "home_park_factor":           "Park Factor",
+    "diff_pyth_win_pct":          "Pythagorean Win %",
+    "diff_season_win_pct":        "Season Win %",
+    "diff_roll30_hits":           "Hits/G (30g)",
+    "diff_roll30_walks":          "Walks/G (30g)",
+    "diff_roll30_slg":            "Team SLG (30g)",
+    "diff_roll10_runs_scored":    "Runs/G (recent 10g)",
+    "diff_roll10_homeruns":       "HR/G (recent 10g)",
+    "diff_roll30_opp_hits":       "Opp Hits/G (30g)",
+    "diff_roll30_opp_walks":      "Opp Walks/G (30g)",
+    "diff_roll30_opp_homeruns":   "Opp HR/G (30g)",
+    "diff_roll30_opp_strikeouts": "Opp K Rate (30g)",
+    "diff_roll30_errors":         "Errors/G (30g)",
+    "diff_roll10_win_pct":        "Win % (recent 10g)",
+    "diff_roll3_bullpen_used":    "Bullpen Usage (3g)",
+    "diff_bullpen_era":           "Bullpen ERA",
+    "diff_sp_era":                "Starter ERA",
+    "diff_sp_whip":               "Starter WHIP",
+    "diff_sp_xfip":               "Starter xFIP",
+    "diff_sp_siera":              "Starter SIERA",
+    "diff_sp_so9":                "Starter K/9",
+    "diff_sp_bb9":                "Starter BB/9",
+    "diff_sp_hr9":                "Starter HR/9",
+}
+
+
+def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
+    """
+    Compute per-feature contributions to the LR prediction.
+    Returns list of {feature, label, raw_diff, contribution, favors}
+    sorted by abs(contribution) descending.
+    """
+    import pandas as pd
+    from MLBModel import FEATURE_COLS
+    lr     = _artifacts.get("lr_model")
+    scaler = _artifacts.get("scaler")
+    if lr is None or scaler is None:
+        return []
+
+    features = {
+        "home_park_factor":           home_ts.get("park_factor", 1.0),
+        "diff_pyth_win_pct":          home_ts.get("pyth_win_pct", 0.5)          - away_ts.get("pyth_win_pct", 0.5),
+        "diff_season_win_pct":        home_ts.get("win_pct", 0.5)               - away_ts.get("win_pct", 0.5),
+        "diff_roll30_runs_scored":    home_ts.get("runs_per_game", 4.5)         - away_ts.get("runs_per_game", 4.5),
+        "diff_roll30_runs_allowed":   home_ts.get("runs_allowed_per_game", 4.5) - away_ts.get("runs_allowed_per_game", 4.5),
+        "diff_roll10_runs_scored":    home_ts.get("recent_runs_per_game", 4.5)  - away_ts.get("recent_runs_per_game", 4.5),
+        "diff_roll30_obp":            home_ts.get("obp", 0.318)                 - away_ts.get("obp", 0.318),
+        "diff_roll30_slg":            home_ts.get("slg", 0.400)                 - away_ts.get("slg", 0.400),
+        "diff_roll30_hits":           home_ts.get("hits_per_game", 8.5)         - away_ts.get("hits_per_game", 8.5),
+        "diff_roll30_opp_hits":       home_ts.get("opp_hits_per_game", 8.5)     - away_ts.get("opp_hits_per_game", 8.5),
+        "diff_roll30_walks":          home_ts.get("walks_per_game", 3.0)        - away_ts.get("walks_per_game", 3.0),
+        "diff_roll30_opp_walks":      home_ts.get("opp_walks_per_game", 3.0)    - away_ts.get("opp_walks_per_game", 3.0),
+        "diff_roll30_errors":         home_ts.get("errors_per_game", 0.7)       - away_ts.get("errors_per_game", 0.7),
+        "diff_roll30_homeruns":       home_ts.get("hr_per_game", 1.1)           - away_ts.get("hr_per_game", 1.1),
+        "diff_roll30_opp_homeruns":   home_ts.get("opp_hr_per_game", 1.1)       - away_ts.get("opp_hr_per_game", 1.1),
+        "diff_roll10_win_pct":        home_ts.get("recent_win_pct", 0.5)        - away_ts.get("recent_win_pct", 0.5),
+        "diff_roll10_homeruns":       home_ts.get("recent_hr_per_game", 1.1)    - away_ts.get("recent_hr_per_game", 1.1),
+        "diff_roll30_opp_strikeouts": home_ts.get("opp_k_per_game", 8.5)        - away_ts.get("opp_k_per_game", 8.5),
+        "diff_roll3_bullpen_used":    home_ts.get("bullpen_used", 3.0)          - away_ts.get("bullpen_used", 3.0),
+        "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
+        "diff_sp_era":                home_sp.get("era", 4.0)   - away_sp.get("era", 4.0),
+        "diff_sp_whip":               home_sp.get("whip", 1.3)  - away_sp.get("whip", 1.3),
+        "diff_sp_xfip":               home_sp.get("xfip", 4.0)  - away_sp.get("xfip", 4.0),
+        "diff_sp_siera":              home_sp.get("siera", 4.0) - away_sp.get("siera", 4.0),
+        "diff_sp_so9":                home_sp.get("so9", 8.0)   - away_sp.get("so9", 8.0),
+        "diff_sp_bb9":                home_sp.get("bb9", 3.0)   - away_sp.get("bb9", 3.0),
+        "diff_sp_hr9":                home_sp.get("hr9", 1.2)   - away_sp.get("hr9", 1.2),
+    }
+
+    try:
+        X_raw    = pd.DataFrame([features])[FEATURE_COLS]
+        X_scaled = scaler.transform(X_raw)
+        coefs    = lr.coef_[0]
+        contribs = coefs * X_scaled[0]
+
+        result = []
+        for i, col in enumerate(FEATURE_COLS):
+            c = float(contribs[i])
+            if abs(c) < 0.001:
+                continue
+            result.append({
+                "feature":      col,
+                "label":        FEATURE_LABELS.get(col, col),
+                "raw_diff":     round(float(X_raw.iloc[0, i]), 4),
+                "contribution": round(c, 4),
+                "favors":       "home" if c > 0 else "away",
+            })
+        return sorted(result, key=lambda x: -abs(x["contribution"]))[:8]
+    except Exception as e:
+        print(f"[app] feature contributions failed: {e}")
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +698,134 @@ def index():
 @app.route("/accuracy")
 def accuracy_page():
     return render_template("accuracy.html")
+
+
+@app.route("/picks")
+def picks_page():
+    return render_template("picks.html")
+
+
+# ---------------------------------------------------------------------------
+# Subscriber routes
+# ---------------------------------------------------------------------------
+@app.route("/api/subscribe", methods=["POST"])
+def subscribe():
+    email = (request.json or {}).get("email", "").strip().lower()
+    if not email or "@" not in email:
+        return jsonify({"error": "Invalid email"}), 400
+    subs = _load_subscribers()
+    if any(s["email"] == email for s in subs):
+        return jsonify({"error": "Already subscribed"}), 409
+    subs.append({"email": email, "subscribed_at": datetime.now().isoformat()})
+    _save_subscribers(subs)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/unsubscribe")
+def unsubscribe():
+    email = request.args.get("email", "").strip().lower()
+    if not email:
+        return "Invalid unsubscribe link.", 400
+    subs = _load_subscribers()
+    subs = [s for s in subs if s["email"] != email]
+    _save_subscribers(subs)
+    return f"<p style='font-family:sans-serif;padding:2rem;'>✅ <strong>{email}</strong> has been unsubscribed from DailyPredictionMLB.</p>"
+
+
+# ---------------------------------------------------------------------------
+# Picks routes
+# ---------------------------------------------------------------------------
+@app.route("/api/picks/submit", methods=["POST"])
+def picks_submit():
+    data  = request.json or {}
+    email = data.get("email", "").strip().lower()
+    picks_list = data.get("picks", [])   # [{game_pk, pick, home_team, away_team, ...}]
+    if not email or "@" not in email:
+        return jsonify({"error": "Invalid email"}), 400
+    if not picks_list:
+        return jsonify({"error": "No picks provided"}), 400
+
+    date_str = date.today().isoformat()
+    picks = _load_picks()
+    if email not in picks:
+        picks[email] = {}
+
+    # Merge — don't overwrite picks already made for a game
+    existing = {p["game_pk"]: p for p in picks[email].get(date_str, [])}
+    for p in picks_list:
+        pk = p.get("game_pk")
+        if pk and pk not in existing:
+            existing[pk] = {
+                "game_pk":        pk,
+                "pick":           p.get("pick"),
+                "home_team":      p.get("home_team"),
+                "away_team":      p.get("away_team"),
+                "home_team_name": p.get("home_team_name"),
+                "away_team_name": p.get("away_team_name"),
+                "model_pick":     p.get("model_pick"),
+                "correct":        None,
+                "actual_winner":  None,
+                "submitted_at":   datetime.now().isoformat(),
+            }
+    picks[email][date_str] = list(existing.values())
+    _save_picks(picks)
+    return jsonify({"status": "ok", "saved": len(existing)})
+
+
+@app.route("/api/picks/mine")
+def picks_mine():
+    email    = request.args.get("email", "").strip().lower()
+    date_str = request.args.get("date", date.today().isoformat())
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    picks = _load_picks()
+    return jsonify({"picks": picks.get(email, {}).get(date_str, [])})
+
+
+@app.route("/api/picks/leaderboard")
+def picks_leaderboard():
+    picks    = _load_picks()
+    model_log = _load_log()
+
+    # Model stats
+    model_correct = model_total = 0
+    for day_entries in model_log.values():
+        for e in day_entries:
+            if e.get("correct") is not None:
+                model_total += 1
+                if e["correct"]:
+                    model_correct += 1
+
+    rows = []
+    for email, days in picks.items():
+        correct = total = 0
+        for day_picks in days.values():
+            for p in day_picks:
+                if p.get("correct") is not None:
+                    total += 1
+                    if p["correct"]:
+                        correct += 1
+        if total == 0:
+            continue
+        # Mask email: j***@gmail.com
+        parts = email.split("@")
+        masked = parts[0][0] + "***@" + parts[1] if len(parts) == 2 else email
+        rows.append({
+            "email":    masked,
+            "correct":  correct,
+            "total":    total,
+            "accuracy": round(correct / total, 3),
+        })
+
+    rows.sort(key=lambda x: (-x["accuracy"], -x["total"]))
+    return jsonify({
+        "leaderboard": rows,
+        "model": {
+            "correct":  model_correct,
+            "total":    model_total,
+            "accuracy": round(model_correct / model_total, 3) if model_total else 0,
+        },
+    })
 
 
 @app.route("/api/predictions")
@@ -526,10 +972,11 @@ def predictions():
             "away_hits_pg":     round(away_ts.get("hits_per_game",  8.5),   1),
             "away_runs_pg":     round(away_ts.get("recent_runs_per_game", 4.5), 1),
             "away_bp_era":      round(away_ts.get("bullpen_era",    4.20),  2),
-            "actual_winner":    actual_winner,
-            "away_score":       away_score,
-            "home_score":       home_score,
-            "correct":          correct,
+            "actual_winner":         actual_winner,
+            "away_score":            away_score,
+            "home_score":            home_score,
+            "correct":               correct,
+            "feature_contributions": _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp),
             **_compute_odds_fields(away, home, result, odds_map),
         })
 

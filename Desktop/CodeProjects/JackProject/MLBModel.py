@@ -730,7 +730,7 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     if scaler is not None:
         X = scaler.transform(X)
 
-    prob = model.predict_proba(X)[0, 1]
+    prob = float(model.predict_proba(X)[0, 1])
     return {
         "home_win_prob": round(prob, 3),
         "away_win_prob": round(1 - prob, 3),

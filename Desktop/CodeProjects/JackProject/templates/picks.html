@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Make Your Picks — DailyPredictionMLB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark bg-dark px-3 py-2">
+  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
+    <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
+  </div>
+</nav>
+
+<div class="container-xl py-4">
+
+  <!-- Email identify -->
+  <div class="card border-0 shadow-sm mb-4 p-3">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <div class="fw-semibold">Your email:</div>
+      <input type="email" id="user-email" class="form-control form-control-sm" style="max-width:260px;"
+             placeholder="you@example.com" />
+      <button class="btn btn-primary btn-sm" onclick="loadMyPicks()">Load My Picks</button>
+      <span id="email-status" class="text-muted small"></span>
+    </div>
+  </div>
+
+  <!-- Personal record vs model -->
+  <div id="record-bar" class="d-none mb-4">
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-primary" id="my-correct">—</div>
+          <div class="text-muted small">My Correct</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold" id="my-pct">—</div>
+          <div class="text-muted small">My Accuracy</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-secondary" id="model-pct">—</div>
+          <div class="text-muted small">Model Accuracy</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold" id="vs-model">—</div>
+          <div class="text-muted small">vs Model</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Today's pick cards -->
+  <h5 class="fw-bold mb-3">Today's Games — Make Your Picks</h5>
+  <div id="picks-loading" class="text-center py-5">
+    <div class="spinner-border text-secondary mb-3" role="status"></div>
+    <p class="text-muted">Loading today's games…</p>
+  </div>
+  <div id="picks-grid" class="row g-3 d-none"></div>
+  <div id="picks-empty" class="text-center py-5 text-muted d-none">No games scheduled today.</div>
+
+  <div id="submit-wrap" class="mt-4 d-none">
+    <button class="btn btn-success btn-lg px-5" onclick="submitPicks()">Submit My Picks</button>
+    <span id="submit-status" class="ms-3 text-muted small"></span>
+  </div>
+
+  <!-- Leaderboard -->
+  <hr class="my-5" />
+  <h5 class="fw-bold mb-3">Leaderboard — All Players vs Model</h5>
+  <div id="lb-loading" class="text-center py-3 text-muted">Loading…</div>
+  <table class="table table-sm table-hover align-middle d-none" id="lb-table">
+    <thead class="table-dark">
+      <tr>
+        <th class="ps-3">#</th>
+        <th>Player</th>
+        <th class="text-center">W</th>
+        <th class="text-center">L</th>
+        <th class="text-center">Acc</th>
+        <th class="text-center">vs Model</th>
+      </tr>
+    </thead>
+    <tbody id="lb-tbody"></tbody>
+  </table>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let gamesData   = [];   // full game objects from /api/predictions
+  let myPicks     = {};   // {game_pk: "Home"|"Away"}
+  let savedPicks  = [];   // picks already submitted today from server
+  let userEmail   = "";
+
+  // ── Restore email from localStorage ─────────────────────────────
+  window.addEventListener("DOMContentLoaded", () => {
+    const saved = localStorage.getItem("picks_email");
+    if (saved) {
+      document.getElementById("user-email").value = saved;
+      userEmail = saved;
+      loadMyPicks();
+    }
+    loadGames();
+    loadLeaderboard();
+  });
+
+  // ── Load today's games ───────────────────────────────────────────
+  async function loadGames() {
+    try {
+      const res  = await fetch("/api/predictions");
+      const data = await res.json();
+      gamesData  = (data.games || []).filter(g => !g.skipped);
+      document.getElementById("picks-loading").classList.add("d-none");
+      if (gamesData.length === 0) {
+        document.getElementById("picks-empty").classList.remove("d-none");
+        return;
+      }
+      document.getElementById("picks-grid").classList.remove("d-none");
+      gamesData.forEach(g => renderPickCard(g));
+      checkSubmitVisible();
+    } catch (e) {
+      document.getElementById("picks-loading").innerHTML =
+        '<p class="text-danger">Failed to load games.</p>';
+    }
+  }
+
+  // ── Render a single pick card ────────────────────────────────────
+  function renderPickCard(game) {
+    const pk       = game.game_pk;
+    const away     = game.away_team_name || game.away_team;
+    const home     = game.home_team_name || game.home_team;
+    const awayProb = Math.round(game.away_win_prob * 100);
+    const homeProb = Math.round(game.home_win_prob * 100);
+    const modelPick = game.predicted_winner;
+    const locked   = game.status && game.status !== "Scheduled" && game.status !== "Pre-Game";
+
+    const saved = savedPicks.find(p => p.game_pk === pk);
+    const myPick = saved ? saved.pick : (myPicks[pk] || null);
+
+    const awayActive = myPick === "Away" ? "btn-primary" : "btn-outline-secondary";
+    const homeActive = myPick === "Home" ? "btn-primary" : "btn-outline-secondary";
+    const disabledAttr = locked ? "disabled" : "";
+    const lockedBadge  = locked ? '<span class="badge bg-secondary ms-2">Locked</span>' : "";
+    const modelLabel   = `Model: <strong>${modelPick === "Home" ? home : away}</strong> (${Math.max(awayProb, homeProb)}%)`;
+
+    const col = document.createElement("div");
+    col.className = "col-12 col-md-6 col-lg-4";
+    col.dataset.gamePk = pk;
+    col.innerHTML = `
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center" style="background:#1e2329;color:#fff;">
+          <span class="fw-semibold">${away} @ ${home}</span>
+          <span class="badge bg-secondary">${game.game_time_et || ""}</span>
+        </div>
+        <div class="card-body d-flex flex-column gap-3">
+          <div class="text-muted small">${modelLabel} ${lockedBadge}</div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm flex-fill ${awayActive}" ${disabledAttr}
+              onclick="setPick(${pk}, 'Away', this)">
+              ${away}
+            </button>
+            <button class="btn btn-sm flex-fill ${homeActive}" ${disabledAttr}
+              onclick="setPick(${pk}, 'Home', this)">
+              ${home}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById("picks-grid").appendChild(col);
+  }
+
+  function setPick(pk, side, btn) {
+    myPicks[pk] = side;
+    // Update button styles in this card
+    const col   = btn.closest("[data-game-pk]");
+    col.querySelectorAll("button").forEach(b => {
+      b.classList.remove("btn-primary");
+      b.classList.add("btn-outline-secondary");
+    });
+    btn.classList.remove("btn-outline-secondary");
+    btn.classList.add("btn-primary");
+    checkSubmitVisible();
+  }
+
+  function checkSubmitVisible() {
+    const hasPicks = Object.keys(myPicks).length > 0;
+    document.getElementById("submit-wrap").classList.toggle("d-none", !hasPicks || !userEmail);
+  }
+
+  // ── Load user's existing picks for today ─────────────────────────
+  async function loadMyPicks() {
+    userEmail = document.getElementById("user-email").value.trim().toLowerCase();
+    if (!userEmail || !userEmail.includes("@")) {
+      document.getElementById("email-status").textContent = "Enter a valid email.";
+      return;
+    }
+    localStorage.setItem("picks_email", userEmail);
+    document.getElementById("email-status").textContent = "Loading…";
+
+    try {
+      const res  = await fetch(`/api/picks/mine?email=${encodeURIComponent(userEmail)}`);
+      const data = await res.json();
+      savedPicks = data.picks || [];
+      document.getElementById("email-status").textContent =
+        savedPicks.length > 0 ? `${savedPicks.length} picks loaded.` : "No picks yet today.";
+
+      // Re-render cards with saved picks highlighted
+      document.getElementById("picks-grid").innerHTML = "";
+      gamesData.forEach(g => renderPickCard(g));
+      loadRecord();
+      checkSubmitVisible();
+    } catch (e) {
+      document.getElementById("email-status").textContent = "Error loading picks.";
+    }
+  }
+
+  // ── Submit picks ─────────────────────────────────────────────────
+  async function submitPicks() {
+    if (!userEmail) { alert("Enter your email first."); return; }
+    const picks = Object.entries(myPicks).map(([pk, pick]) => {
+      const g = gamesData.find(x => x.game_pk == pk) || {};
+      return {
+        game_pk:        parseInt(pk),
+        pick,
+        home_team:      g.home_team,
+        away_team:      g.away_team,
+        home_team_name: g.home_team_name,
+        away_team_name: g.away_team_name,
+        model_pick:     g.predicted_winner,
+      };
+    });
+    const res = await fetch("/api/picks/submit", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email: userEmail, picks}),
+    });
+    const statusEl = document.getElementById("submit-status");
+    if (res.ok) {
+      statusEl.textContent = `✅ ${picks.length} picks saved!`;
+      statusEl.className = "ms-3 text-success small";
+      await loadMyPicks();
+    } else {
+      statusEl.textContent = "❌ Failed to save picks.";
+      statusEl.className = "ms-3 text-danger small";
+    }
+  }
+
+  // ── Load personal record ─────────────────────────────────────────
+  async function loadRecord() {
+    try {
+      const [lbRes] = await Promise.all([fetch("/api/picks/leaderboard")]);
+      const lb = await lbRes.json();
+      const model = lb.model || {};
+      document.getElementById("model-pct").textContent =
+        model.total > 0 ? (model.accuracy * 100).toFixed(1) + "%" : "—";
+
+      // Find this user in leaderboard (masked email, so match from savedPicks total)
+      const resolved = savedPicks.filter(p => p.correct !== null && p.correct !== undefined);
+      if (resolved.length > 0) {
+        const correct = resolved.filter(p => p.correct).length;
+        const pct     = correct / resolved.length;
+        const edge    = pct - (model.accuracy || 0);
+        document.getElementById("my-correct").textContent = correct;
+        document.getElementById("my-pct").textContent = (pct * 100).toFixed(1) + "%";
+        document.getElementById("my-pct").className =
+          "fs-2 fw-bold " + (pct >= 0.60 ? "text-success" : pct >= 0.50 ? "text-warning" : "text-danger");
+        document.getElementById("vs-model").textContent =
+          (edge >= 0 ? "+" : "") + (edge * 100).toFixed(1) + "pp";
+        document.getElementById("vs-model").className =
+          "fs-2 fw-bold " + (edge >= 0 ? "text-success" : "text-danger");
+        document.getElementById("record-bar").classList.remove("d-none");
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  // ── Leaderboard ──────────────────────────────────────────────────
+  async function loadLeaderboard() {
+    try {
+      const res  = await fetch("/api/picks/leaderboard");
+      const data = await res.json();
+      const lb   = data.leaderboard || [];
+      const model = data.model || {};
+
+      document.getElementById("lb-loading").classList.add("d-none");
+      const table = document.getElementById("lb-table");
+      const tbody = document.getElementById("lb-tbody");
+
+      if (lb.length === 0 && model.total === 0) {
+        document.getElementById("lb-loading").textContent = "No picks yet — be the first!";
+        document.getElementById("lb-loading").classList.remove("d-none");
+        return;
+      }
+
+      table.classList.remove("d-none");
+
+      // Model row first
+      const modelAcc = model.total > 0 ? (model.accuracy * 100).toFixed(1) + "%" : "—";
+      tbody.innerHTML = `<tr class="table-secondary">
+        <td class="ps-3 fw-bold">🤖</td>
+        <td class="fw-bold">Model (baseline)</td>
+        <td class="text-center">${model.correct || 0}</td>
+        <td class="text-center">${(model.total || 0) - (model.correct || 0)}</td>
+        <td class="text-center fw-bold">${modelAcc}</td>
+        <td class="text-center text-muted">—</td>
+      </tr>`;
+
+      lb.forEach((row, i) => {
+        const acc  = (row.accuracy * 100).toFixed(1) + "%";
+        const edge = row.accuracy - (model.accuracy || 0);
+        const edgeStr = (edge >= 0 ? "+" : "") + (edge * 100).toFixed(1) + "pp";
+        const edgeCls = edge >= 0 ? "text-success" : "text-danger";
+        tbody.innerHTML += `<tr>
+          <td class="ps-3 text-muted">${i + 1}</td>
+          <td>${row.email}</td>
+          <td class="text-center">${row.correct}</td>
+          <td class="text-center">${row.total - row.correct}</td>
+          <td class="text-center fw-bold">${acc}</td>
+          <td class="text-center fw-semibold ${edgeCls}">${edgeStr}</td>
+        </tr>`;
+      });
+    } catch (e) {
+      document.getElementById("lb-loading").textContent = "Failed to load leaderboard.";
+    }
+  }
+</script>
+
+<div class="site-credit">Website made by Jack Metzger</div>
+
+</body>
+</html>

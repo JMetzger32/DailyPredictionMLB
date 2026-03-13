@@ -23,17 +23,40 @@
     </p>
 
     <div class="d-flex gap-3 flex-wrap justify-content-center">
-      <a href="/predictions" class="btn btn-primary btn-lg px-5 shadow">
-        Today's Predictions
-      </a>
-      <a href="/accuracy" class="btn btn-outline-light btn-lg px-5 shadow">
-        Season Record
-      </a>
+      <a href="/predictions" class="btn btn-primary btn-lg px-5 shadow">Today's Predictions</a>
+      <a href="/accuracy"    class="btn btn-outline-light btn-lg px-5 shadow">Season Record</a>
+      <a href="/picks"       class="btn btn-outline-light btn-lg px-5 shadow">Make Your Picks</a>
     </div>
 
-    <p class="mt-5 text-white-50 small">
+    <!-- Email signup -->
+    <form id="signup-form" class="d-flex gap-2 mt-5 justify-content-center flex-wrap">
+      <input type="email" id="signup-email" class="form-control form-control-lg"
+             style="max-width:280px;background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.4);color:#fff;"
+             placeholder="your@email.com" required />
+      <button type="submit" class="btn btn-outline-light btn-lg">Get Daily Picks</button>
+    </form>
+    <div id="signup-msg" class="mt-2 small text-white-75 d-none"></div>
+
+    <p class="mt-4 text-white-50 small">
       Predictions use a logistic regression model trained on historical MLB game data.
     </p>
+
+  <script>
+    document.getElementById("signup-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const email = document.getElementById("signup-email").value;
+      const res   = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email}),
+      });
+      const msg = document.getElementById("signup-msg");
+      msg.classList.remove("d-none");
+      msg.textContent = res.ok
+        ? "✅ Subscribed! You'll receive daily picks at 8 AM."
+        : (res.status === 409 ? "Already subscribed." : "❌ Something went wrong.");
+    });
+  </script>
 
   </div>
 
