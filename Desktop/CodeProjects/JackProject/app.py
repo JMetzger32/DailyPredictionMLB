@@ -35,8 +35,8 @@ ARTIFACTS_PATH    = os.environ.get("ARTIFACTS_PATH", "mlb_model_artifacts.pkl")
 PREDICTIONS_LOG   = os.environ.get("PREDICTIONS_LOG", "predictions_log.json")
 SUBSCRIBERS_PATH  = os.environ.get("SUBSCRIBERS_PATH", "subscribers.json")
 PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH", "picks_log.json")
-SENDGRID_API_KEY  = os.environ.get("SENDGRID_API_KEY", "")
-FROM_EMAIL        = os.environ.get("FROM_EMAIL", "picks@dailypredictionmlb.com")
+RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
+FROM_EMAIL        = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
 
 # ---------------------------------------------------------------------------
 # Artifact loading
@@ -442,8 +442,8 @@ def _build_email_html(subscriber_email, top_picks, yesterday_entries, yesterday_
 
 def send_daily_email():
     """Send the daily picks email to all subscribers."""
-    if not SENDGRID_API_KEY:
-        print("[email] SENDGRID_API_KEY not set — skipping email.")
+    if not RESEND_API_KEY:
+        print("[email] RESEND_API_KEY not set — skipping email.")
         return
     subs = _load_subscribers()
     if not subs:
@@ -485,24 +485,24 @@ def send_daily_email():
             print(f"[email] Failed to build top picks: {e}")
 
     try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        import resend
+        resend.api_key = RESEND_API_KEY
+        sent = 0
         for sub in subs:
             body = _build_email_html(sub["email"], top_picks, yesterday_entries, yesterday, today)
-            msg  = Mail(
-                from_email=FROM_EMAIL,
-                to_emails=sub["email"],
-                subject=f"⚾ DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
-                html_content=body,
-            )
             try:
-                sg.send(msg)
+                resend.Emails.send({
+                    "from":    FROM_EMAIL,
+                    "to":      sub["email"],
+                    "subject": f"⚾ DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
+                    "html":    body,
+                })
+                sent += 1
             except Exception as e:
                 print(f"[email] Failed to send to {sub['email']}: {e}")
-        print(f"[email] Sent daily email to {len(subs)} subscribers.")
+        print(f"[email] Sent daily email to {sent}/{len(subs)} subscribers.")
     except ImportError:
-        print("[email] sendgrid package not installed.")
+        print("[email] resend package not installed.")
 
 
 # ---------------------------------------------------------------------------
