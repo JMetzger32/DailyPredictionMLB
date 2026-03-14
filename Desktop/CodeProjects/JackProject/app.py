@@ -539,7 +539,7 @@ def resolve_todays_completed_games():
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(run_daily_update, "cron", hour=8, minute=0)
+    scheduler.add_job(run_daily_update, "cron", hour=8, minute=0, timezone="America/New_York")
     scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
     scheduler.start()
     print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min")
