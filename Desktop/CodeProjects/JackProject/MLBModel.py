@@ -38,7 +38,9 @@ FEATURE_COLS = [
     # Offensive stats
     "diff_roll30_hits",           # per-game hit rate (30-game rolling avg)
     "diff_roll30_walks",          # per-game walk rate
-    "diff_roll30_slg",            # slugging — total bases per AB (better than raw HR count)
+    "diff_roll30_obp",            # on-base percentage (30-game rolling avg) — most important batting stat
+    "diff_roll30_slg",            # slugging — total bases per AB
+    "diff_roll30_iso",            # isolated power (SLG - AVG) — pure extra-base hit ability
     "diff_roll10_runs_scored",    # recent offensive form (10-game)
     "diff_roll10_homeruns",       # recent power surge (10-game)
     # Defensive stats — what a team's pitching+defense ALLOWS
@@ -52,9 +54,9 @@ FEATURE_COLS = [
     # Bullpen
     "diff_roll3_bullpen_used",
     "diff_bullpen_era",
-    # Real starting pitcher stats
+    # Real starting pitcher stats (removed diff_sp_whip — collinear with ERA/xFIP)
     "diff_sp_era",
-    "diff_sp_whip",
+    "diff_sp_era_tier",           # non-linear ERA tiers: elite(<2.75)=3, good(2.75-3.5)=2, avg(3.5-4.5)=1, weak(>4.5)=0
     "diff_sp_xfip",
     "diff_sp_siera",
     "diff_sp_so9",
@@ -221,18 +223,21 @@ def compute_rolling_team_features(tgl):
     tgl["obp_game"] = (h + bb + hbp) / (ab + bb + hbp + sf).clip(lower=1)
     # SLG = (1B + 2*2B + 3*3B + 4*HR) / AB  →  (H + D + 2T + 3HR) / AB
     tgl["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
+    # ISO = SLG - AVG = (D + 2T + 3HR) / AB  — captures pure extra-base ability, not singles
+    tgl["iso_game"] = (d + 2 * t + 3 * hr) / ab
 
     # ---- 30-game rolling (crosses season boundaries) ----
     roll_cols = ["win", "runs_scored", "runs_allowed", "hits", "opp_hits",
                  "walks", "opp_walks", "errors", "homeruns", "opp_homeruns",
-                 "opp_strikeouts", "obp_game", "slg_game"]
+                 "opp_strikeouts", "obp_game", "slg_game", "iso_game"]
     for col in roll_cols:
         tgl[f"roll30_{col}"] = tgl.groupby("team")[col].transform(
             lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean().shift(1)
         )
-    # Rename OBP/SLG rolling columns to clean names
+    # Rename OBP/SLG/ISO rolling columns to clean names
     tgl.rename(columns={"roll30_obp_game": "roll30_obp",
-                         "roll30_slg_game": "roll30_slg"}, inplace=True)
+                         "roll30_slg_game": "roll30_slg",
+                         "roll30_iso_game": "roll30_iso"}, inplace=True)
 
     # ---- 10-game rolling for recent form ----
     tgl["roll10_win_pct"] = tgl.groupby("team")["win"].transform(
@@ -366,6 +371,7 @@ def assemble_features(df, tgl):
         "roll10_runs_scored":    "roll10_runs_scored",
         "roll30_obp":            "roll30_obp",
         "roll30_slg":            "roll30_slg",
+        "roll30_iso":            "roll30_iso",
         # Volume rolling
         "roll30_hits":           "roll30_hits",
         "roll30_opp_hits":       "roll30_opp_hits",
@@ -408,6 +414,14 @@ def assemble_features(df, tgl):
 
     # Park factor is NOT differenced — it's a property of the home ballpark
     model_df["home_park_factor"] = model_df["home_team"].map(PARK_FACTORS).fillna(1.0)
+
+    # Non-linear ERA tier: elite=3 (ERA<2.75), good=2 (2.75-3.50), avg=1 (3.50-4.50), weak=0 (>4.50)
+    def _era_tier_vec(s):
+        s = s.fillna(4.0)
+        return np.where(s < 2.75, 3, np.where(s < 3.50, 2, np.where(s < 4.50, 1, 0)))
+    model_df["diff_sp_era_tier"] = (
+        _era_tier_vec(model_df["home_sp_era"]) - _era_tier_vec(model_df["vis_sp_era"])
+    )
 
     return model_df
 
@@ -634,6 +648,7 @@ def build_2025_baselines(df, tgl):
             "recent_runs_per_game":  float(team_data["roll10_runs_scored"]),
             "obp":                   float(team_data["roll30_obp"]),
             "slg":                   float(team_data["roll30_slg"]),
+            "iso":                   float(team_data["roll30_iso"]),
             # Volume rolling
             "hits_per_game":         float(team_data["roll30_hits"]),
             "opp_hits_per_game":     float(team_data["roll30_opp_hits"]),
@@ -676,6 +691,14 @@ def build_2025_baselines(df, tgl):
     return team_baselines, sp_baselines
 
 
+def _sp_era_tier(era):
+    """Map a starter ERA to a discrete tier: elite=3, good=2, avg=1, weak=0."""
+    if era < 2.75: return 3
+    elif era < 3.50: return 2
+    elif era < 4.50: return 1
+    else: return 0
+
+
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
                  model, scaler=None, feature_cols=None):
     """
@@ -701,6 +724,7 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "diff_roll10_runs_scored":     home_team_stats["recent_runs_per_game"]   - away_team_stats["recent_runs_per_game"],
         "diff_roll30_obp":             home_team_stats["obp"]                    - away_team_stats["obp"],
         "diff_roll30_slg":             home_team_stats["slg"]                    - away_team_stats["slg"],
+        "diff_roll30_iso":             home_team_stats.get("iso", 0.150)         - away_team_stats.get("iso", 0.150),
         # Volume rolling
         "diff_roll30_hits":            home_team_stats["hits_per_game"]          - away_team_stats["hits_per_game"],
         "diff_roll30_opp_hits":        home_team_stats["opp_hits_per_game"]      - away_team_stats["opp_hits_per_game"],
@@ -715,7 +739,8 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "diff_roll3_bullpen_used":     home_team_stats["bullpen_used"]           - away_team_stats["bullpen_used"],
         "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)  - away_team_stats.get("bullpen_era", 4.20),
         "diff_sp_era":                 home_sp_stats["era"]   - away_sp_stats["era"],
-        "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],
+        "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],   # kept in dict, removed from FEATURE_COLS
+        "diff_sp_era_tier":            _sp_era_tier(home_sp_stats["era"]) - _sp_era_tier(away_sp_stats["era"]),
         "diff_sp_xfip":                home_sp_stats["xfip"]  - away_sp_stats["xfip"],
         "diff_sp_siera":               home_sp_stats["siera"] - away_sp_stats["siera"],
         "diff_sp_so9":                 home_sp_stats["so9"]   - away_sp_stats["so9"],

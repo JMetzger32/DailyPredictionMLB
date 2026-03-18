@@ -83,6 +83,7 @@ FALLBACK_TEAM = {
     # New rate stats
     "obp":                   0.318,
     "slg":                   0.400,
+    "iso":                   0.150,   # league-average ISO (SLG - AVG)
     "recent_runs_per_game":  4.5,
     "opp_k_per_game":        8.5,
 }
@@ -240,6 +241,7 @@ def compute_team_baseline(games, old_baseline=None):
     games = games.copy()
     games["obp_game"] = (h + bb + hbp) / (ab + bb + hbp + sf).clip(lower=1)
     games["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
+    games["iso_game"] = (d + 2 * t + 3 * hr) / ab   # ISO = SLG - AVG
 
     # For errors and pitchers_used, only use rolling if we have enough data points
     errors_ok  = int(games["errors"].notna().sum()) >= 3
@@ -264,6 +266,7 @@ def compute_team_baseline(games, old_baseline=None):
         # New rate stats
         "obp":                   roll_last("obp_game",        30, 5),
         "slg":                   roll_last("slg_game",        30, 5),
+        "iso":                   roll_last("iso_game",        30, 5),
         "recent_runs_per_game":  roll_last("runs_scored",     10, 3),
         "opp_k_per_game":        roll_last("opp_strikeouts",  30, 5) if ok_k
                                  else fallback["opp_k_per_game"],
