@@ -37,6 +37,7 @@ SUBSCRIBERS_PATH  = os.environ.get("SUBSCRIBERS_PATH", "subscribers.json")
 PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH", "picks_log.json")
 RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL        = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
+TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
 
 # ---------------------------------------------------------------------------
 # Artifact loading
@@ -490,12 +491,25 @@ def send_daily_email():
         sent = 0
         for sub in subs:
             body = _build_email_html(sub["email"], top_picks, yesterday_entries, yesterday, today)
+            unsubscribe_url = f"https://dailypredictionmlb.onrender.com/unsubscribe?email={sub['email']}"
+            # Plain-text fallback — helps spam filters recognize legitimate newsletter
+            plain = (
+                f"DailyPredictionMLB — {today.strftime('%B %-d')} Picks\n\n"
+                f"Top picks and yesterday's recap at:\n"
+                f"https://dailypredictionmlb.onrender.com\n\n"
+                f"Unsubscribe: {unsubscribe_url}"
+            )
             try:
                 resend.Emails.send({
                     "from":    FROM_EMAIL,
                     "to":      sub["email"],
-                    "subject": f"⚾ DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
+                    "subject": f"DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
                     "html":    body,
+                    "text":    plain,
+                    "headers": {
+                        "List-Unsubscribe":      f"<{unsubscribe_url}>",
+                        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                    },
                 })
                 sent += 1
             except Exception as e:
@@ -860,8 +874,8 @@ def predictions():
     # One cached API call for both schedule and live scores
     games_raw, live_results = _get_schedule_cached(target_date)
 
-    # Fetch odds only for today (past dates no longer have live odds)
-    odds_map = _get_odds_cached() if target_date == date.today() else {}
+    # Fetch odds for today and future dates (The Odds API returns all upcoming games)
+    odds_map = _get_odds_cached() if target_date >= date.today() else {}
 
     predictions_out = []
     log_changed = False
@@ -1101,6 +1115,21 @@ def accuracy():
         "spring_training": compute_stats(spring),
         "last_updated":    datetime.now().isoformat(),
     })
+
+
+@app.route("/api/trigger-daily")
+def trigger_daily():
+    """
+    External cron endpoint — wakes the server and runs the daily update + email.
+    Requires ?key=TRIGGER_SECRET query param to prevent abuse.
+    Set TRIGGER_SECRET env var on Render. Call from cron-job.org at 7:55 AM ET.
+    """
+    secret = request.args.get("key", "")
+    if not TRIGGER_SECRET or secret != TRIGGER_SECRET:
+        return jsonify({"error": "forbidden"}), 403
+    import threading
+    threading.Thread(target=run_daily_update, daemon=True).start()
+    return jsonify({"status": "triggered", "time": datetime.now().isoformat()})
 
 
 @app.route("/api/refresh", methods=["POST"])
