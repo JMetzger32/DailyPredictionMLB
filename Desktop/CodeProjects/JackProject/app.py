@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta
 
 from flask import Flask, jsonify, render_template, request
 
-from MLBModel import predict_game, _default_sp_stats
+from MLBModel import predict_game, _default_sp_stats, _sp_era_tier
 from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__)
@@ -571,7 +571,9 @@ FEATURE_LABELS = {
     "diff_season_win_pct":        "Season Win %",
     "diff_roll30_hits":           "Hits/G (30g)",
     "diff_roll30_walks":          "Walks/G (30g)",
+    "diff_roll30_obp":            "Team OBP (30g)",
     "diff_roll30_slg":            "Team SLG (30g)",
+    "diff_roll30_iso":            "Isolated Power (30g)",
     "diff_roll10_runs_scored":    "Runs/G (recent 10g)",
     "diff_roll10_homeruns":       "HR/G (recent 10g)",
     "diff_roll30_opp_hits":       "Opp Hits/G (30g)",
@@ -584,6 +586,7 @@ FEATURE_LABELS = {
     "diff_bullpen_era":           "Bullpen ERA",
     "diff_sp_era":                "Starter ERA",
     "diff_sp_whip":               "Starter WHIP",
+    "diff_sp_era_tier":           "Starter ERA Tier",
     "diff_sp_xfip":               "Starter xFIP",
     "diff_sp_siera":              "Starter SIERA",
     "diff_sp_so9":                "Starter K/9",
@@ -614,6 +617,7 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_roll10_runs_scored":    home_ts.get("recent_runs_per_game", 4.5)  - away_ts.get("recent_runs_per_game", 4.5),
         "diff_roll30_obp":            home_ts.get("obp", 0.318)                 - away_ts.get("obp", 0.318),
         "diff_roll30_slg":            home_ts.get("slg", 0.400)                 - away_ts.get("slg", 0.400),
+        "diff_roll30_iso":            home_ts.get("iso", 0.150)                 - away_ts.get("iso", 0.150),
         "diff_roll30_hits":           home_ts.get("hits_per_game", 8.5)         - away_ts.get("hits_per_game", 8.5),
         "diff_roll30_opp_hits":       home_ts.get("opp_hits_per_game", 8.5)     - away_ts.get("opp_hits_per_game", 8.5),
         "diff_roll30_walks":          home_ts.get("walks_per_game", 3.0)        - away_ts.get("walks_per_game", 3.0),
@@ -628,6 +632,7 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
         "diff_sp_era":                home_sp.get("era", 4.0)   - away_sp.get("era", 4.0),
         "diff_sp_whip":               home_sp.get("whip", 1.3)  - away_sp.get("whip", 1.3),
+        "diff_sp_era_tier":           _sp_era_tier(home_sp.get("era", 4.0)) - _sp_era_tier(away_sp.get("era", 4.0)),
         "diff_sp_xfip":               home_sp.get("xfip", 4.0)  - away_sp.get("xfip", 4.0),
         "diff_sp_siera":              home_sp.get("siera", 4.0) - away_sp.get("siera", 4.0),
         "diff_sp_so9":                home_sp.get("so9", 8.0)   - away_sp.get("so9", 8.0),
