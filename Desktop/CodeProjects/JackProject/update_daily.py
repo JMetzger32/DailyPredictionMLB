@@ -282,7 +282,7 @@ def fetch_sp_baselines(season, games_played):
     games_played: estimated games per team so far (to set GS threshold).
     """
     # Early season: lower GS threshold
-    min_gs = 2 if games_played < 15 else 5
+    min_gs = 1 if games_played < 5 else (2 if games_played < 15 else 5)
 
     try:
         sp = pitching_stats(season, qual=1)
