@@ -23,6 +23,13 @@ import pickle
 import time
 import traceback
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
+
+def _today_et():
+    """Return today's date in US Eastern time (avoids UTC midnight flip on Render)."""
+    return datetime.now(tz=_ET).date()
 
 from flask import Flask, jsonify, render_template, request
 
@@ -72,7 +79,7 @@ def _get_schedule_cached(target_date):
     """Return (games, live_results) from cache or MLB API."""
     date_str = target_date.isoformat()
     cached   = _schedule_cache.get(date_str)
-    ttl      = _CACHE_TTL if target_date >= date.today() else _CACHE_TTL_PAST
+    ttl      = _CACHE_TTL if target_date >= _today_et() else _CACHE_TTL_PAST
     if cached and (time.monotonic() - cached["ts"]) < ttl:
         return cached["games"], cached["results"]
     games, results = get_schedule_and_results(target_date)
@@ -82,7 +89,7 @@ def _get_schedule_cached(target_date):
 
 def _get_odds_cached():
     """Return today's odds map from cache or The Odds API (1 credit per call)."""
-    today  = date.today().isoformat()
+    today  = _today_et().isoformat()
     cached = _odds_cache.get(today)
     if cached and (time.monotonic() - cached["ts"]) < _ODDS_CACHE_TTL:
         return cached["odds"]
@@ -187,7 +194,7 @@ def _build_prediction_entry(game, result):
 def update_yesterday_results():
     """Fetch yesterday's final scores and mark predictions correct/incorrect."""
     from schedule_fetcher import get_game_results
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    yesterday = (_today_et() - timedelta(days=1)).isoformat()
     log = _load_log()
     if yesterday not in log:
         return
@@ -263,7 +270,7 @@ def _log_predictions_for_date(target_date, log=None):
         return log
 
     # For past dates, immediately attach final results
-    if target_date < date.today():
+    if target_date < _today_et():
         try:
             from schedule_fetcher import get_game_results
             results = get_game_results(target_date)
@@ -327,7 +334,7 @@ def _auto_heal_log(days=7):
     log = _load_log()
     changed = False
     for i in range(1, days + 1):
-        target = date.today() - timedelta(days=i)
+        target = _today_et() - timedelta(days=i)
         date_str = target.isoformat()
         if date_str not in log:
             log = _log_predictions_for_date(target, log)
@@ -341,14 +348,14 @@ def _auto_heal_log(days=7):
         print(f"[app] _auto_heal_log: log updated")
     # Resolve picks for any recently-healed dates
     for i in range(1, days + 1):
-        _resolve_picks_for_date(date.today() - timedelta(days=i))
+        _resolve_picks_for_date(_today_et() - timedelta(days=i))
 
 
 def log_todays_predictions():
     """Run today's predictions and save them to the log (skipped if already logged)."""
-    log = _log_predictions_for_date(date.today())
+    log = _log_predictions_for_date(_today_et())
     _save_log(log)
-    print(f"[app] Logged predictions for {date.today().isoformat()}")
+    print(f"[app] Logged predictions for {_today_et().isoformat()}")
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +457,7 @@ def send_daily_email():
     if not subs:
         return
 
-    today     = date.today()
+    today     = _today_et()
     yesterday = (today - timedelta(days=1)).isoformat()
     log       = _load_log()
     yesterday_entries = [e for e in log.get(yesterday, []) if e.get("actual_winner") is not None]
@@ -542,10 +549,10 @@ def resolve_todays_completed_games():
     """Persist results of any games that finished today. Called every 30 min."""
     try:
         log = _load_log()
-        if _resolve_unresolved_for_date(log, date.today()):
+        if _resolve_unresolved_for_date(log, _today_et()):
             _save_log(log)
-            print(f"[app] Interval job: resolved completed games for {date.today().isoformat()}")
-        _resolve_picks_for_date(date.today())
+            print(f"[app] Interval job: resolved completed games for {_today_et().isoformat()}")
+        _resolve_picks_for_date(_today_et())
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
 
@@ -764,7 +771,7 @@ def picks_submit():
     if not picks_list:
         return jsonify({"error": "No picks provided"}), 400
 
-    date_str = date.today().isoformat()
+    date_str = _today_et().isoformat()
     picks = _load_picks()
     if email not in picks:
         picks[email] = {}
@@ -794,7 +801,7 @@ def picks_submit():
 @app.route("/api/picks/mine")
 def picks_mine():
     email    = request.args.get("email", "").strip().lower()
-    date_str = request.args.get("date", date.today().isoformat())
+    date_str = request.args.get("date", _today_et().isoformat())
     if not email:
         return jsonify({"error": "email required"}), 400
     picks = _load_picks()
@@ -861,7 +868,7 @@ def predictions():
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
     else:
-        target_date = date.today()
+        target_date = _today_et()
 
     team_baselines = _artifacts.get("team_baselines", {})
     sp_baselines   = _artifacts.get("sp_baselines", {})
@@ -880,7 +887,7 @@ def predictions():
     games_raw, live_results = _get_schedule_cached(target_date)
 
     # Fetch odds for today and future dates (The Odds API returns all upcoming games)
-    odds_map = _get_odds_cached() if target_date >= date.today() else {}
+    odds_map = _get_odds_cached() if target_date >= _today_et() else {}
 
     predictions_out = []
     log_changed = False

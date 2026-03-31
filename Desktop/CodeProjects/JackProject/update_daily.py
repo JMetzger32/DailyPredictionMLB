@@ -379,6 +379,15 @@ def main():
 
     if new_sp_baselines and len(new_sp_baselines) >= 10:
         print(f"  Built {len(new_sp_baselines)} SP baselines from FanGraphs")
+        # Fetch prior-year data as fallback for pitchers not yet in 2026
+        prior_sp = fetch_sp_baselines(SEASON - 1, games_played=162)
+        if prior_sp:
+            merged_sp = {**prior_sp, **new_sp_baselines}
+            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data + {SEASON-1} fallback)")
+        else:
+            merged_sp = {**old_sp_baselines, **new_sp_baselines}
+            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data + prior fallback)")
+        new_sp_baselines = merged_sp
     else:
         print(f"  Insufficient {SEASON} pitcher data — keeping prior SP baselines")
         new_sp_baselines = old_sp_baselines
