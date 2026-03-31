@@ -30,7 +30,12 @@ cache.enable()  # Cache API responses to avoid hammering servers on repeated run
 SEASON        = 2026
 ARTIFACTS_PATH = "mlb_model_artifacts.pkl"
 PYTH_EXP      = 1.83
-MIN_GAMES_FOR_LIVE_UPDATE = 3   # below this, keep prior-year baseline
+MIN_GAMES_FOR_LIVE_UPDATE = 1   # process team if any RS games exist; thresholds handled inside
+RS_START_DATE = pd.Timestamp(f"{SEASON}-03-25")  # regular season never starts before this
+
+# Games thresholds for switching from prior-year to live stats
+BATTING_LIVE_THRESHOLD = 5    # hitting stats (OBP, SLG, ISO, hits, runs, etc.)
+RECORD_LIVE_THRESHOLD  = 12   # win%, pythagorean win%, recent win%
 
 # Retrosheet team code -> Baseball Reference team code
 RETRO_TO_BR = {
@@ -126,6 +131,11 @@ def _fetch_batting_log(br_team, season):
     df["date"] = _parse_br_dates(df["Date"], season)
     df = df.dropna(subset=["date"])
 
+    # Strip spring training — keep only regular season games
+    df = df[df["date"] >= RS_START_DATE]
+    if len(df) == 0:
+        return None
+
     df["win"]          = df["W/L"].astype(str).str.startswith("W").astype(int)
     df["runs_scored"]  = pd.to_numeric(df.get("R"),   errors="coerce")
     df["runs_allowed"] = pd.to_numeric(df.get("RA"),  errors="coerce")
@@ -162,6 +172,11 @@ def _fetch_pitching_log(br_team, season):
 
     df["date"] = _parse_br_dates(df["Date"], season)
     df = df.dropna(subset=["date"])
+
+    # Strip spring training — keep only regular season games
+    df = df[df["date"] >= RS_START_DATE]
+    if len(df) == 0:
+        return None
 
     # Pitchers used — BR column is "#P"
     pused_col = next((c for c in df.columns if str(c).strip() == "#P"), None)
@@ -212,64 +227,68 @@ def compute_team_baseline(games, old_baseline=None):
     games = games.sort_values("date").reset_index(drop=True)
     n = len(games)
 
-    # Season-to-date Pythagorean and win%
+    # Graduated thresholds: use live stats only once enough RS games played
+    use_batting_live = n >= BATTING_LIVE_THRESHOLD   # hitting, pitching defense stats
+    use_record_live  = n >= RECORD_LIVE_THRESHOLD    # win%, pythagorean, recent win%
+
+    def fb(key):
+        """Return fallback value for a stat key."""
+        return fallback.get(key, FALLBACK_TEAM.get(key, 0))
+
+    def roll_last(col, window, min_periods):
+        """Return the last value in a rolling mean series, or season mean."""
+        s = games[col].rolling(window, min_periods=min_periods).mean()
+        val = s.iloc[-1]
+        if pd.isna(val):
+            val = games[col].mean()
+        return float(val) if not pd.isna(val) else fb(col)
+
+    # Season-to-date Pythagorean and win% (only used if use_record_live)
     cum_rs = games["runs_scored"].fillna(0).cumsum()
     cum_ra = games["runs_allowed"].fillna(0).cumsum()
     rs = max(float(cum_rs.iloc[-1]), 1)
     ra = max(float(cum_ra.iloc[-1]), 1)
-    pyth     = rs ** PYTH_EXP / (rs ** PYTH_EXP + ra ** PYTH_EXP)
-    win_pct  = float(games["win"].sum()) / n
+    pyth    = rs ** PYTH_EXP / (rs ** PYTH_EXP + ra ** PYTH_EXP)
+    win_pct = float(games["win"].sum()) / n
 
-    def roll_last(col, window, min_periods):
-        """Return the last value in a rolling mean series, or fallback."""
-        s = games[col].rolling(window, min_periods=min_periods).mean()
-        val = s.iloc[-1]
-        if pd.isna(val):
-            # Use season mean if rolling window isn't full yet
-            val = games[col].mean()
-        return float(val) if not pd.isna(val) else fallback.get(col, FALLBACK_TEAM.get(col, 0))
-
-    # Compute per-game OBP and SLG (need at_bats, doubles, triples, etc.)
-    ab  = games.get("at_bats",     pd.Series(30,  index=games.index)).fillna(30).clip(lower=1)
-    hbp = games.get("hit_by_pitch",pd.Series(0,   index=games.index)).fillna(0)
-    sf  = games.get("sac_flies",   pd.Series(0,   index=games.index)).fillna(0)
-    d   = games.get("doubles",     pd.Series(0,   index=games.index)).fillna(0)
-    t   = games.get("triples",     pd.Series(0,   index=games.index)).fillna(0)
+    # Compute per-game OBP, SLG, ISO (only used if use_batting_live)
+    ab  = games.get("at_bats",     pd.Series(30, index=games.index)).fillna(30).clip(lower=1)
+    hbp = games.get("hit_by_pitch",pd.Series(0,  index=games.index)).fillna(0)
+    sf  = games.get("sac_flies",   pd.Series(0,  index=games.index)).fillna(0)
+    d   = games.get("doubles",     pd.Series(0,  index=games.index)).fillna(0)
+    t   = games.get("triples",     pd.Series(0,  index=games.index)).fillna(0)
     h   = games["hits"].fillna(0)
     bb  = games["walks"].fillna(0)
     hr  = games["homeruns"].fillna(0)
     games = games.copy()
     games["obp_game"] = (h + bb + hbp) / (ab + bb + hbp + sf).clip(lower=1)
     games["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
-    games["iso_game"] = (d + 2 * t + 3 * hr) / ab   # ISO = SLG - AVG
+    games["iso_game"] = (d + 2 * t + 3 * hr) / ab
 
-    # For errors and pitchers_used, only use rolling if we have enough data points
     errors_ok  = int(games["errors"].notna().sum()) >= 3
     bullpen_ok = int(games["pitchers_used"].notna().sum()) >= 1
     ok_k       = int(games.get("opp_strikeouts", pd.Series()).notna().sum()) >= 3
 
     return {
-        "pyth_win_pct":          round(pyth, 4),
-        "win_pct":               round(win_pct, 4),
-        "hits_per_game":         roll_last("hits",            30, 5),
-        "opp_hits_per_game":     roll_last("opp_hits",        30, 5),
-        "walks_per_game":        roll_last("walks",           30, 5),
-        "opp_walks_per_game":    roll_last("opp_walks",       30, 5),
-        "errors_per_game":       roll_last("errors",          30, 5) if errors_ok
-                                 else fallback["errors_per_game"],
-        "hr_per_game":           roll_last("homeruns",        30, 5),
-        "opp_hr_per_game":       roll_last("opp_homeruns",    30, 5),
-        "recent_win_pct":        roll_last("win",             10, 3),
-        "recent_hr_per_game":    roll_last("homeruns",        10, 3),
-        "bullpen_used":          roll_last("pitchers_used",    3, 1) if bullpen_ok
-                                 else fallback["bullpen_used"],
-        # New rate stats
-        "obp":                   roll_last("obp_game",        30, 5),
-        "slg":                   roll_last("slg_game",        30, 5),
-        "iso":                   roll_last("iso_game",        30, 5),
-        "recent_runs_per_game":  roll_last("runs_scored",     10, 3),
-        "opp_k_per_game":        roll_last("opp_strikeouts",  30, 5) if ok_k
-                                 else fallback["opp_k_per_game"],
+        # Win/record stats — live at 12+ games, else prior-year fallback
+        "pyth_win_pct":          round(pyth, 4)    if use_record_live  else fb("pyth_win_pct"),
+        "win_pct":               round(win_pct, 4) if use_record_live  else fb("win_pct"),
+        "recent_win_pct":        roll_last("win", 10, 3)        if use_record_live  else fb("recent_win_pct"),
+        "recent_hr_per_game":    roll_last("homeruns", 10, 3)   if use_record_live  else fb("recent_hr_per_game"),
+        # Batting/pitching stats — live at 5+ games, else prior-year fallback
+        "hits_per_game":         roll_last("hits",           30, 5) if use_batting_live else fb("hits_per_game"),
+        "opp_hits_per_game":     roll_last("opp_hits",       30, 5) if use_batting_live else fb("opp_hits_per_game"),
+        "walks_per_game":        roll_last("walks",          30, 5) if use_batting_live else fb("walks_per_game"),
+        "opp_walks_per_game":    roll_last("opp_walks",      30, 5) if use_batting_live else fb("opp_walks_per_game"),
+        "errors_per_game":       roll_last("errors",         30, 5) if (use_batting_live and errors_ok)  else fb("errors_per_game"),
+        "hr_per_game":           roll_last("homeruns",       30, 5) if use_batting_live else fb("hr_per_game"),
+        "opp_hr_per_game":       roll_last("opp_homeruns",   30, 5) if use_batting_live else fb("opp_hr_per_game"),
+        "bullpen_used":          roll_last("pitchers_used",   3, 1) if (use_batting_live and bullpen_ok) else fb("bullpen_used"),
+        "obp":                   roll_last("obp_game",       30, 5) if use_batting_live else fb("obp"),
+        "slg":                   roll_last("slg_game",       30, 5) if use_batting_live else fb("slg"),
+        "iso":                   roll_last("iso_game",       30, 5) if use_batting_live else fb("iso"),
+        "recent_runs_per_game":  roll_last("runs_scored",    10, 3) if use_batting_live else fb("recent_runs_per_game"),
+        "opp_k_per_game":        roll_last("opp_strikeouts", 30, 5) if (use_batting_live and ok_k)       else fb("opp_k_per_game"),
     }
 
 
