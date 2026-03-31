@@ -131,12 +131,28 @@ def find_pitcher_by_name(pitcher_name, sp_baselines):
         if _normalize_name(info.get("name", "")) == query_norm:
             return pid
 
-    # Pass 2: last-name match (take last token of query)
-    query_last = query_norm.split()[-1]
+    # Pass 2: last-name match with first-initial verification
+    query_tokens = query_norm.split()
+    query_last = query_tokens[-1]
+    query_first_initial = query_tokens[0][0] if len(query_tokens) > 1 else None
+
     matches = [pid for pid, info in sp_baselines.items()
                if query_last in _normalize_name(info.get("name", "")).split()]
+
     if len(matches) == 1:
+        # Verify first initial to avoid false positives (e.g. "Jose" != "Ranger")
+        if query_first_initial:
+            matched_tokens = _normalize_name(sp_baselines[matches[0]].get("name", "")).split()
+            if matched_tokens and not matched_tokens[0].startswith(query_first_initial):
+                return None
         return matches[0]
+
+    if len(matches) > 1 and query_first_initial:
+        # Multiple last-name matches: narrow by first initial
+        initial_matches = [pid for pid in matches
+                           if _normalize_name(sp_baselines[pid].get("name", "")).split()[0].startswith(query_first_initial)]
+        if len(initial_matches) == 1:
+            return initial_matches[0]
 
     return None
 

@@ -916,8 +916,8 @@ def predictions():
         home_sp = dict(sp_baselines[home_sp_id]) if home_sp_id and home_sp_id in sp_baselines else _default_sp_stats()
         away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
 
-        home_sp_name = home_sp.get("name", game.get("home_pitcher_name") or "TBD")
-        away_sp_name = away_sp.get("name", game.get("away_pitcher_name") or "TBD")
+        home_sp_name = game.get("home_pitcher_name") or home_sp.get("name", "TBD")
+        away_sp_name = game.get("away_pitcher_name") or away_sp.get("name", "TBD")
 
         try:
             result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler)
