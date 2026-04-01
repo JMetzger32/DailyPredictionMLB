@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Betting Stats — DailyPredictionMLB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark bg-dark px-3 py-2">
+  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-white-50 small d-none d-sm-inline">Betting Stats</span>
+    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
+    <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
+  </div>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────────────── -->
+<div class="container-xl py-4">
+
+  <div id="loading" class="text-center py-5">
+    <div class="spinner-border text-secondary mb-3" role="status"></div>
+    <p class="text-muted">Loading betting data…</p>
+  </div>
+
+  <div id="content" class="d-none">
+
+    <!-- Tracking start note -->
+    <div id="tracking-note" class="alert alert-secondary py-2 mb-4 small d-none" role="alert">
+      Bet tracking started <strong id="tracking-date"></strong>. Only games where Vegas odds were available at prediction time are included.
+    </div>
+
+    <!-- ── Category Cards ──────────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+
+      <!-- Value Bets -->
+      <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3">
+            <div class="badge bg-success mb-2 px-3 py-2" style="font-size:0.85rem;">✓ Value Bets</div>
+            <div class="fs-2 fw-bold text-success" id="vb-record">—</div>
+            <div class="text-muted small mb-1" id="vb-accuracy">—</div>
+            <div class="fw-semibold" id="vb-roi" style="font-size:1.05rem;">—</div>
+            <div class="text-muted small">($10/game simulated)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toss-Ups -->
+      <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3">
+            <div class="badge bg-warning text-dark mb-2 px-3 py-2" style="font-size:0.85rem;">~ Toss-Ups</div>
+            <div class="fs-2 fw-bold text-warning" id="tu-record">—</div>
+            <div class="text-muted small" id="tu-accuracy">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No Value -->
+      <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body text-center py-3">
+            <div class="badge bg-danger mb-2 px-3 py-2" style="font-size:0.85rem;">✗ No Value</div>
+            <div class="fs-2 fw-bold text-danger" id="nv-record">—</div>
+            <div class="text-muted small" id="nv-accuracy">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ROI Summary Bar ──────────────────────────────────────── -->
+    <div id="roi-bar" class="card border-0 shadow-sm mb-4 d-none">
+      <div class="card-body py-3 d-flex flex-wrap gap-4 align-items-center justify-content-center">
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="roi-bets">—</div>
+          <div class="text-muted small">Value Bets</div>
+        </div>
+        <div class="text-muted fs-4">·</div>
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="roi-wagered">—</div>
+          <div class="text-muted small">Total Wagered</div>
+        </div>
+        <div class="text-muted fs-4">·</div>
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="roi-net">—</div>
+          <div class="text-muted small">Net P/L</div>
+        </div>
+        <div class="text-muted fs-4">·</div>
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="roi-pct">—</div>
+          <div class="text-muted small">ROI</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Cumulative P/L Chart ─────────────────────────────────── -->
+    <div id="chart-card" class="card border-0 shadow-sm mb-4 d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">Cumulative P/L — $10/game on Value Bets</h6>
+        <canvas id="pl-chart" height="100"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Recent Value Bets Table ─────────────────────────────── -->
+    <div id="recent-card" class="card border-0 shadow-sm d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">Recent Value Bets</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>Date</th>
+                <th>Matchup</th>
+                <th>Pick</th>
+                <th class="text-center">Odds</th>
+                <th class="text-center">Edge</th>
+                <th class="text-center">Result</th>
+                <th class="text-end">P/L</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- No data state -->
+    <div id="no-data" class="text-center py-5 d-none">
+      <p class="text-muted fs-5">No betting data yet.</p>
+      <p class="text-muted small">Odds are captured at prediction time (8 AM daily). Data will appear here after the next daily update.</p>
+    </div>
+
+  </div>
+
+  <div id="error-box" class="alert alert-danger d-none mt-3" role="alert"></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  function fmtRecord(stats) {
+    if (!stats || stats.games === 0) return "No data";
+    return `${stats.correct}-${stats.losses}`;
+  }
+
+  function fmtAccuracy(stats) {
+    if (!stats || stats.games === 0) return "";
+    return `${(stats.accuracy * 100).toFixed(1)}%  (${stats.games} games)`;
+  }
+
+  function fmtPL(pl) {
+    if (pl === null || pl === undefined) return "—";
+    const sign = pl >= 0 ? "+" : "";
+    return `${sign}$${Math.abs(pl).toFixed(2)}`;
+  }
+
+  function fmtOdds(ml) {
+    if (ml === null || ml === undefined) return "—";
+    return ml >= 0 ? `+${ml}` : `${ml}`;
+  }
+
+  function fmtEdge(edge) {
+    if (edge === null || edge === undefined) return "—";
+    const sign = edge >= 0 ? "+" : "";
+    return `${sign}${(edge * 100).toFixed(1)}pp`;
+  }
+
+  function plColor(pl) {
+    if (pl === null) return "";
+    return pl >= 0 ? "text-success" : "text-danger";
+  }
+
+  async function loadBetting() {
+    try {
+      const res  = await fetch("/api/betting");
+      const data = await res.json();
+
+      document.getElementById("loading").classList.add("d-none");
+      document.getElementById("content").classList.remove("d-none");
+
+      const vb = data.value_bets;
+      const tu = data.toss_ups;
+      const nv = data.no_value;
+      const totalGames = (vb.games || 0) + (tu.games || 0) + (nv.games || 0);
+
+      if (totalGames === 0) {
+        document.getElementById("no-data").classList.remove("d-none");
+        return;
+      }
+
+      // Tracking note
+      if (data.tracking_start) {
+        const d = new Date(data.tracking_start + "T12:00:00");
+        document.getElementById("tracking-date").textContent =
+          d.toLocaleDateString("en-US", {month:"long", day:"numeric", year:"numeric"});
+        document.getElementById("tracking-note").classList.remove("d-none");
+      }
+
+      // Category cards
+      document.getElementById("vb-record").textContent   = fmtRecord(vb);
+      document.getElementById("vb-accuracy").textContent = fmtAccuracy(vb);
+      document.getElementById("tu-record").textContent   = fmtRecord(tu);
+      document.getElementById("tu-accuracy").textContent = fmtAccuracy(tu);
+      document.getElementById("nv-record").textContent   = fmtRecord(nv);
+      document.getElementById("nv-accuracy").textContent = fmtAccuracy(nv);
+
+      // ROI for value bets
+      if (vb.games > 0) {
+        const roiSign = vb.net_pl >= 0 ? "+" : "";
+        const roiCls  = vb.net_pl >= 0 ? "text-success" : "text-danger";
+        document.getElementById("vb-roi").textContent  = `${roiSign}$${Math.abs(vb.net_pl).toFixed(2)} net`;
+        document.getElementById("vb-roi").className    = `fw-semibold ${roiCls}`;
+
+        document.getElementById("roi-bets").textContent    = vb.games;
+        document.getElementById("roi-wagered").textContent = `$${vb.total_wagered.toFixed(0)}`;
+        const netEl = document.getElementById("roi-net");
+        netEl.textContent = `${roiSign}$${Math.abs(vb.net_pl).toFixed(2)}`;
+        netEl.className   = `fs-5 fw-bold ${roiCls}`;
+        if (vb.roi !== null) {
+          const roiPctEl = document.getElementById("roi-pct");
+          roiPctEl.textContent = `${roiSign}${(vb.roi * 100).toFixed(1)}%`;
+          roiPctEl.className   = `fs-5 fw-bold ${roiCls}`;
+        }
+        document.getElementById("roi-bar").classList.remove("d-none");
+      }
+
+      // Chart
+      const pts = data.cumulative_pl || [];
+      if (pts.length >= 2) {
+        document.getElementById("chart-card").classList.remove("d-none");
+        const labels = pts.map(p => p.date);
+        const values = pts.map(p => p.pl);
+        const finalPL = values[values.length - 1];
+        const lineColor = finalPL >= 0 ? "#198754" : "#dc3545";
+
+        new Chart(document.getElementById("pl-chart"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "Cumulative P/L ($)",
+              data: values,
+              borderColor: lineColor,
+              backgroundColor: finalPL >= 0 ? "rgba(25,135,84,0.1)" : "rgba(220,53,69,0.1)",
+              borderWidth: 2,
+              pointRadius: pts.length > 30 ? 0 : 3,
+              fill: true,
+              tension: 0.3,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => {
+                    const p = pts[ctx.dataIndex];
+                    const sign = p.pl >= 0 ? "+" : "";
+                    return `${sign}$${p.pl.toFixed(2)}  —  ${p.matchup}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { maxTicksLimit: 10 } },
+              y: {
+                ticks: {
+                  callback: v => (v >= 0 ? "+" : "") + "$" + v.toFixed(0)
+                }
+              }
+            }
+          }
+        });
+      }
+
+      // Recent value bets table
+      const recent = data.recent_bets || [];
+      if (recent.length > 0) {
+        document.getElementById("recent-card").classList.remove("d-none");
+        const tbody = document.getElementById("recent-tbody");
+        recent.forEach(b => {
+          const tr = document.createElement("tr");
+          if (b.correct) tr.classList.add("table-success");
+          else           tr.classList.add("table-danger");
+          tr.innerHTML = `
+            <td class="text-nowrap text-muted small">${b.date}</td>
+            <td class="small">${b.away_team} @ ${b.home_team}</td>
+            <td class="fw-semibold small">${b.pick || "—"}</td>
+            <td class="text-center small">${fmtOdds(b.ml)}</td>
+            <td class="text-center small">${fmtEdge(b.edge)}</td>
+            <td class="text-center">${b.correct ? "✅" : "❌"}</td>
+            <td class="text-end fw-semibold small ${plColor(b.pl)}">${fmtPL(b.pl)}</td>`;
+          tbody.appendChild(tr);
+        });
+      }
+
+    } catch (e) {
+      document.getElementById("loading").classList.add("d-none");
+      const err = document.getElementById("error-box");
+      err.textContent = "Failed to load betting data. Is the server running?";
+      err.classList.remove("d-none");
+    }
+  }
+
+  loadBetting();
+</script>
+
+<div class="site-credit">Website made by Jack Metzger</div>
+
+</body>
+</html>

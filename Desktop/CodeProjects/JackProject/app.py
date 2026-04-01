@@ -171,23 +171,27 @@ def _resolve_picks_for_date(target_date):
         _save_picks(picks)
 
 
-def _build_prediction_entry(game, result):
+def _build_prediction_entry(game, result, odds_data=None):
     """Build a log entry dict from a schedule game + predict_game result."""
+    odds_data = odds_data or {}
     return {
-        "game_pk":          game.get("game_pk"),
-        "date":             game.get("game_time_utc", "")[:10],
-        "game_type":        game.get("game_type", "R"),
-        "away_team":        game.get("away_team"),
-        "away_team_name":   game.get("away_team_name"),
-        "home_team":        game.get("home_team"),
-        "home_team_name":   game.get("home_team_name"),
-        "predicted_winner": result["predicted_winner"],
-        "away_win_prob":    round(result["away_win_prob"], 4),
-        "home_win_prob":    round(result["home_win_prob"], 4),
-        "actual_winner":    None,
-        "away_score":       None,
-        "home_score":       None,
-        "correct":          None,
+        "game_pk":           game.get("game_pk"),
+        "date":              game.get("game_time_utc", "")[:10],
+        "game_type":         game.get("game_type", "R"),
+        "away_team":         game.get("away_team"),
+        "away_team_name":    game.get("away_team_name"),
+        "home_team":         game.get("home_team"),
+        "home_team_name":    game.get("home_team_name"),
+        "predicted_winner":  result["predicted_winner"],
+        "away_win_prob":     round(result["away_win_prob"], 4),
+        "home_win_prob":     round(result["home_win_prob"], 4),
+        "bet_rating":        odds_data.get("bet_rating"),
+        "predicted_team_ml": odds_data.get("predicted_team_ml"),
+        "model_edge":        odds_data.get("model_edge"),
+        "actual_winner":     None,
+        "away_score":        None,
+        "home_score":        None,
+        "correct":           None,
     }
 
 
@@ -246,6 +250,8 @@ def _log_predictions_for_date(target_date, log=None):
         return log
 
     games_raw = get_todays_schedule(target_date)
+    # Fetch odds for today/future dates so we can store bet_rating in the log
+    odds_map = _get_odds_cached() if target_date >= _today_et() else {}
     entries = []
     for game in games_raw:
         home = game.get("home_team")
@@ -262,7 +268,8 @@ def _log_predictions_for_date(target_date, log=None):
         away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
         try:
             result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler)
-            entries.append(_build_prediction_entry(game, result))
+            odds_data = _compute_odds_fields(away, home, result, odds_map)
+            entries.append(_build_prediction_entry(game, result, odds_data=odds_data))
         except Exception:
             continue
 
@@ -686,12 +693,16 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
     away_impl  = game_odds.get("away_implied")
     home_impl  = game_odds.get("home_implied")
 
-    bet_rating = None
+    bet_rating       = None
+    model_edge       = None
+    predicted_team_ml = None
     if away_impl is not None and home_impl is not None:
         predicted  = pred_result["predicted_winner"]
         model_prob  = pred_result["home_win_prob"] if predicted == "Home" else pred_result["away_win_prob"]
         market_prob = home_impl                    if predicted == "Home" else away_impl
         edge = model_prob - market_prob
+        model_edge = round(edge, 4)
+        predicted_team_ml = home_ml if predicted == "Home" else away_ml
         if edge > 0.05:
             bet_rating = "good"
         elif edge < -0.05:
@@ -700,11 +711,13 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
             bet_rating = "unsure"
 
     return {
-        "away_ml":      away_ml,
-        "home_ml":      home_ml,
-        "away_implied": away_impl,
-        "home_implied": home_impl,
-        "bet_rating":   bet_rating,
+        "away_ml":           away_ml,
+        "home_ml":           home_ml,
+        "away_implied":      away_impl,
+        "home_implied":      home_impl,
+        "bet_rating":        bet_rating,
+        "predicted_team_ml": predicted_team_ml,
+        "model_edge":        model_edge,
     }
 
 
@@ -724,6 +737,11 @@ def index():
 @app.route("/accuracy")
 def accuracy_page():
     return render_template("accuracy.html")
+
+
+@app.route("/betting")
+def betting_page():
+    return render_template("betting.html")
 
 
 @app.route("/picks")
@@ -1125,6 +1143,104 @@ def accuracy():
     return jsonify({
         "regular_season":  compute_stats(regular),
         "spring_training": compute_stats(spring),
+        "last_updated":    datetime.now().isoformat(),
+    })
+
+
+@app.route("/api/betting")
+def betting_stats():
+    """Return betting accuracy stats broken down by bet_rating category."""
+    log = _load_log()
+
+    # Only include RS entries with odds data that are resolved
+    all_entries = [
+        e for day in log.values() for e in day
+        if e.get("game_type") != "S"
+        and e.get("bet_rating") is not None
+        and e.get("correct") is not None
+    ]
+
+    categories = {"good": [], "unsure": [], "bad": []}
+    for e in all_entries:
+        rating = e.get("bet_rating")
+        if rating in categories:
+            categories[rating].append(e)
+
+    def _pl_for_bet(b):
+        """Return net P/L for a $10 bet on the predicted team."""
+        ml = b.get("predicted_team_ml")
+        if ml is None:
+            return None
+        if b["correct"]:
+            return round(10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml)), 2)
+        return -10.0
+
+    def cat_stats(bets):
+        if not bets:
+            return {"games": 0, "correct": 0, "accuracy": None,
+                    "net_pl": 0, "total_wagered": 0, "roi": None}
+        correct = sum(1 for b in bets if b["correct"])
+        pl_values = [_pl_for_bet(b) for b in bets if _pl_for_bet(b) is not None]
+        net_pl = round(sum(pl_values), 2)
+        total_wagered = 10 * len(pl_values)
+        roi = round(net_pl / total_wagered, 4) if total_wagered else None
+        wins  = sum(1 for b in bets if b["correct"])
+        losses = len(bets) - wins
+        return {
+            "games":         len(bets),
+            "correct":       correct,
+            "losses":        losses,
+            "accuracy":      round(correct / len(bets), 3),
+            "net_pl":        net_pl,
+            "total_wagered": total_wagered,
+            "roi":           roi,
+        }
+
+    # Cumulative P/L series for chart (value bets only, sorted by date)
+    value_bets = sorted(categories["good"], key=lambda e: (e["date"], e.get("game_pk", 0)))
+    cumulative_pl = []
+    running = 0.0
+    for b in value_bets:
+        pl = _pl_for_bet(b)
+        if pl is None:
+            continue
+        running = round(running + pl, 2)
+        cumulative_pl.append({
+            "date":    b["date"],
+            "pl":      running,
+            "matchup": f"{b.get('away_team_name','')} @ {b.get('home_team_name','')}",
+            "correct": b["correct"],
+            "ml":      b.get("predicted_team_ml"),
+            "edge":    b.get("model_edge"),
+        })
+
+    # Recent value bets (last 20, most recent first)
+    recent_value_bets = []
+    for b in reversed(value_bets[-20:]):
+        pl = _pl_for_bet(b)
+        recent_value_bets.append({
+            "date":       b["date"],
+            "away_team":  b.get("away_team_name", b.get("away_team")),
+            "home_team":  b.get("home_team_name", b.get("home_team")),
+            "pick":       b.get("home_team_name") if b["predicted_winner"] == "Home" else b.get("away_team_name"),
+            "ml":         b.get("predicted_team_ml"),
+            "edge":       b.get("model_edge"),
+            "correct":    b["correct"],
+            "pl":         pl,
+        })
+
+    # Tracking start date (first entry with odds data, RS only)
+    odds_entries = [e for day in log.values() for e in day
+                    if e.get("bet_rating") is not None and e.get("game_type") != "S"]
+    tracking_start = min((e["date"] for e in odds_entries), default=None)
+
+    return jsonify({
+        "value_bets":      cat_stats(categories["good"]),
+        "toss_ups":        cat_stats(categories["unsure"]),
+        "no_value":        cat_stats(categories["bad"]),
+        "cumulative_pl":   cumulative_pl,
+        "recent_bets":     recent_value_bets,
+        "tracking_start":  tracking_start,
         "last_updated":    datetime.now().isoformat(),
     })
 
