@@ -101,6 +101,8 @@ FALLBACK_TEAM = {
     "obp":                   0.318,
     "slg":                   0.400,
     "iso":                   0.150,   # league-average ISO (SLG - AVG)
+    "runs_per_game":          4.5,
+    "runs_allowed_per_game":  4.5,
     "recent_runs_per_game":  4.5,
     "opp_k_per_game":        8.5,
 }
@@ -286,10 +288,11 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
 
         g = max(games_played, 1)
 
-        # Win% — use standings API
-        win_pct    = fallback.get("win_pct",      0.500)
-        pyth       = fallback.get("pyth_win_pct", 0.500)
-        recent_wp  = fallback.get("recent_win_pct", 0.500)
+        # Win% and runs allowed — use standings API
+        win_pct          = fallback.get("win_pct",               0.500)
+        pyth             = fallback.get("pyth_win_pct",          0.500)
+        recent_wp        = fallback.get("recent_win_pct",        0.500)
+        runs_allowed_pg  = fallback.get("runs_allowed_per_game", 4.5)
         if games_played >= 1:
             try:
                 std_url = (f"https://statsapi.mlb.com/api/v1/standings"
@@ -308,12 +311,15 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
                                 recent_wp = win_pct
                             if rs > 0 and ra > 0:
                                 pyth = round(rs**PYTH_EXP / (rs**PYTH_EXP + ra**PYTH_EXP), 4)
+                                runs_allowed_pg = round(ra / max(w + l, 1), 3)
             except Exception:
                 pass
 
         return {
             "pyth_win_pct":         pyth,
             "win_pct":              win_pct,
+            "runs_per_game":         round(runs / g, 3),
+            "runs_allowed_per_game": runs_allowed_pg,
             "hits_per_game":        round(hits / g, 3),
             "opp_hits_per_game":    round(opp_hits / g, 3),
             "walks_per_game":       round(bb / g, 3),
@@ -412,6 +418,8 @@ def compute_team_baseline(games, old_baseline=None):
         "obp":                   roll_last("obp_game",       30, 5) if use_batting_live else fb("obp"),
         "slg":                   roll_last("slg_game",       30, 5) if use_batting_live else fb("slg"),
         "iso":                   roll_last("iso_game",       30, 5) if use_batting_live else fb("iso"),
+        "runs_per_game":          roll_last("runs_scored",    30, 5) if use_batting_live else fb("runs_per_game"),
+        "runs_allowed_per_game":  roll_last("runs_allowed",  30, 5) if use_batting_live else fb("runs_allowed_per_game"),
         "recent_runs_per_game":  roll_last("runs_scored",    10, 3) if use_batting_live else fb("recent_runs_per_game"),
         "opp_k_per_game":        roll_last("opp_strikeouts", 30, 5) if (use_batting_live and ok_k)       else fb("opp_k_per_game"),
     }
