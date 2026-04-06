@@ -37,6 +37,18 @@ RS_START_DATE = pd.Timestamp(f"{SEASON}-03-25")  # regular season never starts b
 BATTING_LIVE_THRESHOLD = 5    # hitting stats (OBP, SLG, ISO, hits, runs, etc.)
 RECORD_LIVE_THRESHOLD  = 12   # win%, pythagorean win%, recent win%
 
+# Retrosheet team code -> MLB Stats API team ID (for hitting/pitching fallback)
+RETRO_TO_MLB_ID = {
+    "ANA": 108, "ARI": 109, "ATH": 133, "ATL": 144,
+    "BAL": 110, "BOS": 111, "CHA": 145, "CHN": 112,
+    "CIN": 113, "CLE": 114, "COL": 115, "DET": 116,
+    "HOU": 117, "KCA": 118, "LAN": 119, "MIA": 146,
+    "MIL": 158, "MIN": 142, "NYA": 147, "NYN": 121,
+    "PHI": 143, "PIT": 134, "SDN": 135, "SEA": 136,
+    "SFN": 137, "SLN": 138, "TBA": 139, "TEX": 140,
+    "TOR": 141, "WAS": 120,
+}
+
 # Retrosheet team code -> Baseball Reference team code
 RETRO_TO_BR = {
     "ANA": "LAA",   # Angels
@@ -212,6 +224,119 @@ def fetch_team_games(br_team, season):
 
 
 # ---------------------------------------------------------------------------
+# MLB Stats API fallback — used when Baseball Reference is blocked
+# ---------------------------------------------------------------------------
+def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
+    """
+    Fetch season-to-date team stats from the free MLB Stats API.
+    Used as fallback when pybaseball/Baseball Reference is unavailable.
+    Returns a baseline dict in the same format as compute_team_baseline(),
+    or None on failure.
+    """
+    import requests as _req
+    mlb_id = RETRO_TO_MLB_ID.get(retro_code)
+    if not mlb_id:
+        return None
+    fallback = old_baseline or dict(FALLBACK_TEAM)
+
+    try:
+        # Hitting stats
+        hit_url = (f"https://statsapi.mlb.com/api/v1/teams/{mlb_id}/stats"
+                   f"?stats=season&group=hitting&season={season}")
+        hit_r = _req.get(hit_url, timeout=10)
+        hit_r.raise_for_status()
+        hit_splits = hit_r.json().get("stats", [{}])[0].get("splits", [{}])
+        if not hit_splits:
+            return None
+        h = hit_splits[0].get("stat", {})
+
+        games_played = int(h.get("gamesPlayed", 0))
+        if games_played < BATTING_LIVE_THRESHOLD:
+            return None  # not enough games, keep prior baseline
+
+        ab   = float(h.get("atBats",    1)) or 1
+        hits = float(h.get("hits",      0))
+        bb   = float(h.get("baseOnBalls", 0))
+        hbp  = float(h.get("hitByPitch",  0))
+        sf   = float(h.get("sacFlies",    0))
+        hr   = float(h.get("homeRuns",    0))
+        slg_str = h.get("slg", "0") or "0"
+        obp_str = h.get("obp", "0") or "0"
+        avg_str = h.get("avg", "0") or "0"
+        slg  = float(slg_str)
+        obp  = float(obp_str)
+        avg  = float(avg_str)
+        iso  = round(slg - avg, 4)
+        runs = float(h.get("runs",    0))
+
+        # Pitching/defense stats
+        pit_url = (f"https://statsapi.mlb.com/api/v1/teams/{mlb_id}/stats"
+                   f"?stats=season&group=pitching&season={season}")
+        pit_r = _req.get(pit_url, timeout=10)
+        pit_r.raise_for_status()
+        pit_splits = pit_r.json().get("stats", [{}])[0].get("splits", [{}])
+        p = pit_splits[0].get("stat", {}) if pit_splits else {}
+
+        opp_hits   = float(p.get("hits",        0))
+        opp_bb     = float(p.get("baseOnBalls", 0))
+        opp_hr     = float(p.get("homeRuns",    0))
+        opp_k      = float(p.get("strikeOuts",  0))
+        era_str    = p.get("era", "4.50") or "4.50"
+        bullpen_era = float(era_str)
+
+        g = max(games_played, 1)
+
+        # Win% — use standings API
+        win_pct    = fallback.get("win_pct",      0.500)
+        pyth       = fallback.get("pyth_win_pct", 0.500)
+        recent_wp  = fallback.get("recent_win_pct", 0.500)
+        if games_played >= RECORD_LIVE_THRESHOLD:
+            try:
+                std_url = (f"https://statsapi.mlb.com/api/v1/standings"
+                           f"?leagueId=103,104&season={season}&standingsTypes=regularSeason")
+                std_r = _req.get(std_url, timeout=10)
+                std_r.raise_for_status()
+                for div in std_r.json().get("records", []):
+                    for team_rec in div.get("teamRecords", []):
+                        if team_rec.get("team", {}).get("id") == mlb_id:
+                            w  = float(team_rec.get("wins",   0))
+                            l  = float(team_rec.get("losses", 0))
+                            rs = float(team_rec.get("runsScored",   0) or 0)
+                            ra = float(team_rec.get("runsAllowed",  0) or 0)
+                            if w + l > 0:
+                                win_pct   = round(w / (w + l), 4)
+                                recent_wp = win_pct
+                            if rs > 0 and ra > 0:
+                                pyth = round(rs**PYTH_EXP / (rs**PYTH_EXP + ra**PYTH_EXP), 4)
+            except Exception:
+                pass
+
+        return {
+            "pyth_win_pct":         pyth,
+            "win_pct":              win_pct,
+            "hits_per_game":        round(hits / g, 3),
+            "opp_hits_per_game":    round(opp_hits / g, 3),
+            "walks_per_game":       round(bb / g, 3),
+            "opp_walks_per_game":   round(opp_bb / g, 3),
+            "errors_per_game":      fallback.get("errors_per_game", 0.6),
+            "hr_per_game":          round(hr / g, 3),
+            "opp_hr_per_game":      round(opp_hr / g, 3),
+            "recent_win_pct":       recent_wp,
+            "recent_hr_per_game":   round(hr / g, 3),
+            "bullpen_used":         fallback.get("bullpen_used", 4.0),
+            "bullpen_era":          round(bullpen_era, 3),
+            "obp":                  obp,
+            "slg":                  slg,
+            "iso":                  iso,
+            "recent_runs_per_game": round(runs / g, 3),
+            "opp_k_per_game":       round(opp_k / g, 3),
+        }
+    except Exception as e:
+        print(f"[WARN] MLB API stats failed for {retro_code}: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Compute rolling baselines from a team's game log
 # ---------------------------------------------------------------------------
 def compute_team_baseline(games, old_baseline=None):
@@ -301,7 +426,9 @@ def fetch_sp_baselines(season, games_played):
     games_played: estimated games per team so far (to set GS threshold).
     """
     # Early season: lower GS threshold
-    min_gs = 1 if games_played < 5 else (2 if games_played < 15 else 5)
+    # Require 3+ GS before trusting 2026 ERA (1-2 start samples too noisy: 0.00/9.00 ERA)
+    # 3 starts ≈ 18 innings, reasonably stable. Switch to 5 after ~1 month.
+    min_gs = 3 if games_played < 20 else 5
 
     try:
         sp = pitching_stats(season, qual=1)
@@ -380,13 +507,23 @@ def main():
             new_team_baselines[retro_code] = baseline
             updated_count += 1
             print(f"-> {len(games):3d} games  W={baseline['win_pct']:.3f}  "
-                  f"BP={baseline['bullpen_used']:.1f}")
+                  f"BP={baseline.get('bullpen_used', 0):.1f}")
         else:
-            # Not enough live data — keep prior-year baseline
-            new_team_baselines[retro_code] = old_team_baselines.get(
-                retro_code, dict(FALLBACK_TEAM)
+            # BR unavailable — try MLB Stats API fallback
+            api_baseline = fetch_team_baseline_from_mlb_api(
+                retro_code, SEASON, old_team_baselines.get(retro_code)
             )
-            print(f"-> kept prior baseline (< {MIN_GAMES_FOR_LIVE_UPDATE} games)")
+            if api_baseline:
+                new_team_baselines[retro_code] = api_baseline
+                updated_count += 1
+                games_fetched.append(9)  # approximate
+                print(f"-> MLB API (season stats)  W={api_baseline['win_pct']:.3f}  "
+                      f"OBP={api_baseline['obp']:.3f}")
+            else:
+                new_team_baselines[retro_code] = old_team_baselines.get(
+                    retro_code, dict(FALLBACK_TEAM)
+                )
+                print(f"-> kept prior baseline (BR + MLB API both failed)")
 
     avg_games = int(sum(games_fetched) / len(games_fetched)) if games_fetched else 0
     print(f"\n  Updated {updated_count}/30 teams with live {SEASON} data "
