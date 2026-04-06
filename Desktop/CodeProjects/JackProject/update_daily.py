@@ -290,7 +290,7 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
         win_pct    = fallback.get("win_pct",      0.500)
         pyth       = fallback.get("pyth_win_pct", 0.500)
         recent_wp  = fallback.get("recent_win_pct", 0.500)
-        if games_played >= RECORD_LIVE_THRESHOLD:
+        if games_played >= 1:
             try:
                 std_url = (f"https://statsapi.mlb.com/api/v1/standings"
                            f"?leagueId=103,104&season={season}&standingsTypes=regularSeason")
