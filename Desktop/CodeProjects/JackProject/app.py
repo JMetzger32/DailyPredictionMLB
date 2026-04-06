@@ -45,6 +45,8 @@ PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH", "picks_log.json")
 RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL        = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
 TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
+GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO       = os.environ.get("GITHUB_REPO", "JMetzger32/DailyPredictionMLB")
 
 # ---------------------------------------------------------------------------
 # Artifact loading
@@ -534,6 +536,42 @@ def send_daily_email():
 
 
 # ---------------------------------------------------------------------------
+# GitHub log backup — commits predictions_log.json to git after each update
+# ---------------------------------------------------------------------------
+def _push_log_to_github():
+    """Push predictions_log.json to GitHub so it survives Render redeploys."""
+    if not GITHUB_TOKEN:
+        print("[github] GITHUB_TOKEN not set — skipping log backup")
+        return
+    import base64
+    try:
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+        }
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{PREDICTIONS_LOG}"
+        # Get current file SHA from GitHub
+        r = requests.get(api_url, headers=headers, timeout=10)
+        sha = r.json().get("sha") if r.status_code == 200 else None
+        # Read local file
+        with open(PREDICTIONS_LOG, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode()
+        payload = {
+            "message": f"Auto-backup predictions log {_today_et().isoformat()}",
+            "content": content_b64,
+        }
+        if sha:
+            payload["sha"] = sha
+        resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if resp.status_code in (200, 201):
+            print(f"[github] predictions_log.json backed up to GitHub")
+        else:
+            print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"[github] backup error: {e}")
+
+
+# ---------------------------------------------------------------------------
 # APScheduler — 8 AM daily refresh
 # ---------------------------------------------------------------------------
 def run_daily_update():
@@ -546,6 +584,7 @@ def run_daily_update():
         update_yesterday_results()
         log_todays_predictions()
         send_daily_email()
+        _push_log_to_github()
         print("[app] Daily update complete.")
     except Exception as e:
         print(f"[app] Daily update failed: {e}")
