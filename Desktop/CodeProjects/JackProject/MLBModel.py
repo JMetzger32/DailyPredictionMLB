@@ -35,9 +35,7 @@ FEATURE_COLS = [
     # Team quality
     "diff_pyth_win_pct",
     "diff_season_win_pct",
-    # Offensive stats
-    "diff_roll30_hits",           # per-game hit rate (30-game rolling avg)
-    "diff_roll30_walks",          # per-game walk rate
+    # Offensive stats (hits/walks removed — captured by OBP)
     "diff_roll30_obp",            # on-base percentage (30-game rolling avg) — most important batting stat
     "diff_roll30_slg",            # slugging — total bases per AB
     "diff_roll30_iso",            # isolated power (SLG - AVG) — pure extra-base hit ability
@@ -45,7 +43,6 @@ FEATURE_COLS = [
     "diff_roll10_homeruns",       # recent power surge (10-game)
     # Defensive stats — what a team's pitching+defense ALLOWS
     "diff_roll30_opp_hits",
-    "diff_roll30_opp_walks",
     "diff_roll30_opp_homeruns",
     "diff_roll30_opp_strikeouts", # full-staff pitching K rate
     "diff_roll30_errors",
@@ -54,14 +51,10 @@ FEATURE_COLS = [
     # Bullpen
     "diff_roll3_bullpen_used",
     "diff_bullpen_era",
-    # Real starting pitcher stats (removed diff_sp_whip — collinear with ERA/xFIP)
-    "diff_sp_era",
+    # Starting pitcher stats (ERA/SIERA/SO9/BB9/HR9 removed — collinear with xFIP)
     "diff_sp_era_tier",           # non-linear ERA tiers: elite(<2.75)=3, good(2.75-3.5)=2, avg(3.5-4.5)=1, weak(>4.5)=0
-    "diff_sp_xfip",
-    "diff_sp_siera",
-    "diff_sp_so9",
-    "diff_sp_bb9",
-    "diff_sp_hr9",
+    "diff_sp_xfip",               # defense-independent ERA estimator
+    "diff_sp_whip",               # contact rate (complements xFIP; less collinear than WHIP+ERA)
 ]
 
 # Park run factors per home ballpark (Retrosheet team code -> multi-year average, 1.0 = league avg)

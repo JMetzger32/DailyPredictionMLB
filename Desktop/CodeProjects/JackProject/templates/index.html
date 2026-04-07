@@ -162,6 +162,9 @@
         <!-- Odds row — always shown; "No Odds Available" when API has no data -->
         <div class="odds-row d-flex justify-content-between align-items-center px-3 pb-2"></div>
 
+        <!-- Market vs model probability (shown when odds available) -->
+        <div class="market-model-row d-none px-3 pb-2 text-center text-muted" style="font-size:0.72rem;"></div>
+
         <!-- Result banner (shown for past dates when results are available) -->
         <div class="result-banner d-none px-3 pb-3 small fw-semibold"></div>
 
@@ -350,6 +353,18 @@
         <span class="odds-tag">${homeOddsStr}</span>`;
     } else {
       oddsRow.innerHTML = `<span class="text-muted w-100 text-center" style="font-size:0.72rem;">No Odds Available</span>`;
+    }
+
+    // Market vs model probability row
+    const marketRow = q(".market-model-row");
+    if (game.away_implied != null && game.home_implied != null) {
+      const modelPct  = homeWin ? Math.round((game.home_win_prob || 0.5) * 100) : Math.round((game.away_win_prob || 0.5) * 100);
+      const marketPct = homeWin ? Math.round(game.home_implied * 100) : Math.round(game.away_implied * 100);
+      const edge      = modelPct - marketPct;
+      const edgeStr   = edge >= 0 ? `+${edge}pp` : `${edge}pp`;
+      const edgeCls   = edge > 0 ? "text-success" : edge < 0 ? "text-danger" : "";
+      marketRow.innerHTML = `Model: <strong>${modelPct}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPct}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
+      marketRow.classList.remove("d-none");
     }
 
     // Result banner for past dates (when actual results are in the log)

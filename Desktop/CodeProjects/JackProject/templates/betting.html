@@ -120,6 +120,7 @@
                 <th>Pick</th>
                 <th class="text-center">Odds</th>
                 <th class="text-center">Edge</th>
+                <th class="text-center" title="Expected value per $10 bet based on model probability">EV</th>
                 <th class="text-center">Result</th>
                 <th class="text-end">P/L</th>
               </tr>
@@ -413,12 +414,15 @@
           tr.style.cursor = "pointer";
           if (b.correct === true)  tr.classList.add("table-success");
           else if (b.correct === false) tr.classList.add("table-danger");
+          const evStr  = b.ev != null ? fmtPL(b.ev) : "—";
+          const evCls  = b.ev != null ? plColor(b.ev) : "text-muted";
           tr.innerHTML = `
             <td class="text-nowrap text-muted small">${b.date}</td>
             <td class="small">${b.away_team} @ ${b.home_team}</td>
             <td class="fw-semibold small">${b.pick || "—"}</td>
             <td class="text-center small">${fmtOdds(b.ml)}</td>
             <td class="text-center small">${fmtEdge(b.edge)}</td>
+            <td class="text-center small fw-semibold ${evCls}">${evStr}</td>
             <td class="text-center">${b.correct === true ? "✅" : b.correct === false ? "❌" : "⏳"}</td>
             <td class="text-end fw-semibold small ${plColor(b.pl)}">${fmtPL(b.pl)}</td>`;
           tr.addEventListener("click", () => openBetModal(b));

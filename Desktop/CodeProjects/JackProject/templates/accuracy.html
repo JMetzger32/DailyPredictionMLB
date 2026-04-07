@@ -6,6 +6,7 @@
   <title>Season Record — DailyPredictionMLB</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -109,6 +110,18 @@
         </thead>
         <tbody id="st-tbody"></tbody>
       </table>
+    </div>
+
+    <!-- ── Calibration Chart ─────────────────────────────────────── -->
+    <div id="calibration-card" class="card border-0 shadow-sm mt-4 d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-1">Model Calibration</h6>
+        <p class="text-muted small mb-3">
+          How well do predicted probabilities match actual win rates?
+          The dashed line shows perfect calibration. Points close to the line mean the model's confidence is accurate.
+        </p>
+        <canvas id="calibration-chart" height="80"></canvas>
+      </div>
     </div>
 
   </div>
@@ -224,6 +237,74 @@
       } else if (st.overall.games > 0) {
         showTab("st");
       }
+
+      // Calibration chart
+      try {
+        const calRes  = await fetch("/api/calibration");
+        const calData = await calRes.json();
+        const filled  = calData.filter(b => b.actual !== null);
+        if (filled.length >= 3) {
+          document.getElementById("calibration-card").classList.remove("d-none");
+          const labels   = calData.map(b => b.label);
+          const predicted = calData.map(b => b.actual !== null ? b.predicted * 100 : null);
+          const actual    = calData.map(b => b.actual !== null ? b.actual * 100    : null);
+          const counts    = calData.map(b => b.count);
+          const perfectX  = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+          new Chart(document.getElementById("calibration-chart"), {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  type: "bar",
+                  label: "Actual Win Rate",
+                  data: actual,
+                  backgroundColor: actual.map(v =>
+                    v === null ? "transparent" :
+                    v >= 60 ? "rgba(25,135,84,0.7)" :
+                    v >= 45 ? "rgba(255,193,7,0.7)" : "rgba(220,53,69,0.7)"
+                  ),
+                  borderRadius: 3,
+                },
+                {
+                  type: "line",
+                  label: "Perfect Calibration",
+                  data: calData.map((_, i) => (i * 10 + 5)),
+                  borderColor: "rgba(108,117,125,0.6)",
+                  borderDash: [6, 4],
+                  borderWidth: 2,
+                  pointRadius: 0,
+                  fill: false,
+                },
+              ]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { position: "top" },
+                tooltip: {
+                  callbacks: {
+                    label: ctx => {
+                      if (ctx.datasetIndex === 1) return `Perfect: ${ctx.parsed.y.toFixed(1)}%`;
+                      const b = calData[ctx.dataIndex];
+                      if (b.actual === null) return "No data";
+                      return `Actual: ${(b.actual * 100).toFixed(1)}%  (${b.count} games)`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  min: 0, max: 100,
+                  ticks: { callback: v => v + "%" }
+                },
+                x: { title: { display: true, text: "Predicted Probability Bucket" } }
+              }
+            }
+          });
+        }
+      } catch (_) {}
 
     } catch (e) {
       document.getElementById("loading").classList.add("d-none");

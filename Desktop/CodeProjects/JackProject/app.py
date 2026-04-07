@@ -769,6 +769,11 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"})
+
+
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -1264,17 +1269,26 @@ def betting_stats():
     for b in reversed(value_bets[-20:]):
         pl = _pl_for_bet(b)
         pick_is_home = b["predicted_winner"] == "Home"
+        ml   = b.get("predicted_team_ml")
+        hwp  = b.get("home_win_prob")
+        win_p = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
+        if ml is not None and win_p is not None:
+            profit = 10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml))
+            ev = round(win_p * profit - (1 - win_p) * 10, 2)
+        else:
+            ev = None
         recent_value_bets.append({
             "game_pk":        b.get("game_pk"),
             "date":           b["date"],
             "away_team":      b.get("away_team_name", b.get("away_team")),
             "home_team":      b.get("home_team_name", b.get("home_team")),
             "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
-            "ml":             b.get("predicted_team_ml"),
+            "ml":             ml,
             "edge":           b.get("model_edge"),
+            "ev":             ev,
             "correct":        b["correct"],
             "pl":             pl,
-            "home_win_prob":  b.get("home_win_prob"),
+            "home_win_prob":  hwp,
             "away_win_prob":  b.get("away_win_prob"),
             "predicted_winner": b.get("predicted_winner"),
             "away_score":     b.get("away_score"),
@@ -1324,6 +1338,38 @@ def betting_stats():
         "tracking_start":  tracking_start,
         "last_updated":    datetime.now().isoformat(),
     })
+
+
+@app.route("/api/calibration")
+def calibration():
+    """Bucket resolved RS predictions by model probability into 10% bins; return actual win rate per bin."""
+    log = _load_log()
+    entries = [
+        e for day in log.values() for e in day
+        if e.get("game_type") != "S"
+        and e.get("correct") is not None
+        and e.get("home_win_prob") is not None
+    ]
+    bins = [{"range": f"{i*10}–{i*10+10}%", "mid": (i * 10 + 5) / 100, "wins": 0, "total": 0}
+            for i in range(10)]
+    for e in entries:
+        prob = e["home_win_prob"]
+        if e.get("predicted_winner") == "Away":
+            prob = 1 - prob
+        idx = min(int(prob * 10), 9)
+        bins[idx]["total"] += 1
+        if e["correct"]:
+            bins[idx]["wins"] += 1
+    result = [
+        {
+            "label":     b["range"],
+            "predicted": b["mid"],
+            "actual":    round(b["wins"] / b["total"], 3) if b["total"] else None,
+            "count":     b["total"],
+        }
+        for b in bins
+    ]
+    return jsonify(result)
 
 
 @app.route("/api/trigger-daily")

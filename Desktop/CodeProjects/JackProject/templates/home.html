@@ -42,6 +42,25 @@
       Predictions use a logistic regression model trained on historical MLB game data.
     </p>
 
+    <div id="stats-bar" class="mt-2 text-white-50 small d-none">
+      <span id="stat-accuracy"></span> accuracy on <span id="stat-games"></span> regular season games this season
+    </div>
+
+  <script>
+    (async () => {
+      try {
+        const data = await fetch("/api/accuracy").then(r => r.json());
+        const overall = data.regular_season?.overall;
+        if (overall && overall.games > 0) {
+          document.getElementById("stat-accuracy").textContent =
+            (overall.accuracy * 100).toFixed(1) + "%";
+          document.getElementById("stat-games").textContent = overall.games;
+          document.getElementById("stats-bar").classList.remove("d-none");
+        }
+      } catch {}
+    })();
+  </script>
+
   <script>
     document.getElementById("signup-form").addEventListener("submit", async e => {
       e.preventDefault();
