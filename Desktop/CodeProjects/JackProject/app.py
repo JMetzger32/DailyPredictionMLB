@@ -34,7 +34,7 @@ def _today_et():
 from flask import Flask, jsonify, render_template, request
 
 from MLBModel import predict_game, _default_sp_stats, _sp_era_tier
-from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, find_pitcher_by_name, RETRO_TO_FULL_NAME
+from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__)
 
@@ -317,6 +317,23 @@ def _resolve_unresolved_for_date(log, target_date):
     unresolved = [e for e in entries if e.get("correct") is None and e.get("actual_winner") is None]
     if not unresolved:
         return False
+
+    # Build set of game_pks already resolved on OTHER dates (UTC-date duplicates).
+    # If a game is already resolved elsewhere, remove the stale unresolved copy.
+    resolved_pks = {
+        e["game_pk"]
+        for d, day_entries in log.items() if d != date_str
+        for e in day_entries
+        if e.get("game_pk") and e.get("actual_winner") is not None
+    }
+    stale = [e for e in unresolved if e.get("game_pk") in resolved_pks]
+    if stale:
+        stale_pks = {e["game_pk"] for e in stale}
+        log[date_str] = [e for e in entries if e.get("game_pk") not in stale_pks]
+        if not log[date_str]:
+            del log[date_str]
+        return True  # log changed (stale entries removed)
+
     try:
         results = get_game_results(target_date)
     except Exception as e:
@@ -1190,9 +1207,24 @@ def accuracy():
             else:
                 regular.append(entry)
 
+    rs_stats = compute_stats(regular)
+    st_stats = compute_stats(spring)
+
+    # Overlay live MLB standings as authoritative actual_record for RS teams
+    try:
+        live_standings = get_team_standings()
+        for team in rs_stats["teams"]:
+            s = live_standings.get(team["team"])
+            if s:
+                team["actual_wins"]   = s["wins"]
+                team["actual_losses"] = s["losses"]
+                team["actual_record"] = f"{s['wins']}-{s['losses']}"
+    except Exception as e:
+        print(f"[app] get_team_standings failed: {e}")
+
     return jsonify({
-        "regular_season":  compute_stats(regular),
-        "spring_training": compute_stats(spring),
+        "regular_season":  rs_stats,
+        "spring_training": st_stats,
         "last_updated":    datetime.now().isoformat(),
     })
 

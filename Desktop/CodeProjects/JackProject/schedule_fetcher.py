@@ -305,10 +305,13 @@ def get_schedule_and_results(target_date=None):
                 except Exception:
                     game_time_et = game_time_utc
 
-            status   = game.get("status", {}).get("detailedState", "Scheduled")
-            away_rec = away_info.get("leagueRecord", {})
-            home_rec = home_info.get("leagueRecord", {})
-            pk       = game.get("gamePk")
+            status     = game.get("status", {}).get("detailedState", "Scheduled")
+            away_rec   = away_info.get("leagueRecord", {})
+            home_rec   = home_info.get("leagueRecord", {})
+            pk         = game.get("gamePk")
+            final      = status in ("Final", "Game Over", "Completed Early")
+            away_score = away_info.get("score")
+            home_score = home_info.get("score")
 
             games.append({
                 "game_pk":           pk,
@@ -328,9 +331,6 @@ def get_schedule_and_results(target_date=None):
                 "home_losses":       home_rec.get("losses", 0),
             })
 
-            final      = status in ("Final", "Game Over", "Completed Early")
-            away_score = away_info.get("score")
-            home_score = home_info.get("score")
             results[pk] = {"final": final, "away_score": away_score, "home_score": home_score}
 
     games.sort(key=lambda g: g.get("game_time_utc") or "")
@@ -367,6 +367,37 @@ def get_game_results(target_date):
             home_score = game.get("teams", {}).get("home", {}).get("score")
             results[pk] = {"final": final, "away_score": away_score, "home_score": home_score}
     return results
+
+
+def get_team_standings():
+    """
+    Fetch current MLB standings for all teams.
+    Returns dict: retro_code → {"wins": int, "losses": int, "win_pct": float}
+    """
+    try:
+        resp = requests.get(
+            "https://statsapi.mlb.com/api/v1/standings",
+            params={"leagueId": "103,104", "season": date.today().year, "standingsTypes": "regularSeason"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[schedule_fetcher] get_team_standings error: {e}")
+        return {}
+
+    standings = {}
+    for record in data.get("records", []):
+        for team_rec in record.get("teamRecords", []):
+            team_id = team_rec.get("team", {}).get("id")
+            retro   = MLB_TEAM_ID_TO_RETRO.get(team_id)
+            if retro:
+                standings[retro] = {
+                    "wins":    team_rec.get("wins",   0),
+                    "losses":  team_rec.get("losses", 0),
+                    "win_pct": float(team_rec.get("winningPercentage", "0") or "0"),
+                }
+    return standings
 
 
 def get_mlb_odds(api_key):
