@@ -176,9 +176,15 @@ def _resolve_picks_for_date(target_date):
 def _build_prediction_entry(game, result, odds_data=None):
     """Build a log entry dict from a schedule game + predict_game result."""
     odds_data = odds_data or {}
+    # Use ET date so late-night games (9 PM ET = next UTC day) log correctly
+    _utc = game.get("game_time_utc", "")
+    try:
+        _game_date = datetime.fromisoformat(_utc.replace("Z", "+00:00")).astimezone(_ET).date().isoformat()
+    except Exception:
+        _game_date = _utc[:10]
     return {
         "game_pk":           game.get("game_pk"),
-        "date":              game.get("game_time_utc", "")[:10],
+        "date":              _game_date,
         "game_type":         game.get("game_type", "R"),
         "away_team":         game.get("away_team"),
         "away_team_name":    game.get("away_team_name"),
@@ -1257,15 +1263,22 @@ def betting_stats():
     recent_value_bets = []
     for b in reversed(value_bets[-20:]):
         pl = _pl_for_bet(b)
+        pick_is_home = b["predicted_winner"] == "Home"
         recent_value_bets.append({
-            "date":       b["date"],
-            "away_team":  b.get("away_team_name", b.get("away_team")),
-            "home_team":  b.get("home_team_name", b.get("home_team")),
-            "pick":       b.get("home_team_name") if b["predicted_winner"] == "Home" else b.get("away_team_name"),
-            "ml":         b.get("predicted_team_ml"),
-            "edge":       b.get("model_edge"),
-            "correct":    b["correct"],
-            "pl":         pl,
+            "game_pk":        b.get("game_pk"),
+            "date":           b["date"],
+            "away_team":      b.get("away_team_name", b.get("away_team")),
+            "home_team":      b.get("home_team_name", b.get("home_team")),
+            "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
+            "ml":             b.get("predicted_team_ml"),
+            "edge":           b.get("model_edge"),
+            "correct":        b["correct"],
+            "pl":             pl,
+            "home_win_prob":  b.get("home_win_prob"),
+            "away_win_prob":  b.get("away_win_prob"),
+            "predicted_winner": b.get("predicted_winner"),
+            "away_score":     b.get("away_score"),
+            "home_score":     b.get("home_score"),
         })
 
     # Tracking start date (first entry with odds data, RS only)
@@ -1273,12 +1286,41 @@ def betting_stats():
                     if e.get("bet_rating") is not None and e.get("game_type") != "S"]
     tracking_start = min((e["date"] for e in odds_entries), default=None)
 
+    # Team-by-team stats for value bets
+    team_map = {}  # team_name → {bets, correct, pl_values}
+    for b in value_bets:
+        pick_is_home = b["predicted_winner"] == "Home"
+        team = b.get("home_team_name") if pick_is_home else b.get("away_team_name")
+        if not team:
+            continue
+        pl = _pl_for_bet(b)
+        if pl is None:
+            continue
+        if team not in team_map:
+            team_map[team] = {"bets": 0, "correct": 0, "net_pl": 0.0}
+        team_map[team]["bets"]    += 1
+        team_map[team]["correct"] += int(b["correct"])
+        team_map[team]["net_pl"]  = round(team_map[team]["net_pl"] + pl, 2)
+
+    team_stats = sorted([
+        {
+            "team":     team,
+            "bets":     v["bets"],
+            "correct":  v["correct"],
+            "losses":   v["bets"] - v["correct"],
+            "accuracy": round(v["correct"] / v["bets"], 3),
+            "net_pl":   v["net_pl"],
+        }
+        for team, v in team_map.items()
+    ], key=lambda x: x["net_pl"], reverse=True)
+
     return jsonify({
         "value_bets":      cat_stats(categories["good"]),
         "toss_ups":        cat_stats(categories["unsure"]),
         "no_value":        cat_stats(categories["bad"]),
         "cumulative_pl":   cumulative_pl,
         "recent_bets":     recent_value_bets,
+        "team_stats":      team_stats,
         "tracking_start":  tracking_start,
         "last_updated":    datetime.now().isoformat(),
     })

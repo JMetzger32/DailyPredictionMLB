@@ -435,6 +435,10 @@ def get_mlb_odds(api_key):
         away_ml = round(sum(away_prices) / len(away_prices))
         home_ml = round(sum(home_prices) / len(home_prices))
 
+        # Skip malformed odds — valid American lines must be ≤-100 or ≥+100
+        if abs(away_ml) < 100 or abs(home_ml) < 100:
+            continue
+
         away_raw = _american_to_raw(away_ml)
         home_raw = _american_to_raw(home_ml)
         total    = away_raw + home_raw  # >1 due to vig

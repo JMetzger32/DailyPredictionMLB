@@ -108,9 +108,9 @@
     </div>
 
     <!-- ── Recent Value Bets Table ─────────────────────────────── -->
-    <div id="recent-card" class="card border-0 shadow-sm d-none">
+    <div id="recent-card" class="card border-0 shadow-sm mb-4 d-none">
       <div class="card-body">
-        <h6 class="fw-semibold mb-3">Recent Value Bets</h6>
+        <h6 class="fw-semibold mb-3">Recent Value Bets <span class="text-muted small fw-normal">(click a row for game details)</span></h6>
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-dark">
@@ -130,6 +130,27 @@
       </div>
     </div>
 
+    <!-- ── Team-by-Team P/L ────────────────────────────────────── -->
+    <div id="team-card" class="card border-0 shadow-sm d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">Team P/L — $10/game on each Value Bet pick</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th class="ps-3">#</th>
+                <th>Team</th>
+                <th class="text-center">W-L</th>
+                <th class="text-center">Accuracy</th>
+                <th class="text-end pe-3">Net P/L</th>
+              </tr>
+            </thead>
+            <tbody id="team-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- No data state -->
     <div id="no-data" class="text-center py-5 d-none">
       <p class="text-muted fs-5">No betting data yet.</p>
@@ -140,6 +161,56 @@
 
   <div id="error-box" class="alert alert-danger d-none mt-3" role="alert"></div>
 
+</div>
+
+<!-- ── Game Detail Modal ──────────────────────────────────────────── -->
+<div class="modal fade" id="betModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold" id="modal-matchup">—</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Win probability bar -->
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span id="modal-away-name">Away</span>
+            <span id="modal-home-name">Home</span>
+          </div>
+          <div class="progress" style="height:20px;">
+            <div id="modal-away-bar" class="progress-bar bg-primary text-end pe-1" style="width:50%;font-size:0.75rem;"></div>
+            <div id="modal-home-bar" class="progress-bar bg-danger text-start ps-1" style="width:50%;font-size:0.75rem;"></div>
+          </div>
+        </div>
+        <!-- Bet details -->
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr>
+              <td class="text-muted">Pick</td>
+              <td class="fw-semibold" id="modal-pick">—</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Odds</td>
+              <td id="modal-odds">—</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Model Edge</td>
+              <td id="modal-edge">—</td>
+            </tr>
+            <tr id="modal-result-row" class="d-none">
+              <td class="text-muted">Result</td>
+              <td id="modal-result">—</td>
+            </tr>
+            <tr id="modal-pl-row" class="d-none">
+              <td class="text-muted">P/L</td>
+              <td id="modal-pl" class="fw-bold">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -174,6 +245,58 @@
   function plColor(pl) {
     if (pl === null) return "";
     return pl >= 0 ? "text-success" : "text-danger";
+  }
+
+  function accuracyColor(pct) {
+    if (pct >= 0.60) return "text-success";
+    if (pct >= 0.50) return "text-warning";
+    return "text-danger";
+  }
+
+  // ── Game detail modal ──────────────────────────────────────────
+  const _betModal = new bootstrap.Modal(document.getElementById("betModal"));
+
+  function openBetModal(b) {
+    const awayName = b.away_team || "Away";
+    const homeName = b.home_team || "Home";
+    document.getElementById("modal-matchup").textContent = `${awayName} @ ${homeName}`;
+    document.getElementById("modal-away-name").textContent = awayName;
+    document.getElementById("modal-home-name").textContent = homeName;
+
+    const awayProb = b.away_win_prob != null ? b.away_win_prob : 0.5;
+    const homeProb = b.home_win_prob != null ? b.home_win_prob : 0.5;
+    const awayPct  = (awayProb * 100).toFixed(1) + "%";
+    const homePct  = (homeProb * 100).toFixed(1) + "%";
+
+    const awayBar = document.getElementById("modal-away-bar");
+    const homeBar = document.getElementById("modal-home-bar");
+    awayBar.style.width = awayPct;
+    awayBar.textContent = awayPct;
+    homeBar.style.width = homePct;
+    homeBar.textContent = homePct;
+
+    document.getElementById("modal-pick").textContent  = b.pick || "—";
+    document.getElementById("modal-odds").textContent  = fmtOdds(b.ml);
+    document.getElementById("modal-edge").textContent  = fmtEdge(b.edge);
+
+    const resultRow = document.getElementById("modal-result-row");
+    const plRow     = document.getElementById("modal-pl-row");
+    if (b.correct !== null && b.correct !== undefined) {
+      resultRow.classList.remove("d-none");
+      plRow.classList.remove("d-none");
+      const scoreStr = (b.away_score != null && b.home_score != null)
+        ? ` (${b.away_score}-${b.home_score})`
+        : "";
+      document.getElementById("modal-result").textContent = (b.correct ? "✅ Win" : "❌ Loss") + scoreStr;
+      const plEl = document.getElementById("modal-pl");
+      plEl.textContent  = fmtPL(b.pl);
+      plEl.className    = "fw-bold " + plColor(b.pl);
+    } else {
+      resultRow.classList.add("d-none");
+      plRow.classList.add("d-none");
+    }
+
+    _betModal.show();
   }
 
   async function loadBetting() {
@@ -287,16 +410,37 @@
         const tbody = document.getElementById("recent-tbody");
         recent.forEach(b => {
           const tr = document.createElement("tr");
-          if (b.correct) tr.classList.add("table-success");
-          else           tr.classList.add("table-danger");
+          tr.style.cursor = "pointer";
+          if (b.correct === true)  tr.classList.add("table-success");
+          else if (b.correct === false) tr.classList.add("table-danger");
           tr.innerHTML = `
             <td class="text-nowrap text-muted small">${b.date}</td>
             <td class="small">${b.away_team} @ ${b.home_team}</td>
             <td class="fw-semibold small">${b.pick || "—"}</td>
             <td class="text-center small">${fmtOdds(b.ml)}</td>
             <td class="text-center small">${fmtEdge(b.edge)}</td>
-            <td class="text-center">${b.correct ? "✅" : "❌"}</td>
+            <td class="text-center">${b.correct === true ? "✅" : b.correct === false ? "❌" : "⏳"}</td>
             <td class="text-end fw-semibold small ${plColor(b.pl)}">${fmtPL(b.pl)}</td>`;
+          tr.addEventListener("click", () => openBetModal(b));
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Team-by-team stats
+      const teams = data.team_stats || [];
+      if (teams.length > 0) {
+        document.getElementById("team-card").classList.remove("d-none");
+        const tbody = document.getElementById("team-tbody");
+        teams.forEach((t, i) => {
+          const plCls = t.net_pl >= 0 ? "text-success" : "text-danger";
+          const accCls = accuracyColor(t.accuracy);
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="ps-3 text-muted">${i + 1}</td>
+            <td class="fw-semibold">${t.team}</td>
+            <td class="text-center">${t.correct}-${t.losses}</td>
+            <td class="text-center ${accCls}">${(t.accuracy * 100).toFixed(1)}%</td>
+            <td class="text-end pe-3 fw-bold ${plCls}">${fmtPL(t.net_pl)}</td>`;
           tbody.appendChild(tr);
         });
       }
