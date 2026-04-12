@@ -288,6 +288,14 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
 
         g = max(games_played, 1)
 
+        # Smooth blend: same logic as compute_team_baseline — gradually trust
+        # current-year stats as games accumulate (fully live at 30+ games).
+        alpha = min(games_played / 30.0, 1.0)
+
+        def _b(live_val, key):
+            prior = fallback.get(key, FALLBACK_TEAM.get(key, 0))
+            return round(live_val * alpha + prior * (1 - alpha), 4)
+
         # Win% and runs allowed — use standings API
         win_pct          = fallback.get("win_pct",               0.500)
         pyth             = fallback.get("pyth_win_pct",          0.500)
@@ -316,26 +324,26 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
                 pass
 
         return {
-            "pyth_win_pct":         pyth,
-            "win_pct":              win_pct,
-            "runs_per_game":         round(runs / g, 3),
-            "runs_allowed_per_game": runs_allowed_pg,
-            "hits_per_game":        round(hits / g, 3),
-            "opp_hits_per_game":    round(opp_hits / g, 3),
-            "walks_per_game":       round(bb / g, 3),
-            "opp_walks_per_game":   round(opp_bb / g, 3),
-            "errors_per_game":      fallback.get("errors_per_game", 0.6),
-            "hr_per_game":          round(hr / g, 3),
-            "opp_hr_per_game":      round(opp_hr / g, 3),
-            "recent_win_pct":       recent_wp,
-            "recent_hr_per_game":   round(hr / g, 3),
-            "bullpen_used":         fallback.get("bullpen_used", 4.0),
-            "bullpen_era":          round(bullpen_era, 3),
-            "obp":                  obp,
-            "slg":                  slg,
-            "iso":                  iso,
-            "recent_runs_per_game": round(runs / g, 3),
-            "opp_k_per_game":       round(opp_k / g, 3),
+            "pyth_win_pct":          _b(pyth,                    "pyth_win_pct"),
+            "win_pct":               _b(win_pct,                 "win_pct"),
+            "runs_per_game":         _b(round(runs / g, 3),      "runs_per_game"),
+            "runs_allowed_per_game": _b(runs_allowed_pg,         "runs_allowed_per_game"),
+            "hits_per_game":         _b(round(hits / g, 3),      "hits_per_game"),
+            "opp_hits_per_game":     _b(round(opp_hits / g, 3),  "opp_hits_per_game"),
+            "walks_per_game":        _b(round(bb / g, 3),        "walks_per_game"),
+            "opp_walks_per_game":    _b(round(opp_bb / g, 3),    "opp_walks_per_game"),
+            "errors_per_game":       fallback.get("errors_per_game", 0.6),
+            "hr_per_game":           _b(round(hr / g, 3),        "hr_per_game"),
+            "opp_hr_per_game":       _b(round(opp_hr / g, 3),    "opp_hr_per_game"),
+            "recent_win_pct":        _b(recent_wp,               "recent_win_pct"),
+            "recent_hr_per_game":    _b(round(hr / g, 3),        "recent_hr_per_game"),
+            "bullpen_used":          fallback.get("bullpen_used", 4.0),
+            "bullpen_era":           round(bullpen_era, 3),
+            "obp":                   _b(obp,                     "obp"),
+            "slg":                   _b(slg,                     "slg"),
+            "iso":                   _b(iso,                     "iso"),
+            "recent_runs_per_game":  _b(round(runs / g, 3),      "recent_runs_per_game"),
+            "opp_k_per_game":        _b(round(opp_k / g, 3),     "opp_k_per_game"),
         }
     except Exception as e:
         print(f"[WARN] MLB API stats failed for {retro_code}: {e}")
@@ -358,21 +366,26 @@ def compute_team_baseline(games, old_baseline=None):
     games = games.sort_values("date").reset_index(drop=True)
     n = len(games)
 
-    # Graduated thresholds: use live stats only once enough RS games played
-    use_batting_live = n >= BATTING_LIVE_THRESHOLD   # hitting, pitching defense stats
-    use_record_live  = n >= RECORD_LIVE_THRESHOLD    # win%, pythagorean, recent win%
+    # Smooth blend: gradually transition from 100% prior-year → 100% live as games accumulate.
+    # At n=0: alpha=0 (all prior-year). At n=30+: alpha=1.0 (all current-year).
+    # This keeps features in-distribution vs. training data, which was full-season rolling windows.
+    blend_alpha = min(n / 30.0, 1.0)
 
     def fb(key):
         """Return fallback value for a stat key."""
         return fallback.get(key, FALLBACK_TEAM.get(key, 0))
 
-    def roll_last(col, window, min_periods):
+    def roll_last(col, window, min_periods=1):
         """Return the last value in a rolling mean series, or season mean."""
         s = games[col].rolling(window, min_periods=min_periods).mean()
         val = s.iloc[-1]
         if pd.isna(val):
             val = games[col].mean()
         return float(val) if not pd.isna(val) else fb(col)
+
+    def blend(live_val, key):
+        """Weighted blend of live estimate and prior-year fallback based on sample size."""
+        return round(live_val * blend_alpha + fb(key) * (1 - blend_alpha), 4)
 
     # Season-to-date Pythagorean and win% (only used if use_record_live)
     cum_rs = games["runs_scored"].fillna(0).cumsum()
@@ -396,32 +409,27 @@ def compute_team_baseline(games, old_baseline=None):
     games["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
     games["iso_game"] = (d + 2 * t + 3 * hr) / ab
 
-    errors_ok  = int(games["errors"].notna().sum()) >= 3
-    bullpen_ok = int(games["pitchers_used"].notna().sum()) >= 1
-    ok_k       = int(games.get("opp_strikeouts", pd.Series()).notna().sum()) >= 3
-
     return {
-        # Win/record stats — live at 12+ games, else prior-year fallback
-        "pyth_win_pct":          round(pyth, 4)    if use_record_live  else fb("pyth_win_pct"),
-        "win_pct":               round(win_pct, 4) if use_record_live  else fb("win_pct"),
-        "recent_win_pct":        roll_last("win", 10, 3)        if use_record_live  else fb("recent_win_pct"),
-        "recent_hr_per_game":    roll_last("homeruns", 10, 3)   if use_record_live  else fb("recent_hr_per_game"),
-        # Batting/pitching stats — live at 5+ games, else prior-year fallback
-        "hits_per_game":         roll_last("hits",           30, 5) if use_batting_live else fb("hits_per_game"),
-        "opp_hits_per_game":     roll_last("opp_hits",       30, 5) if use_batting_live else fb("opp_hits_per_game"),
-        "walks_per_game":        roll_last("walks",          30, 5) if use_batting_live else fb("walks_per_game"),
-        "opp_walks_per_game":    roll_last("opp_walks",      30, 5) if use_batting_live else fb("opp_walks_per_game"),
-        "errors_per_game":       roll_last("errors",         30, 5) if (use_batting_live and errors_ok)  else fb("errors_per_game"),
-        "hr_per_game":           roll_last("homeruns",       30, 5) if use_batting_live else fb("hr_per_game"),
-        "opp_hr_per_game":       roll_last("opp_homeruns",   30, 5) if use_batting_live else fb("opp_hr_per_game"),
-        "bullpen_used":          roll_last("pitchers_used",   3, 1) if (use_batting_live and bullpen_ok) else fb("bullpen_used"),
-        "obp":                   roll_last("obp_game",       30, 5) if use_batting_live else fb("obp"),
-        "slg":                   roll_last("slg_game",       30, 5) if use_batting_live else fb("slg"),
-        "iso":                   roll_last("iso_game",       30, 5) if use_batting_live else fb("iso"),
-        "runs_per_game":          roll_last("runs_scored",    30, 5) if use_batting_live else fb("runs_per_game"),
-        "runs_allowed_per_game":  roll_last("runs_allowed",  30, 5) if use_batting_live else fb("runs_allowed_per_game"),
-        "recent_runs_per_game":  roll_last("runs_scored",    10, 3) if use_batting_live else fb("recent_runs_per_game"),
-        "opp_k_per_game":        roll_last("opp_strikeouts", 30, 5) if (use_batting_live and ok_k)       else fb("opp_k_per_game"),
+        # All stats blended: at 0 games = 100% prior-year, at 30+ games = 100% live
+        "pyth_win_pct":          blend(round(pyth, 4),    "pyth_win_pct"),
+        "win_pct":               blend(round(win_pct, 4), "win_pct"),
+        "recent_win_pct":        blend(roll_last("win",       10), "recent_win_pct"),
+        "recent_hr_per_game":    blend(roll_last("homeruns",  10), "recent_hr_per_game"),
+        "hits_per_game":         blend(roll_last("hits",      30), "hits_per_game"),
+        "opp_hits_per_game":     blend(roll_last("opp_hits",  30), "opp_hits_per_game"),
+        "walks_per_game":        blend(roll_last("walks",     30), "walks_per_game"),
+        "opp_walks_per_game":    blend(roll_last("opp_walks", 30), "opp_walks_per_game"),
+        "errors_per_game":       blend(roll_last("errors",    30), "errors_per_game"),
+        "hr_per_game":           blend(roll_last("homeruns",  30), "hr_per_game"),
+        "opp_hr_per_game":       blend(roll_last("opp_homeruns",   30), "opp_hr_per_game"),
+        "bullpen_used":          roll_last("pitchers_used", 3),   # always use recency as-is
+        "obp":                   blend(roll_last("obp_game", 30), "obp"),
+        "slg":                   blend(roll_last("slg_game", 30), "slg"),
+        "iso":                   blend(roll_last("iso_game", 30), "iso"),
+        "runs_per_game":         blend(roll_last("runs_scored",  30), "runs_per_game"),
+        "runs_allowed_per_game": blend(roll_last("runs_allowed", 30), "runs_allowed_per_game"),
+        "recent_runs_per_game":  blend(roll_last("runs_scored",  10), "recent_runs_per_game"),
+        "opp_k_per_game":        blend(roll_last("opp_strikeouts", 30), "opp_k_per_game"),
     }
 
 
