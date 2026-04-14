@@ -621,6 +621,7 @@ def resolve_todays_completed_games():
         if _resolve_unresolved_for_date(log, _today_et()):
             _save_log(log)
             print(f"[app] Interval job: resolved completed games for {_today_et().isoformat()}")
+            _push_log_to_github()
         _resolve_picks_for_date(_today_et())
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
