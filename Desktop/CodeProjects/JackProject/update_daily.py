@@ -616,19 +616,35 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
         wins   = int(_f(stat.get("wins"),   0))
         losses = int(_f(stat.get("losses"), 0))
 
+        # Compute raw 2026 FIP for display (not blended; formula: (13*HR + 3*(BB+HBP) - 2*SO) / IP + 3.10)
+        hr_raw  = _f(stat.get("homeRuns"),  0)
+        bb_raw  = _f(stat.get("baseOnBalls"), 0)
+        hbp_raw = _f(stat.get("hitByPitch"),  0)
+        so_raw  = _f(stat.get("strikeOuts"),  0)
+        if ip > 1:
+            fip_raw = round((13 * hr_raw + 3 * (bb_raw + hbp_raw) - 2 * so_raw) / ip + 3.10, 2)
+        else:
+            fip_raw = None
+
         baselines[key] = {
-            "name":   full_name,
-            "era":    era,
-            "whip":   whip,
-            "xfip":   xfip,
-            "siera":  siera,
-            "so9":    so9,
-            "bb9":    bb9,
-            "hr9":    hr9,
-            "ip_gs":  ip_gs,
-            "k_bb":   k_bb,
-            "wins":   wins,
-            "losses": losses,
+            "name":      full_name,
+            "era":       era,
+            "whip":      whip,
+            "xfip":      xfip,
+            "siera":     siera,
+            "so9":       so9,
+            "bb9":       bb9,
+            "hr9":       hr9,
+            "ip_gs":     ip_gs,
+            "k_bb":      k_bb,
+            "wins":      wins,
+            "losses":    losses,
+            # Raw 2026 values for display on the card (unblended, honest this-season stats)
+            "era_raw":   round(era_live, 2),
+            "whip_raw":  round(whip_live, 3),
+            "fip_raw":   fip_raw,
+            "gs":        int(gs),
+            "is_blended": int(gs) < 10,
         }
 
     print(f"  MLB API pitcher baselines: {len(baselines)} starters (GS >= {min_gs})")

@@ -88,8 +88,8 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="ERA: earned runs per 9 innings · xFIP: park-neutral FIP using expected HR rate · SIERA: adds batted-ball quality">
-                ERA / xFIP / SIERA
+                  title="ERA: 2026 season earned runs per 9 innings · WHIP: walks + hits per inning · FIP: fielding-independent pitching (HR/BB/K only)">
+                ERA / WHIP / FIP
               </td>
               <td class="text-center small away-sp-line"></td>
               <td class="text-center small home-sp-line"></td>
@@ -293,8 +293,37 @@
       ? ` (${game.home_sp_wins}-${game.home_sp_losses})` : "";
     q(".away-sp").textContent = shortName(game.away_sp_name) + awaySpWL;
     q(".home-sp").textContent = shortName(game.home_sp_name) + homeSpWL;
-    q(".away-sp-line").textContent = `${fmt2(game.away_sp_era)} / ${fmt2(game.away_sp_xfip)} / ${fmt2(game.away_sp_siera)}`;
-    q(".home-sp-line").textContent = `${fmt2(game.home_sp_era)} / ${fmt2(game.home_sp_xfip)} / ${fmt2(game.home_sp_siera)}`;
+
+    // ERA / WHIP / FIP display — show raw 2026 stats with blend indicator
+    function buildSpLine(el, era_raw, whip_raw, fip_raw, gs, is_blended, sp_name) {
+      const eraStr  = era_raw  != null ? fmt2(era_raw)  : "—";
+      const whipStr = whip_raw != null ? fmt2(whip_raw) : "—";
+      const fipStr  = fip_raw  != null ? fmt2(fip_raw)  : "—";
+      el.innerHTML = "";
+
+      if (is_blended && era_raw != null) {
+        // Show ERA with a clickable star that explains the blending
+        const starEl = document.createElement("span");
+        starEl.className = "sp-blend-star";
+        starEl.style.cssText = "color:#f39c12;cursor:pointer;font-size:0.85em;vertical-align:super;margin-left:1px;";
+        starEl.title = `ERA is smoothed with prior-year stats (only ${gs} start${gs === 1 ? "" : "s"} in 2026). Fully live at 20 GS.`;
+        starEl.textContent = "★";
+        starEl.setAttribute("data-sp-name", sp_name || "");
+        starEl.setAttribute("data-gs", gs || 0);
+        el.appendChild(document.createTextNode(eraStr));
+        el.appendChild(starEl);
+        el.appendChild(document.createTextNode(` / ${whipStr} / ${fipStr}`));
+      } else {
+        el.textContent = `${eraStr} / ${whipStr} / ${fipStr}`;
+      }
+    }
+
+    buildSpLine(q(".away-sp-line"),
+      game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw,
+      game.away_sp_gs, game.away_sp_is_blended, game.away_sp_name);
+    buildSpLine(q(".home-sp-line"),
+      game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw,
+      game.home_sp_gs, game.home_sp_is_blended, game.home_sp_name);
 
     // Team stats — highlight better side
     function setCells(awayEl, homeEl, awayVal, homeVal, lowerIsBetter) {
@@ -387,9 +416,46 @@
     // Click anywhere on card → open detail modal
     q(".card").style.cursor = "pointer";
     q(".card").addEventListener("click", (e) => {
-      // Don't trigger if user clicked a button inside the card
+      // Don't trigger if user clicked a button, link, or blend star
       if (e.target.closest("button, a")) return;
+      if (e.target.classList.contains("sp-blend-star")) return;
       openGameModal(game);
+    });
+
+    // Blend-star click → show explanation popover
+    q(".card").addEventListener("click", (e) => {
+      const star = e.target.closest(".sp-blend-star");
+      if (!star) return;
+      e.stopPropagation();
+      const spName = star.getAttribute("data-sp-name") || "This pitcher";
+      const gs     = parseInt(star.getAttribute("data-gs"), 10) || 0;
+      const pct    = Math.min(Math.round(gs / 20 * 100), 100);
+      // Remove any existing popover
+      const existing = document.getElementById("blend-popover");
+      if (existing) existing.remove();
+      const pop = document.createElement("div");
+      pop.id = "blend-popover";
+      pop.className = "card shadow border-warning p-2";
+      pop.style.cssText = "position:absolute;z-index:9999;width:240px;font-size:0.8rem;background:#fffbf0;";
+      pop.innerHTML = `
+        <div class="fw-bold mb-1" style="color:#e67e22;">★ Early-Season Smoothing</div>
+        <div class="mb-1"><strong>${spName.split(",")[0]}</strong> has <strong>${gs}</strong> start${gs === 1 ? "" : "s"} in 2026.</div>
+        <div class="mb-1">ERA shown is raw 2026. For predictions, the model blends ${pct}% current-year stats + ${100 - pct}% prior-year baseline to reduce small-sample noise.</div>
+        <div class="text-muted">Smoothing turns off at 20 starts.</div>
+        <button class="btn btn-sm btn-outline-secondary mt-1 w-100">Close</button>
+      `;
+      // Position near the star
+      const rect = star.getBoundingClientRect();
+      pop.style.top  = (rect.bottom + window.scrollY + 4) + "px";
+      pop.style.left = Math.max(4, rect.left + window.scrollX - 60) + "px";
+      document.body.appendChild(pop);
+      pop.querySelector("button").addEventListener("click", () => pop.remove());
+      // Auto-dismiss on outside click
+      setTimeout(() => {
+        document.addEventListener("click", function dismiss(ev) {
+          if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener("click", dismiss); }
+        });
+      }, 100);
     });
 
     // Initialize Bootstrap tooltips (must happen after node is appended — deferred below)
@@ -572,16 +638,27 @@
     }).join("");
 
     // Season stats snapshot
+    function spModalLine(sp_name, era_raw, whip_raw, fip_raw, gs, is_blended) {
+      const era  = era_raw  != null ? era_raw  : "—";
+      const whip = whip_raw != null ? whip_raw : "—";
+      const fip  = fip_raw  != null ? fip_raw  : "—";
+      let line = `SP: ${sp_name} &mdash; ERA ${era} / WHIP ${whip} / FIP ${fip}`;
+      if (is_blended && gs != null) {
+        const pct = Math.min(Math.round(gs / 20 * 100), 100);
+        line += `<br><span style="color:#e67e22;font-size:0.78rem;">★ ERA shown is raw 2026 (${gs} GS). Model predictions use ${pct}% current + ${100-pct}% prior-year blend.</span>`;
+      }
+      return line;
+    }
     document.getElementById("modal-away-stats").innerHTML = `
       <strong>${awayName}</strong><br>
       OBP: ${game.away_obp} · SLG: ${game.away_slg}<br>
       Runs/G: ${game.away_runs_pg} · Bullpen ERA: ${game.away_bp_era}<br>
-      SP: ${game.away_sp_name} (ERA ${game.away_sp_era} / xFIP ${game.away_sp_xfip})`;
+      ${spModalLine(game.away_sp_name, game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw, game.away_sp_gs, game.away_sp_is_blended)}`;
     document.getElementById("modal-home-stats").innerHTML = `
       <strong>${homeName}</strong><br>
       OBP: ${game.home_obp} · SLG: ${game.home_slg}<br>
       Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
-      SP: ${game.home_sp_name} (ERA ${game.home_sp_era} / xFIP ${game.home_sp_xfip})`;
+      ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended)}`;
 
     new bootstrap.Modal(document.getElementById("gameDetailModal")).show();
   }
