@@ -51,10 +51,13 @@ FEATURE_COLS = [
     # Bullpen
     "diff_roll3_bullpen_used",
     "diff_bullpen_era",
-    # Starting pitcher stats (ERA/SIERA/SO9/BB9/HR9 removed — collinear with xFIP)
-    "diff_sp_era_tier",           # non-linear ERA tiers: elite(<2.75)=3, good(2.75-3.5)=2, avg(3.5-4.5)=1, weak(>4.5)=0
-    "diff_sp_xfip",               # defense-independent ERA estimator
-    "diff_sp_whip",               # contact rate (complements xFIP; less collinear than WHIP+ERA)
+    # Starting pitcher stats — 5 features selected by EDA (2021-2025, 9,510 games)
+    # Ranked by GBM importance: ERA 25.3%, IP/GS 8.0%, WHIP 7.7%, K/BB 6.7%, xFIP 5.4%
+    "diff_sp_era",     # season ERA — strongest single signal; r=-0.186 vs home win
+    "diff_sp_ip_gs",   # innings per start — durability/quality; non-linear signal (low Pearson, high GBM)
+    "diff_sp_whip",    # WHIP — contact+walk rate, complements ERA
+    "diff_sp_k_bb",    # K/BB ratio — command signal, independent of ERA/WHIP
+    "diff_sp_xfip",    # xFIP — defense-independent ERA estimator; regresses HR luck
 ]
 
 # Park run factors per home ballpark (Retrosheet team code -> multi-year average, 1.0 = league avg)
@@ -270,30 +273,25 @@ def compute_rolling_team_features(tgl):
 # Section 4: Starting Pitcher Features (from Baseball Reference stats)
 # ===========================================================================
 def merge_sp_stats(tgl, pitcher_stats):
-    """Merge real pitcher season stats (ERA, WHIP, xFIP, SIERA, K/9, BB/9, HR/9) into tgl."""
-    # xFIP and SIERA columns may not exist yet (added by fetch_advanced_pitching.py)
+    """Merge real pitcher season stats (ERA, WHIP, xFIP, IP/GS, K/BB) into tgl."""
     has_xfip  = "xfip"  in pitcher_stats.columns
     has_siera = "siera" in pitcher_stats.columns
 
-    stat_cols = ["era", "whip", "so9", "bb9", "hr9"]
+    stat_cols = ["era", "whip", "so9", "bb9", "hr9", "innings_pitched", "games_started"]
     if has_xfip:  stat_cols.append("xfip")
     if has_siera: stat_cols.append("siera")
 
     # Build a lookup: (retro_pitcher_id, season) -> stats
-    # Some pitchers have multiple entries (traded mid-season), keep the one with more GS
     ps_deduped = pitcher_stats.sort_values("games_started", ascending=False).drop_duplicates(
         subset=["retro_pitcher_id", "season"], keep="first"
     )
     sp_lookup = ps_deduped.set_index(["retro_pitcher_id", "season"])[stat_cols].to_dict("index")
 
-    # League averages per season for fallback
     league_avg = pitcher_stats.groupby("season")[stat_cols].mean().to_dict("index")
-
-    # Overall averages for any season not in pitcher_stats
     overall_avg = pitcher_stats[stat_cols].mean().to_dict()
 
     sp_era = []; sp_whip = []; sp_so9 = []; sp_bb9 = []; sp_hr9 = []
-    sp_xfip = []; sp_siera = []
+    sp_xfip = []; sp_siera = []; sp_ip_gs = []; sp_k_bb = []
 
     for _, row in tgl.iterrows():
         pid = row["starting_pitcher_id"]
@@ -314,19 +312,31 @@ def merge_sp_stats(tgl, pitcher_stats):
         sp_so9.append(stats.get("so9", overall_avg["so9"]))
         sp_bb9.append(stats.get("bb9", overall_avg["bb9"]))
         sp_hr9.append(stats.get("hr9", overall_avg["hr9"]))
-        sp_xfip.append(stats.get("xfip", stats.get("era", overall_avg["era"])))   # fallback to ERA if xFIP missing
-        sp_siera.append(stats.get("siera", stats.get("era", overall_avg["era"]))) # fallback to ERA if SIERA missing
+        sp_xfip.append(stats.get("xfip", stats.get("era", overall_avg["era"])))
+        sp_siera.append(stats.get("siera", stats.get("era", overall_avg["era"])))
+
+        # IP/Start: innings per start (durability signal)
+        ip = stats.get("innings_pitched", overall_avg.get("innings_pitched", 0))
+        gs = stats.get("games_started",   overall_avg.get("games_started",   1))
+        sp_ip_gs.append(ip / gs if gs > 0 else overall_avg.get("innings_pitched", 0) / max(overall_avg.get("games_started", 1), 1))
+
+        # K/BB ratio: strikeouts-per-9 / walks-per-9 (command quality)
+        bb9 = stats.get("bb9", overall_avg["bb9"])
+        so9 = stats.get("so9", overall_avg["so9"])
+        sp_k_bb.append(so9 / bb9 if bb9 > 0.5 else so9 / 0.5)
 
     tgl["sp_era"]   = sp_era
     tgl["sp_whip"]  = sp_whip
     tgl["sp_xfip"]  = sp_xfip
     tgl["sp_siera"] = sp_siera
     tgl["sp_so9"]   = sp_so9
-    tgl["sp_bb9"] = sp_bb9
-    tgl["sp_hr9"] = sp_hr9
+    tgl["sp_bb9"]   = sp_bb9
+    tgl["sp_hr9"]   = sp_hr9
+    tgl["sp_ip_gs"] = sp_ip_gs
+    tgl["sp_k_bb"]  = sp_k_bb
 
-    # Fill any remaining NaN with league averages
-    for col in ["sp_era", "sp_whip", "sp_xfip", "sp_siera", "sp_so9", "sp_bb9", "sp_hr9"]:
+    for col in ["sp_era", "sp_whip", "sp_xfip", "sp_siera", "sp_so9",
+                "sp_bb9", "sp_hr9", "sp_ip_gs", "sp_k_bb"]:
         tgl[col] = pd.to_numeric(tgl[col], errors="coerce")
         tgl[col] = tgl[col].fillna(tgl[col].mean())
 
@@ -385,6 +395,8 @@ def assemble_features(df, tgl):
         "sp_so9":                "sp_so9",
         "sp_bb9":                "sp_bb9",
         "sp_hr9":                "sp_hr9",
+        "sp_ip_gs":              "sp_ip_gs",
+        "sp_k_bb":               "sp_k_bb",
     }
 
     tgl_cols = ["game_id", "is_home"] + list(feature_map.values())
@@ -407,14 +419,6 @@ def assemble_features(df, tgl):
 
     # Park factor is NOT differenced — it's a property of the home ballpark
     model_df["home_park_factor"] = model_df["home_team"].map(PARK_FACTORS).fillna(1.0)
-
-    # Non-linear ERA tier: elite=3 (ERA<2.75), good=2 (2.75-3.50), avg=1 (3.50-4.50), weak=0 (>4.50)
-    def _era_tier_vec(s):
-        s = s.fillna(4.0)
-        return np.where(s < 2.75, 3, np.where(s < 3.50, 2, np.where(s < 4.50, 1, 0)))
-    model_df["diff_sp_era_tier"] = (
-        _era_tier_vec(model_df["home_sp_era"]) - _era_tier_vec(model_df["vis_sp_era"])
-    )
 
     return model_df
 
@@ -671,25 +675,19 @@ def build_2025_baselines(df, tgl):
     for pid in tgl_2025["starting_pitcher_id"].unique():
         sp_data = tgl_2025[tgl_2025["starting_pitcher_id"] == pid].iloc[-1]
         sp_baselines[pid] = {
-            "name": sp_names.get(pid, pid),
-            "era":   float(sp_data.get("sp_era",   4.0)),
-            "whip":  float(sp_data.get("sp_whip",  1.3)),
-            "xfip":  float(sp_data.get("sp_xfip",  4.0)),
-            "siera": float(sp_data.get("sp_siera", 4.0)),
+            "name":  sp_names.get(pid, pid),
+            "era":   float(sp_data.get("sp_era",   4.20)),
+            "whip":  float(sp_data.get("sp_whip",  1.30)),
+            "xfip":  float(sp_data.get("sp_xfip",  4.20)),
+            "siera": float(sp_data.get("sp_siera", 4.20)),
             "so9":   float(sp_data.get("sp_so9",   8.0)),
             "bb9":   float(sp_data.get("sp_bb9",   3.0)),
             "hr9":   float(sp_data.get("sp_hr9",   1.2)),
+            "ip_gs": float(sp_data.get("sp_ip_gs", 5.8)),
+            "k_bb":  float(sp_data.get("sp_k_bb",  2.5)),
         }
 
     return team_baselines, sp_baselines
-
-
-def _sp_era_tier(era):
-    """Map a starter ERA to a discrete tier: elite=3, good=2, avg=1, weak=0."""
-    if era < 2.75: return 3
-    elif era < 3.50: return 2
-    elif era < 4.50: return 1
-    else: return 0
 
 
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
@@ -732,13 +730,15 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "diff_roll3_bullpen_used":     home_team_stats["bullpen_used"]           - away_team_stats["bullpen_used"],
         "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)  - away_team_stats.get("bullpen_era", 4.20),
         "diff_sp_era":                 home_sp_stats["era"]   - away_sp_stats["era"],
-        "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],   # kept in dict, removed from FEATURE_COLS
-        "diff_sp_era_tier":            _sp_era_tier(home_sp_stats["era"]) - _sp_era_tier(away_sp_stats["era"]),
+        "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],
         "diff_sp_xfip":                home_sp_stats["xfip"]  - away_sp_stats["xfip"],
-        "diff_sp_siera":               home_sp_stats["siera"] - away_sp_stats["siera"],
-        "diff_sp_so9":                 home_sp_stats["so9"]   - away_sp_stats["so9"],
-        "diff_sp_bb9":                 home_sp_stats["bb9"]   - away_sp_stats["bb9"],
-        "diff_sp_hr9":                 home_sp_stats["hr9"]   - away_sp_stats["hr9"],
+        "diff_sp_ip_gs":               home_sp_stats.get("ip_gs", 5.8) - away_sp_stats.get("ip_gs", 5.8),
+        "diff_sp_k_bb":                home_sp_stats.get("k_bb", 2.5)  - away_sp_stats.get("k_bb", 2.5),
+        # Extra stats kept in dict for display/logging, not used as features
+        "diff_sp_siera":               home_sp_stats.get("siera", 4.0) - away_sp_stats.get("siera", 4.0),
+        "diff_sp_so9":                 home_sp_stats.get("so9", 8.0)   - away_sp_stats.get("so9", 8.0),
+        "diff_sp_bb9":                 home_sp_stats.get("bb9", 3.0)   - away_sp_stats.get("bb9", 3.0),
+        "diff_sp_hr9":                 home_sp_stats.get("hr9", 1.2)   - away_sp_stats.get("hr9", 1.2),
     }
 
     if feature_cols is None:
@@ -769,7 +769,9 @@ def predict_by_name(home_team, away_team, home_sp_id, away_sp_id,
 
 def _default_sp_stats():
     return {
-        "era":   4.0,
+        "era":   4.20,
+        "ip_gs": 5.8,   # league-avg innings per start ~5.8
+        "k_bb":  2.5,   # league-avg K/BB ratio ~2.5
         "whip":  1.3,
         "xfip":  4.0,
         "siera": 4.0,

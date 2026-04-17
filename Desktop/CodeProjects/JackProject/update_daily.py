@@ -476,17 +476,24 @@ def fetch_sp_baselines(season, games_played):
                .replace("'", "")
                .replace("-", "_"))
 
+        gs_val  = safe(row, "GS", 0)
+        ip_val  = safe(row, "IP", 0)
+        so9_val = safe(row, "K/9",  8.0)
+        bb9_val = safe(row, "BB/9", 3.0)
+
         sp_baselines[key] = {
             "name":   name,
-            "era":    safe(row, "ERA",  4.0),
-            "whip":   safe(row, "WHIP", 1.3),
-            "xfip":   safe(row, "xFIP", 4.0),
-            "siera":  safe(row, "SIERA",4.0),
-            "so9":    safe(row, "K/9",  8.0),
-            "bb9":    safe(row, "BB/9", 3.0),
+            "era":    safe(row, "ERA",  4.20),
+            "whip":   safe(row, "WHIP", 1.30),
+            "xfip":   safe(row, "xFIP", 4.20),
+            "siera":  safe(row, "SIERA",4.20),
+            "so9":    so9_val,
+            "bb9":    bb9_val,
             "hr9":    safe(row, "HR/9", 1.2),
             "wins":   int(safe(row, "W", 0)),
             "losses": int(safe(row, "L", 0)),
+            "ip_gs":  round(ip_val / gs_val, 2) if gs_val > 0 else 5.8,
+            "k_bb":   round(so9_val / bb9_val, 3) if bb9_val > 0.5 else round(so9_val / 0.5, 3),
         }
 
     return sp_baselines
@@ -550,6 +557,14 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
         except (TypeError, ValueError):
             return default
 
+    # Build prior lookup by normalized name for blending
+    prior_by_name = {}
+    if prior_sp:
+        for v in prior_sp.values():
+            nm = _norm(v.get("name", ""))
+            if nm:
+                prior_by_name[nm] = v
+
     baselines = {}
     for s in splits:
         stat        = s.get("stat", {})
@@ -568,31 +583,50 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
         except Exception:
             ip = 0.0
 
-        era  = _f(stat.get("era"),               4.20)
-        whip = _f(stat.get("whip"),              1.30)
-        so9  = _f(stat.get("strikeoutsPer9Inn"), 8.0)
-        bb9  = _f(stat.get("walksPer9Inn"),      3.0)
-        hr9  = _f(stat.get("homeRunsPer9"),      1.2)
-        wins = int(_f(stat.get("wins"),   0))
+        key   = _key(full_name)
+        prior = prior_by_name.get(key, {})
+
+        # Smooth blend: alpha=0 at 0 GS (100% prior), alpha=1 at 20+ GS (100% live).
+        # Prevents a 7.00 ERA after 3 starts from overwhelming a historically 3.00 pitcher.
+        alpha = min(gs / 20.0, 1.0)
+
+        def blend(live_val, prior_key, default):
+            p = prior.get(prior_key, default)
+            return round(alpha * live_val + (1.0 - alpha) * p, 3)
+
+        era_live  = _f(stat.get("era"),               4.20)
+        whip_live = _f(stat.get("whip"),              1.30)
+        so9_live  = _f(stat.get("strikeoutsPer9Inn"), 8.0)
+        bb9_live  = _f(stat.get("walksPer9Inn"),      3.0)
+        hr9_live  = _f(stat.get("homeRunsPer9"),      1.2)
+        ip_gs_live = round(ip / gs, 2) if gs > 0 else 5.8
+        k_bb_live  = round(so9_live / bb9_live, 3) if bb9_live > 0.5 else round(so9_live / 0.5, 3)
+
+        era  = blend(era_live,  "era",   4.20)
+        whip = blend(whip_live, "whip",  1.30)
+        so9  = blend(so9_live,  "so9",   8.0)
+        bb9  = blend(bb9_live,  "bb9",   3.0)
+        hr9  = blend(hr9_live,  "hr9",   1.2)
+        ip_gs = blend(ip_gs_live, "ip_gs", 5.8)
+        k_bb  = blend(k_bb_live,  "k_bb",  2.5)
+        # xFIP/SIERA: prefer prior (FanGraphs quality) then ERA proxy
+        xfip  = blend(prior.get("xfip",  era_live), "xfip",  era_live)
+        siera = blend(prior.get("siera", era_live), "siera", era_live)
+
+        wins   = int(_f(stat.get("wins"),   0))
         losses = int(_f(stat.get("losses"), 0))
-
-        key = _key(full_name)
-
-        # For xFIP/SIERA, try to pull from prior_sp (better estimate than ERA proxy)
-        prior_key = _key(full_name)
-        prior = (prior_sp or {}).get(prior_key, {})
-        xfip  = prior.get("xfip",  era)   # use ERA as proxy if not in prior
-        siera = prior.get("siera", era)
 
         baselines[key] = {
             "name":   full_name,
-            "era":    round(era,  2),
-            "whip":   round(whip, 3),
-            "xfip":   round(xfip, 2),
-            "siera":  round(siera, 2),
-            "so9":    round(so9,  2),
-            "bb9":    round(bb9,  2),
-            "hr9":    round(hr9,  3),
+            "era":    era,
+            "whip":   whip,
+            "xfip":   xfip,
+            "siera":  siera,
+            "so9":    so9,
+            "bb9":    bb9,
+            "hr9":    hr9,
+            "ip_gs":  ip_gs,
+            "k_bb":   k_bb,
             "wins":   wins,
             "losses": losses,
         }
@@ -671,8 +705,10 @@ def main():
         new_sp_baselines = merged_sp
     else:
         print(f"  FanGraphs unavailable — trying MLB Stats API for pitcher stats...")
-        # Fetch prior-year FanGraphs data to use for xFIP/SIERA proxies
+        # Use prior-saved baselines as the prior for blending (xFIP/SIERA + small-sample smoothing)
         prior_sp_for_adv = fetch_sp_baselines(SEASON - 1, games_played=162)
+        if prior_sp_for_adv is None:
+            prior_sp_for_adv = old_sp_baselines  # fall back to last saved artifacts
         mlb_api_sp = fetch_sp_baselines_from_mlb_api(
             SEASON, games_played=avg_games, prior_sp=prior_sp_for_adv
         )

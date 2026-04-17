@@ -663,8 +663,10 @@ FEATURE_LABELS = {
     "diff_bullpen_era":           "Bullpen ERA",
     "diff_sp_era":                "Starter ERA",
     "diff_sp_whip":               "Starter WHIP",
-    "diff_sp_era_tier":           "Starter ERA Tier",
     "diff_sp_xfip":               "Starter xFIP",
+    "diff_sp_ip_gs":              "Starter IP/Start",
+    "diff_sp_k_bb":               "Starter K/BB",
+    # Extra display-only labels (not active features)
     "diff_sp_siera":              "Starter SIERA",
     "diff_sp_so9":                "Starter K/9",
     "diff_sp_bb9":                "Starter BB/9",
