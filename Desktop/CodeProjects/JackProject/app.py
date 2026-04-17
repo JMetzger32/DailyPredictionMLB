@@ -33,7 +33,7 @@ def _today_et():
 
 from flask import Flask, jsonify, render_template, request
 
-from MLBModel import predict_game, _default_sp_stats, _sp_era_tier
+from MLBModel import predict_game, _default_sp_stats
 from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__)
@@ -711,7 +711,7 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
         "diff_sp_era":                home_sp.get("era", 4.0)   - away_sp.get("era", 4.0),
         "diff_sp_whip":               home_sp.get("whip", 1.3)  - away_sp.get("whip", 1.3),
-        "diff_sp_era_tier":           _sp_era_tier(home_sp.get("era", 4.0)) - _sp_era_tier(away_sp.get("era", 4.0)),
+
         "diff_sp_xfip":               home_sp.get("xfip", 4.0)  - away_sp.get("xfip", 4.0),
         "diff_sp_siera":              home_sp.get("siera", 4.0) - away_sp.get("siera", 4.0),
         "diff_sp_so9":                home_sp.get("so9", 8.0)   - away_sp.get("so9", 8.0),
