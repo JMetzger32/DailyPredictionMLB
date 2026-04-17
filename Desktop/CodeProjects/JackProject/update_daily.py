@@ -493,6 +493,115 @@ def fetch_sp_baselines(season, games_played):
 
 
 # ---------------------------------------------------------------------------
+# Fetch starting pitcher stats from MLB Stats API (fallback when FanGraphs 403)
+# ---------------------------------------------------------------------------
+def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
+    """
+    Pull pitcher season stats from the free MLB Stats API.
+    Used as a fallback when FanGraphs is blocked (403).
+
+    Returns a dict keyed by normalized name (e.g. 'chase_burns') so names
+    match what the schedule API returns via probablePitcher.fullName.
+    xFIP/SIERA are not available from MLB API; we proxy with ERA, or pull
+    from prior_sp if available for that pitcher.
+    """
+    import requests as _req
+    import unicodedata, re
+
+    min_gs = 3 if games_played < 20 else 5
+
+    def _norm(name):
+        name = unicodedata.normalize("NFKD", str(name))
+        name = "".join(c for c in name if not unicodedata.combining(c))
+        name = name.lower().strip()
+        name = re.sub(r"\b(jr|sr|ii|iii|iv)\b\.?", "", name).strip()
+        name = re.sub(r"[^a-z\s]", "", name)
+        return "_".join(name.split())
+
+    def _key(full_name):
+        return _norm(full_name)
+
+    try:
+        resp = _req.get(
+            "https://statsapi.mlb.com/api/v1/stats",
+            params={
+                "stats":      "season",
+                "group":      "pitching",
+                "season":     season,
+                "sportId":    1,
+                "playerPool": "All",
+                "limit":      1000,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        splits = resp.json().get("stats", [{}])[0].get("splits", [])
+    except Exception as e:
+        print(f"  [WARN] MLB API pitcher stats failed: {e}")
+        return None
+
+    if not splits:
+        return None
+
+    def _f(val, default):
+        try:
+            v = float(val)
+            return v if not (v != v) else default  # NaN check
+        except (TypeError, ValueError):
+            return default
+
+    baselines = {}
+    for s in splits:
+        stat        = s.get("stat", {})
+        player      = s.get("player", {})
+        full_name   = player.get("fullName", "")
+        if not full_name:
+            continue
+        gs = _f(stat.get("gamesStarted", 0), 0)
+        if gs < min_gs:
+            continue
+
+        ip_str = stat.get("inningsPitched", "0")
+        try:
+            ip_parts = str(ip_str).split(".")
+            ip = int(ip_parts[0]) + int(ip_parts[1]) / 3 if len(ip_parts) > 1 else float(ip_str)
+        except Exception:
+            ip = 0.0
+
+        era  = _f(stat.get("era"),               4.20)
+        whip = _f(stat.get("whip"),              1.30)
+        so9  = _f(stat.get("strikeoutsPer9Inn"), 8.0)
+        bb9  = _f(stat.get("walksPer9Inn"),      3.0)
+        hr9  = _f(stat.get("homeRunsPer9"),      1.2)
+        wins = int(_f(stat.get("wins"),   0))
+        losses = int(_f(stat.get("losses"), 0))
+
+        key = _key(full_name)
+
+        # For xFIP/SIERA, try to pull from prior_sp (better estimate than ERA proxy)
+        prior_key = _key(full_name)
+        prior = (prior_sp or {}).get(prior_key, {})
+        xfip  = prior.get("xfip",  era)   # use ERA as proxy if not in prior
+        siera = prior.get("siera", era)
+
+        baselines[key] = {
+            "name":   full_name,
+            "era":    round(era,  2),
+            "whip":   round(whip, 3),
+            "xfip":   round(xfip, 2),
+            "siera":  round(siera, 2),
+            "so9":    round(so9,  2),
+            "bb9":    round(bb9,  2),
+            "hr9":    round(hr9,  3),
+            "wins":   wins,
+            "losses": losses,
+        }
+
+    print(f"  MLB API pitcher baselines: {len(baselines)} starters (GS >= {min_gs})")
+    return baselines if len(baselines) >= 5 else None
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -561,8 +670,26 @@ def main():
             print(f"  Merged to {len(merged_sp)} total pitchers (2026 data + prior fallback)")
         new_sp_baselines = merged_sp
     else:
-        print(f"  Insufficient {SEASON} pitcher data — keeping prior SP baselines")
-        new_sp_baselines = old_sp_baselines
+        print(f"  FanGraphs unavailable — trying MLB Stats API for pitcher stats...")
+        # Fetch prior-year FanGraphs data to use for xFIP/SIERA proxies
+        prior_sp_for_adv = fetch_sp_baselines(SEASON - 1, games_played=162)
+        mlb_api_sp = fetch_sp_baselines_from_mlb_api(
+            SEASON, games_played=avg_games, prior_sp=prior_sp_for_adv
+        )
+        if mlb_api_sp and len(mlb_api_sp) >= 5:
+            # Merge: old baselines as base (has xFIP/SIERA), MLB API current-year on top.
+            # Remove old entries whose pitcher name is now covered by the MLB API data
+            # (avoids duplicate "Chase Burns" entries under different key formats).
+            api_names = {v["name"].lower() for v in mlb_api_sp.values()}
+            filtered_old = {k: v for k, v in old_sp_baselines.items()
+                            if v.get("name", "").lower() not in api_names}
+            merged_sp = {**filtered_old, **mlb_api_sp}
+            print(f"  MLB API: {len(mlb_api_sp)} current starters + {len(filtered_old)} prior-only pitchers "
+                  f"= {len(merged_sp)} total")
+            new_sp_baselines = merged_sp
+        else:
+            print(f"  Both FanGraphs and MLB API failed — keeping prior SP baselines")
+            new_sp_baselines = old_sp_baselines
 
     # ---- Save updated artifacts ----------------------------------------
     artifacts["team_baselines"] = new_team_baselines

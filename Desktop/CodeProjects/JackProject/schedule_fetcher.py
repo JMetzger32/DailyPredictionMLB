@@ -154,6 +154,26 @@ def find_pitcher_by_name(pitcher_name, sp_baselines):
         if len(initial_matches) == 1:
             return initial_matches[0]
 
+        # Still ambiguous (e.g. "Luis Castillo" matches "Luis Miguel Castillo" AND
+        # "Luis Felipe Castillo"). Break ties by preferring the pitcher whose
+        # stored first name exactly matches the query first name (handles middle names),
+        # then fall back to lower ERA (more prominent pitcher).
+        if len(initial_matches) > 1:
+            query_first = query_tokens[0]
+            # Pass 3: exact first-name match (strips middle names from stored name)
+            first_name_matches = [pid for pid in initial_matches
+                                  if _normalize_name(sp_baselines[pid].get("name", "")).split()[0] == query_first]
+            if len(first_name_matches) == 1:
+                return first_name_matches[0]
+            candidates = first_name_matches if first_name_matches else initial_matches
+            # Pass 4: prefer the pitcher with the lower (better) ERA
+            def _era(pid):
+                try:
+                    return float(sp_baselines[pid].get("era", 99))
+                except (TypeError, ValueError):
+                    return 99.0
+            return min(candidates, key=_era)
+
     return None
 
 
