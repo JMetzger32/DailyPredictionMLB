@@ -709,9 +709,10 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_roll30_opp_strikeouts": home_ts.get("opp_k_per_game", 8.5)        - away_ts.get("opp_k_per_game", 8.5),
         "diff_roll3_bullpen_used":    home_ts.get("bullpen_used", 3.0)          - away_ts.get("bullpen_used", 3.0),
         "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
-        "diff_sp_era":                home_sp.get("era", 4.0)   - away_sp.get("era", 4.0),
+        "diff_sp_era":                home_sp.get("era", 4.0)    - away_sp.get("era", 4.0),
         "diff_sp_whip":               home_sp.get("whip", 1.3)  - away_sp.get("whip", 1.3),
-
+        "diff_sp_ip_gs":              home_sp.get("ip_gs", 5.8) - away_sp.get("ip_gs", 5.8),
+        "diff_sp_k_bb":               home_sp.get("k_bb", 2.5)  - away_sp.get("k_bb", 2.5),
         "diff_sp_xfip":               home_sp.get("xfip", 4.0)  - away_sp.get("xfip", 4.0),
         "diff_sp_siera":              home_sp.get("siera", 4.0) - away_sp.get("siera", 4.0),
         "diff_sp_so9":                home_sp.get("so9", 8.0)   - away_sp.get("so9", 8.0),

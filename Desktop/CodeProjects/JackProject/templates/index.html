@@ -306,7 +306,7 @@
         const starEl = document.createElement("span");
         starEl.className = "sp-blend-star";
         starEl.style.cssText = "color:#f39c12;cursor:pointer;font-size:0.85em;vertical-align:super;margin-left:1px;";
-        starEl.title = `ERA is smoothed with prior-year stats (only ${gs} start${gs === 1 ? "" : "s"} in 2026). Fully live at 20 GS.`;
+        starEl.title = `ERA is smoothed with prior-year stats (only ${gs} start${gs === 1 ? "" : "s"} in 2026). Fully live at 7 GS.`;
         starEl.textContent = "★";
         starEl.setAttribute("data-sp-name", sp_name || "");
         starEl.setAttribute("data-gs", gs || 0);
@@ -429,7 +429,7 @@
       e.stopPropagation();
       const spName = star.getAttribute("data-sp-name") || "This pitcher";
       const gs     = parseInt(star.getAttribute("data-gs"), 10) || 0;
-      const pct    = Math.min(Math.round(gs / 20 * 100), 100);
+      const pct    = Math.min(Math.round(gs / 7 * 100), 100);
       // Remove any existing popover
       const existing = document.getElementById("blend-popover");
       if (existing) existing.remove();
@@ -441,7 +441,7 @@
         <div class="fw-bold mb-1" style="color:#e67e22;">★ Early-Season Smoothing</div>
         <div class="mb-1"><strong>${spName.split(",")[0]}</strong> has <strong>${gs}</strong> start${gs === 1 ? "" : "s"} in 2026.</div>
         <div class="mb-1">ERA shown is raw 2026. For predictions, the model blends ${pct}% current-year stats + ${100 - pct}% prior-year baseline to reduce small-sample noise.</div>
-        <div class="text-muted">Smoothing turns off at 20 starts.</div>
+        <div class="text-muted">Smoothing turns off at 7 starts.</div>
         <button class="btn btn-sm btn-outline-secondary mt-1 w-100">Close</button>
       `;
       // Position near the star
@@ -644,7 +644,7 @@
       const fip  = fip_raw  != null ? fip_raw  : "—";
       let line = `SP: ${sp_name} &mdash; ERA ${era} / WHIP ${whip} / FIP ${fip}`;
       if (is_blended && gs != null) {
-        const pct = Math.min(Math.round(gs / 20 * 100), 100);
+        const pct = Math.min(Math.round(gs / 7 * 100), 100);
         line += `<br><span style="color:#e67e22;font-size:0.78rem;">★ ERA shown is raw 2026 (${gs} GS). Model predictions use ${pct}% current + ${100-pct}% prior-year blend.</span>`;
       }
       return line;

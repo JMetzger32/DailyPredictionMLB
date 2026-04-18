@@ -586,9 +586,9 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
         key   = _key(full_name)
         prior = prior_by_name.get(key, {})
 
-        # Smooth blend: alpha=0 at 0 GS (100% prior), alpha=1 at 20+ GS (100% live).
+        # Smooth blend: alpha=0 at 0 GS (100% prior), alpha=1 at 7+ GS (100% live).
         # Prevents a 7.00 ERA after 3 starts from overwhelming a historically 3.00 pitcher.
-        alpha = min(gs / 20.0, 1.0)
+        alpha = min(gs / 7.0, 1.0)
 
         def blend(live_val, prior_key, default):
             p = prior.get(prior_key, default)
@@ -644,7 +644,7 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
             "whip_raw":  round(whip_live, 3),
             "fip_raw":   fip_raw,
             "gs":        int(gs),
-            "is_blended": int(gs) < 10,
+            "is_blended": int(gs) < 7,
         }
 
     print(f"  MLB API pitcher baselines: {len(baselines)} starters (GS >= {min_gs})")
