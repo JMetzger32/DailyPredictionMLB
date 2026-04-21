@@ -732,9 +732,13 @@ def main():
             # Merge: old baselines as base (has xFIP/SIERA), MLB API current-year on top.
             # Remove old entries whose pitcher name is now covered by the MLB API data
             # (avoids duplicate "Chase Burns" entries under different key formats).
-            api_names = {v["name"].lower() for v in mlb_api_sp.values()}
+            import unicodedata as _ud
+            def _strip(n):
+                n = _ud.normalize("NFKD", str(n))
+                return "".join(c for c in n if not _ud.combining(c)).lower().strip()
+            api_names = {_strip(v["name"]) for v in mlb_api_sp.values()}
             filtered_old = {k: v for k, v in old_sp_baselines.items()
-                            if v.get("name", "").lower() not in api_names}
+                            if _strip(v.get("name", "")) not in api_names}
             merged_sp = {**filtered_old, **mlb_api_sp}
             print(f"  MLB API: {len(mlb_api_sp)} current starters + {len(filtered_old)} prior-only pitchers "
                   f"= {len(merged_sp)} total")

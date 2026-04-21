@@ -769,15 +769,22 @@ def predict_by_name(home_team, away_team, home_sp_id, away_sp_id,
 
 def _default_sp_stats():
     return {
-        "era":   4.20,
-        "ip_gs": 5.8,   # league-avg innings per start ~5.8
-        "k_bb":  2.5,   # league-avg K/BB ratio ~2.5
-        "whip":  1.3,
-        "xfip":  4.0,
-        "siera": 4.0,
-        "so9":   8.0,
-        "bb9":   3.0,
-        "hr9":   1.2,
+        "era":          4.20,
+        "ip_gs":        5.8,
+        "k_bb":         2.5,
+        "whip":         1.30,
+        "xfip":         4.0,
+        "siera":        4.0,
+        "so9":          8.0,
+        "bb9":          3.0,
+        "hr9":          1.2,
+        # Raw display fields — shown on card as league-average placeholder
+        "era_raw":      4.20,
+        "whip_raw":     1.30,
+        "fip_raw":      4.00,
+        "gs":           0,
+        "is_blended":   False,
+        "is_league_avg": True,
     }
 
 

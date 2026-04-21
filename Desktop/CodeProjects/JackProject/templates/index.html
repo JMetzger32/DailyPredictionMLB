@@ -295,13 +295,16 @@
     q(".home-sp").textContent = shortName(game.home_sp_name) + homeSpWL;
 
     // ERA / WHIP / FIP display — show raw 2026 stats with blend indicator
-    function buildSpLine(el, era_raw, whip_raw, fip_raw, gs, is_blended, sp_name) {
+    function buildSpLine(el, era_raw, whip_raw, fip_raw, gs, is_blended, sp_name, is_league_avg) {
       const eraStr  = era_raw  != null ? fmt2(era_raw)  : "—";
       const whipStr = whip_raw != null ? fmt2(whip_raw) : "—";
       const fipStr  = fip_raw  != null ? fmt2(fip_raw)  : "—";
       el.innerHTML = "";
 
-      if (is_blended && era_raw != null) {
+      if (is_league_avg) {
+        // No pitcher found — show league-avg values with a label
+        el.innerHTML = `${eraStr} / ${whipStr} / ${fipStr} <span style="color:#aaa;font-size:0.75em;">(Lg Avg)</span>`;
+      } else if (is_blended && era_raw != null) {
         // Show ERA with a clickable star that explains the blending
         const starEl = document.createElement("span");
         starEl.className = "sp-blend-star";
@@ -320,10 +323,10 @@
 
     buildSpLine(q(".away-sp-line"),
       game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw,
-      game.away_sp_gs, game.away_sp_is_blended, game.away_sp_name);
+      game.away_sp_gs, game.away_sp_is_blended, game.away_sp_name, game.away_sp_is_league_avg);
     buildSpLine(q(".home-sp-line"),
       game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw,
-      game.home_sp_gs, game.home_sp_is_blended, game.home_sp_name);
+      game.home_sp_gs, game.home_sp_is_blended, game.home_sp_name, game.home_sp_is_league_avg);
 
     // Team stats — highlight better side
     function setCells(awayEl, homeEl, awayVal, homeVal, lowerIsBetter) {
@@ -638,12 +641,14 @@
     }).join("");
 
     // Season stats snapshot
-    function spModalLine(sp_name, era_raw, whip_raw, fip_raw, gs, is_blended) {
-      const era  = era_raw  != null ? era_raw  : "—";
-      const whip = whip_raw != null ? whip_raw : "—";
-      const fip  = fip_raw  != null ? fip_raw  : "—";
+    function spModalLine(sp_name, era_raw, whip_raw, fip_raw, gs, is_blended, is_league_avg) {
+      const era  = era_raw  != null ? fmt2(era_raw)  : "—";
+      const whip = whip_raw != null ? fmt2(whip_raw) : "—";
+      const fip  = fip_raw  != null ? fmt2(fip_raw)  : "—";
       let line = `SP: ${sp_name} &mdash; ERA ${era} / WHIP ${whip} / FIP ${fip}`;
-      if (is_blended && gs != null) {
+      if (is_league_avg) {
+        line += `<br><span style="color:#aaa;font-size:0.78rem;">No pitcher data found — using league-average stats for this prediction.</span>`;
+      } else if (is_blended && gs != null) {
         const pct = Math.min(Math.round(gs / 7 * 100), 100);
         line += `<br><span style="color:#e67e22;font-size:0.78rem;">★ ERA shown is raw 2026 (${gs} GS). Model predictions use ${pct}% current + ${100-pct}% prior-year blend.</span>`;
       }
@@ -653,12 +658,12 @@
       <strong>${awayName}</strong><br>
       OBP: ${game.away_obp} · SLG: ${game.away_slg}<br>
       Runs/G: ${game.away_runs_pg} · Bullpen ERA: ${game.away_bp_era}<br>
-      ${spModalLine(game.away_sp_name, game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw, game.away_sp_gs, game.away_sp_is_blended)}`;
+      ${spModalLine(game.away_sp_name, game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw, game.away_sp_gs, game.away_sp_is_blended, game.away_sp_is_league_avg)}`;
     document.getElementById("modal-home-stats").innerHTML = `
       <strong>${homeName}</strong><br>
       OBP: ${game.home_obp} · SLG: ${game.home_slg}<br>
       Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
-      ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended)}`;
+      ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended, game.home_sp_is_league_avg)}`;
 
     new bootstrap.Modal(document.getElementById("gameDetailModal")).show();
   }
