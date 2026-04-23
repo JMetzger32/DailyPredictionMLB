@@ -515,7 +515,7 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
     import requests as _req
     import unicodedata, re
 
-    min_gs = 3 if games_played < 20 else 5
+    min_gs = 1  # include any pitcher who has made at least 1 start in 2026
 
     def _norm(name):
         name = unicodedata.normalize("NFKD", str(name))
@@ -739,6 +739,18 @@ def main():
             api_names = {_strip(v["name"]) for v in mlb_api_sp.values()}
             filtered_old = {k: v for k, v in old_sp_baselines.items()
                             if _strip(v.get("name", "")) not in api_names}
+            # Populate raw display fields for prior-only entries so the card
+            # never shows dashes. Use xfip as fip proxy (best we have without
+            # raw pitch counts). Mark as prior-year so the UI can label them.
+            for entry in filtered_old.values():
+                if entry.get("era_raw") is None:
+                    entry["era_raw"]       = round(entry.get("era",  4.20), 2)
+                    entry["whip_raw"]      = round(entry.get("whip", 1.30), 2)
+                    entry["fip_raw"]       = round(entry.get("xfip", 4.00), 2)
+                    entry["gs"]            = 0
+                    entry["is_blended"]    = False
+                    entry["is_league_avg"] = False
+                    entry["is_prior_year"] = True
             merged_sp = {**filtered_old, **mlb_api_sp}
             print(f"  MLB API: {len(mlb_api_sp)} current starters + {len(filtered_old)} prior-only pitchers "
                   f"= {len(merged_sp)} total")
