@@ -146,6 +146,7 @@ def _load_picks():
 def _save_picks(picks):
     with open(PICKS_LOG_PATH, "w") as f:
         json.dump(picks, f, indent=2)
+    _push_file_to_github(PICKS_LOG_PATH, f"Auto-backup picks log {_today_et().isoformat()}")
 
 
 def _resolve_picks_for_date(target_date):
@@ -561,10 +562,10 @@ def send_daily_email():
 # ---------------------------------------------------------------------------
 # GitHub log backup — commits predictions_log.json to git after each update
 # ---------------------------------------------------------------------------
-def _push_log_to_github():
-    """Push predictions_log.json to GitHub so it survives Render redeploys."""
+def _push_file_to_github(filepath, commit_message):
+    """Push any local file to GitHub so it survives Render redeploys."""
     if not GITHUB_TOKEN:
-        print("[github] GITHUB_TOKEN not set — skipping log backup")
+        print("[github] GITHUB_TOKEN not set — skipping backup")
         return
     import base64
     try:
@@ -572,26 +573,25 @@ def _push_log_to_github():
             "Authorization": f"token {GITHUB_TOKEN}",
             "Accept": "application/vnd.github+json",
         }
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{PREDICTIONS_LOG}"
-        # Get current file SHA from GitHub
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}"
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
-        # Read local file
-        with open(PREDICTIONS_LOG, "rb") as f:
+        with open(filepath, "rb") as f:
             content_b64 = base64.b64encode(f.read()).decode()
-        payload = {
-            "message": f"Auto-backup predictions log {_today_et().isoformat()}",
-            "content": content_b64,
-        }
+        payload = {"message": commit_message, "content": content_b64}
         if sha:
             payload["sha"] = sha
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
-            print(f"[github] predictions_log.json backed up to GitHub")
+            print(f"[github] {filepath} backed up to GitHub")
         else:
             print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         print(f"[github] backup error: {e}")
+
+
+def _push_log_to_github():
+    _push_file_to_github(PREDICTIONS_LOG, f"Auto-backup predictions log {_today_et().isoformat()}")
 
 
 # ---------------------------------------------------------------------------
