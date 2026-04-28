@@ -177,6 +177,50 @@ def find_pitcher_by_name(pitcher_name, sp_baselines):
     return None
 
 
+def get_team_rest_days(game_date):
+    """
+    Return a dict of {retro_team_code: rest_days} for all teams playing on game_date.
+    Looks back up to 7 days to find each team's most recent prior game.
+    Teams with no prior game found default to 1 in the model.
+    """
+    import datetime as _dt
+    start = (game_date - _dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    end   = game_date.strftime("%Y-%m-%d")
+    try:
+        resp = requests.get(
+            MLB_SCHEDULE_URL,
+            params={"sportId": 1, "startDate": start, "endDate": end,
+                    "gameType": "R,S"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[schedule_fetcher] get_team_rest_days error: {e}")
+        return {}
+
+    # Build {mlb_team_id: last_game_date} from completed/scheduled games BEFORE today
+    last_played = {}
+    for date_entry in data.get("dates", []):
+        d = _dt.date.fromisoformat(date_entry["date"])
+        if d >= game_date:
+            continue  # only games strictly before today
+        for g in date_entry.get("games", []):
+            for side in ("away", "home"):
+                tid = g["teams"][side]["team"]["id"]
+                if tid not in last_played or d > last_played[tid]:
+                    last_played[tid] = d
+
+    # Map MLB team IDs → retro codes and compute rest days
+    rest = {}
+    for mlb_id, last_d in last_played.items():
+        retro = MLB_TEAM_ID_TO_RETRO.get(mlb_id)
+        if retro:
+            rest[retro] = (game_date - last_d).days
+
+    return rest
+
+
 def get_todays_schedule(target_date=None):
     """
     Fetch today's MLB schedule from the MLB Stats API.

@@ -139,6 +139,23 @@
               <td class="text-center small away-bp"></td>
               <td class="text-center small home-bp"></td>
             </tr>
+            <tr class="runline-row d-none">
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Model probability that each team covers the −1.5 run line (wins by 2+)">
+                Run Line (−1.5)
+              </td>
+              <td class="text-center small away-runline"></td>
+              <td class="text-center small home-runline"></td>
+            </tr>
+            <tr class="total-row d-none">
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Formula-based estimated total runs scored (SP ERA × opponent run rate × park factor)">
+                Est. Total
+              </td>
+              <td class="text-center small est-total-cell" colspan="2"></td>
+            </tr>
           </tbody>
         </table>
 
@@ -286,13 +303,17 @@
     q(".away-header").textContent = `AWAY (${game.away_team || ""})${awayRec}`;
     q(".home-header").textContent = `HOME (${game.home_team || ""})${homeRec}`;
 
-    // Pitcher with W-L record
+    // Pitcher with W-L record and handedness badge
     const awaySpWL = (game.away_sp_wins + game.away_sp_losses > 0)
       ? ` (${game.away_sp_wins}-${game.away_sp_losses})` : "";
     const homeSpWL = (game.home_sp_wins + game.home_sp_losses > 0)
       ? ` (${game.home_sp_wins}-${game.home_sp_losses})` : "";
-    q(".away-sp").textContent = shortName(game.away_sp_name) + awaySpWL;
-    q(".home-sp").textContent = shortName(game.home_sp_name) + homeSpWL;
+    function handBadge(hand) {
+      if (!hand || hand === "R") return "";
+      return ` <span class="badge bg-secondary" style="font-size:0.65rem;vertical-align:middle;">LHP</span>`;
+    }
+    q(".away-sp").innerHTML = shortName(game.away_sp_name) + awaySpWL + handBadge(game.away_sp_hand);
+    q(".home-sp").innerHTML = shortName(game.home_sp_name) + homeSpWL + handBadge(game.home_sp_hand);
 
     // ERA / WHIP / FIP display — show raw 2026 stats with blend indicator
     function buildSpLine(el, era_raw, whip_raw, fip_raw, gs, is_blended, sp_name, is_league_avg, is_prior_year) {
@@ -346,6 +367,32 @@
     setCells(q(".away-hits"), q(".home-hits"), fmt1(game.away_hits_pg), fmt1(game.home_hits_pg), false);
     setCells(q(".away-runs"), q(".home-runs"), fmt1(game.away_runs_pg), fmt1(game.home_runs_pg), false);
     setCells(q(".away-bp"),   q(".home-bp"),   fmt2(game.away_bp_era),  fmt2(game.home_bp_era),  true);
+
+    // Run line + Est. Total
+    if (game.home_cover_prob != null) {
+      const rlRow = q(".runline-row");
+      const totRow = q(".total-row");
+      if (rlRow) rlRow.classList.remove("d-none");
+      if (totRow) totRow.classList.remove("d-none");
+
+      const awayRL = q(".away-runline");
+      const homeRL = q(".home-runline");
+      const awayRLPct = Math.round((1 - game.home_cover_prob) * 100);
+      const homeRLPct = Math.round(game.home_cover_prob * 100);
+      if (awayRL) {
+        awayRL.textContent = awayRLPct + "%";
+        awayRL.className = "text-center small away-runline " + (awayRLPct > homeRLPct ? "text-success" : "text-danger");
+      }
+      if (homeRL) {
+        homeRL.textContent = homeRLPct + "%";
+        homeRL.className = "text-center small home-runline " + (homeRLPct > awayRLPct ? "text-success" : "text-danger");
+      }
+
+      const totEl = q(".est-total-cell");
+      if (totEl && game.predicted_total != null) {
+        totEl.textContent = game.predicted_total + " runs";
+      }
+    }
 
     // Probability bar
     const awayPct = Math.round((game.away_win_prob || 0.5) * 100);

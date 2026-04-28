@@ -51,6 +51,12 @@ FEATURE_COLS = [
     # Bullpen
     "diff_roll3_bullpen_used",
     "diff_bullpen_era",
+    "diff_roll7_bullpen_ip",       # 7-day cumulative bullpen IP (fatigue signal; higher = more tired bullpen)
+    # Schedule / context
+    "diff_rest_days",              # home rest - away rest (days since last game; 3+ days is measurable advantage)
+    # SP handedness — separate features (not differenced) so model learns home/away LHP effects independently
+    "home_sp_is_lhp",              # 1 if home starter is LHP, 0 if RHP
+    "away_sp_is_lhp",              # 1 if away starter is LHP, 0 if RHP
     # Starting pitcher stats — 5 features selected by EDA (2021-2025, 9,510 games)
     # Ranked by GBM importance: ERA 25.3%, IP/GS 8.0%, WHIP 7.7%, K/BB 6.7%, xFIP 5.4%
     "diff_sp_era",     # season ERA — strongest single signal; r=-0.186 vs home win
@@ -144,6 +150,8 @@ def build_team_game_log(df):
         "triples":     df["home_triples"],
         "hit_by_pitch":df["home_hit_by_pitch"],
         "sac_flies":   df["home_sac_flies"],
+        # Estimated total IP for this team's pitching staff (length_outs / 2 / 3)
+        "total_ip":    df.get("length_outs", pd.Series(54, index=df.index)) / 6,
     })
     away = pd.DataFrame({
         "game_id": df["game_id"],
@@ -172,6 +180,8 @@ def build_team_game_log(df):
         "triples":     df["visitor_triples"],
         "hit_by_pitch":df["visitor_hit_by_pitch"],
         "sac_flies":   df["visitor_sac_flies"],
+        # Estimated total IP for this team's pitching staff
+        "total_ip":    df.get("length_outs", pd.Series(54, index=df.index)) / 6,
     })
     tgl = pd.concat([home, away], ignore_index=True)
     tgl = tgl.sort_values(["team", "date", "game_id"]).reset_index(drop=True)
@@ -255,6 +265,21 @@ def compute_rolling_team_features(tgl):
         lambda x: x.rolling(3, min_periods=1).mean().shift(1)
     )
 
+    # ---- 7-day bullpen IP (fatigue: total_ip - estimated starter IP, 7-game window) ----
+    STARTER_IP_EST = 5.8
+    if "total_ip" in tgl.columns:
+        tgl["roll7_bullpen_ip"] = tgl.groupby("team")["total_ip"].transform(
+            lambda x: x.rolling(7, min_periods=1).sum().shift(1)
+            - STARTER_IP_EST * x.rolling(7, min_periods=1).count().shift(1)
+        ).clip(lower=0)
+    else:
+        tgl["roll7_bullpen_ip"] = 15.0
+
+    # ---- Rest days (days since last game, pre-game) ----
+    tgl["date_dt"] = pd.to_datetime(tgl["date"], format="%Y%m%d")
+    tgl["prev_game_date"] = tgl.groupby("team")["date_dt"].shift(1)
+    tgl["rest_days"] = (tgl["date_dt"] - tgl["prev_game_date"]).dt.days.fillna(1).clip(lower=1, upper=7)
+
     # Fill any remaining NaNs in rolling features with league averages
     for col in [c for c in tgl.columns if c.startswith("roll30_") or c.startswith("roll10_") or c.startswith("roll3_")]:
         tgl[col] = tgl[col].fillna(tgl[col].mean())
@@ -262,9 +287,6 @@ def compute_rolling_team_features(tgl):
     # Sanity-clip OBP/SLG to realistic ranges (guard against bad data)
     tgl["roll30_obp"] = tgl["roll30_obp"].clip(0.200, 0.450)
     tgl["roll30_slg"] = tgl["roll30_slg"].clip(0.200, 0.700)
-
-    # Parse date for SP rest day computation downstream
-    tgl["date_dt"] = pd.to_datetime(tgl["date"], format="%Y%m%d")
 
     return tgl
 
@@ -388,6 +410,8 @@ def assemble_features(df, tgl):
         "roll30_opp_strikeouts": "roll30_opp_strikeouts",
         "roll3_bullpen_used":    "roll3_bullpen_used",
         "bullpen_era":           "bullpen_era",
+        "roll7_bullpen_ip":      "roll7_bullpen_ip",
+        "rest_days":             "rest_days",
         "sp_era":                "sp_era",
         "sp_whip":               "sp_whip",
         "sp_xfip":               "sp_xfip",
@@ -409,7 +433,10 @@ def assemble_features(df, tgl):
     vis_feats.columns = ["game_id", "is_home"] + [f"vis_{k}" for k in feature_map.keys()]
     vis_feats = vis_feats.drop(columns=["is_home"])
 
-    model_df = df[["game_id", "season", "date", "home_team", "visiting_team", "home_win"]].copy()
+    model_df = df[["game_id", "season", "date", "home_team", "visiting_team",
+                   "home_win", "home_score", "visitor_score"]].copy()
+    # Run line target: did the home team cover -1.5?
+    model_df["home_covers"] = ((model_df["home_score"] - model_df["visitor_score"]) > 1.5).astype("Int64")
     model_df = model_df.merge(home_feats, on="game_id", how="left")
     model_df = model_df.merge(vis_feats, on="game_id", how="left")
 
@@ -419,6 +446,12 @@ def assemble_features(df, tgl):
 
     # Park factor is NOT differenced — it's a property of the home ballpark
     model_df["home_park_factor"] = model_df["home_team"].map(PARK_FACTORS).fillna(1.0)
+
+    # SP handedness — not available in historical Retrosheet data; default 0.
+    # Feature is present so model accepts it at prediction time; real L/R values
+    # kick in once live data has handedness populated.
+    model_df["home_sp_is_lhp"] = 0
+    model_df["away_sp_is_lhp"] = 0
 
     return model_df
 
@@ -690,8 +723,21 @@ def build_2025_baselines(df, tgl):
     return team_baselines, sp_baselines
 
 
+def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
+    """Formula-based estimated total runs (for O/U display). Not ML — uses run rates + SP ERA."""
+    park   = home_ts.get("park_factor", 1.0)
+    h_off  = home_ts.get("recent_runs_per_game", 4.5)
+    a_off  = away_ts.get("recent_runs_per_game", 4.5)
+    # SP ERA relative to 4.20 league avg → scales opponent run expectation
+    h_sp_adj = home_sp.get("era", 4.20) / 4.20
+    a_sp_adj = away_sp.get("era", 4.20) / 4.20
+    home_runs_est = a_off * h_sp_adj * park
+    away_runs_est = h_off * a_sp_adj * park
+    return round(home_runs_est + away_runs_est, 1)
+
+
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
-                 model, scaler=None, feature_cols=None):
+                 model, scaler=None, feature_cols=None, runline_models=None):
     """
     Predict probability of home team winning.
 
@@ -729,6 +775,10 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "diff_roll30_opp_strikeouts":  home_team_stats["opp_k_per_game"]         - away_team_stats["opp_k_per_game"],
         "diff_roll3_bullpen_used":     home_team_stats["bullpen_used"]           - away_team_stats["bullpen_used"],
         "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)  - away_team_stats.get("bullpen_era", 4.20),
+        "diff_roll7_bullpen_ip":       home_team_stats.get("roll7_bullpen_ip", 15.0) - away_team_stats.get("roll7_bullpen_ip", 15.0),
+        "diff_rest_days":              home_team_stats.get("rest_days", 1)       - away_team_stats.get("rest_days", 1),
+        "home_sp_is_lhp":              1 if home_sp_stats.get("pitch_hand", "R") == "L" else 0,
+        "away_sp_is_lhp":              1 if away_sp_stats.get("pitch_hand", "R") == "L" else 0,
         "diff_sp_era":                 home_sp_stats["era"]   - away_sp_stats["era"],
         "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],
         "diff_sp_xfip":                home_sp_stats["xfip"]  - away_sp_stats["xfip"],
@@ -743,18 +793,42 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
 
     if feature_cols is None:
         feature_cols = FEATURE_COLS
-    X = pd.DataFrame([features])[feature_cols]
+    X_raw = pd.DataFrame([features])[feature_cols]
 
-    if scaler is not None:
-        X = scaler.transform(X)
+    X_scaled = scaler.transform(X_raw) if scaler is not None else X_raw
 
-    prob = float(model.predict_proba(X)[0, 1])
-    return {
+    prob = float(model.predict_proba(X_scaled)[0, 1])
+    result = {
         "home_win_prob": round(prob, 3),
         "away_win_prob": round(1 - prob, 3),
         "predicted_winner": "Home" if prob > 0.5 else "Away",
         "confidence": round(abs(prob - 0.5) * 2, 3),
     }
+
+    # Run line prediction (-1.5): ensemble of LR + GBM if models provided
+    if runline_models is not None:
+        try:
+            rl_lr, rl_gb, rl_scaler = runline_models
+            X_rl = X_raw  # same features, raw values
+            X_rl_sc = rl_scaler.transform(X_rl) if rl_scaler is not None else X_rl
+            rl_lr_prob  = float(rl_lr.predict_proba(X_rl_sc)[0, 1])
+            rl_gb_prob  = float(rl_gb.predict_proba(X_rl)[0, 1])
+            rl_prob = round((rl_lr_prob + rl_gb_prob) / 2, 3)
+            result["home_cover_prob"] = rl_prob
+            result["away_cover_prob"] = round(1 - rl_prob, 3)
+        except Exception:
+            result["home_cover_prob"] = None
+            result["away_cover_prob"] = None
+    else:
+        result["home_cover_prob"] = None
+        result["away_cover_prob"] = None
+
+    # Estimated game total (formula-based O/U)
+    result["predicted_total"] = estimate_game_total(
+        home_team_stats, away_team_stats, home_sp_stats, away_sp_stats
+    )
+
+    return result
 
 
 def predict_by_name(home_team, away_team, home_sp_id, away_sp_id,
@@ -835,6 +909,38 @@ if __name__ == "__main__":
     print("\n[7/7] Evaluating on 2025 holdout...")
     lr, gb, scaler, X_test_df, y_test, xgb = evaluate_holdout(model_df, FEATURE_COLS)
 
+    # Step 7b: Run line model (home covers -1.5)
+    print("\n[7b] Training run line model (home covers -1.5)...")
+    rl_df = model_df.dropna(subset=FEATURE_COLS + ["home_covers"])
+    rl_df = rl_df[rl_df["home_covers"].notna()]
+    rl_train = rl_df[rl_df["season"].between(2021, 2024)]
+    rl_test  = rl_df[rl_df["season"] == 2025]
+    X_rl_train = rl_train[FEATURE_COLS]
+    y_rl_train = rl_train["home_covers"].astype(int)
+    X_rl_test  = rl_test[FEATURE_COLS]
+    y_rl_test  = rl_test["home_covers"].astype(int)
+
+    rl_scaler = StandardScaler()
+    X_rl_tr_sc = rl_scaler.fit_transform(X_rl_train)
+    X_rl_te_sc = rl_scaler.transform(X_rl_test)
+
+    rl_lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    rl_lr.fit(X_rl_tr_sc, y_rl_train)
+    rl_gb = GradientBoostingClassifier(
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, random_state=RANDOM_STATE
+    )
+    rl_gb.fit(X_rl_train, y_rl_train)
+
+    rl_lr_probs  = rl_lr.predict_proba(X_rl_te_sc)[:, 1]
+    rl_gb_probs  = rl_gb.predict_proba(X_rl_test)[:, 1]
+    rl_ens_probs = (rl_lr_probs + rl_gb_probs) / 2
+    rl_ens_preds = (rl_ens_probs > 0.5).astype(int)
+    rl_acc  = accuracy_score(y_rl_test, rl_ens_preds)
+    rl_base = max(y_rl_test.mean(), 1 - y_rl_test.mean())
+    print(f"  Run line covers rate (home): {y_rl_test.mean():.3f}")
+    print(f"  Baseline: {rl_base:.3f}  |  Ensemble accuracy: {rl_acc:.3f}")
+
     # Plots
     print("\n  Generating plots...")
     plot_feature_importance(gb, FEATURE_COLS)
@@ -860,12 +966,16 @@ if __name__ == "__main__":
 
     # Save model artifacts
     artifacts = {
-        "gb_model":  gb,
-        "lr_model":  lr,
-        "scaler":    scaler,
-        "feature_cols": FEATURE_COLS,
+        "gb_model":       gb,
+        "lr_model":       lr,
+        "scaler":         scaler,
+        "feature_cols":   FEATURE_COLS,
         "team_baselines": team_baselines,
         "sp_baselines":   sp_baselines,
+        # Run line models
+        "lr_runline":     rl_lr,
+        "gb_runline":     rl_gb,
+        "scaler_runline": rl_scaler,
     }
     if xgb is not None:
         artifacts["xgb_model"] = xgb

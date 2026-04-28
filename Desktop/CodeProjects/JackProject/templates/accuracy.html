@@ -112,6 +112,17 @@
       </table>
     </div>
 
+    <!-- ── Weekly Accuracy Trend ────────────────────────────────── -->
+    <div id="weekly-trend-card" class="card border-0 shadow-sm mt-4 d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-1">Accuracy by Week</h6>
+        <p class="text-muted small mb-3">
+          Regular season week-by-week accuracy. Dashed line = 58% target. Early weeks are lower as the model's team stats blend toward live data.
+        </p>
+        <canvas id="weekly-chart" height="80"></canvas>
+      </div>
+    </div>
+
     <!-- ── Calibration Chart ─────────────────────────────────────── -->
     <div id="calibration-card" class="card border-0 shadow-sm mt-4 d-none">
       <div class="card-body">
@@ -305,6 +316,72 @@
           });
         }
       } catch (_) {}
+
+      // Weekly accuracy trend chart
+      const byWeek = data.by_week || [];
+      if (byWeek.length >= 2) {
+        document.getElementById("weekly-trend-card").classList.remove("d-none");
+        const wLabels = byWeek.map(w => w.label);
+        const wAccs   = byWeek.map(w => w.accuracy !== null ? +(w.accuracy * 100).toFixed(1) : null);
+        const target  = byWeek.map(() => 58);
+
+        new Chart(document.getElementById("weekly-chart"), {
+          type: "line",
+          data: {
+            labels: wLabels,
+            datasets: [
+              {
+                label: "Weekly Accuracy",
+                data: wAccs,
+                borderColor: wAccs.map(v => v === null ? null : v >= 58 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
+                backgroundColor: "transparent",
+                borderWidth: 2.5,
+                pointRadius: 5,
+                pointBackgroundColor: wAccs.map(v => v === null ? "transparent" : v >= 58 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
+                tension: 0.3,
+                segment: {
+                  borderColor: ctx => {
+                    const v = ctx.p1.parsed.y;
+                    return v >= 58 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)";
+                  }
+                },
+              },
+              {
+                label: "58% Target",
+                data: target,
+                borderColor: "rgba(108,117,125,0.55)",
+                borderDash: [6, 4],
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: false,
+              },
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: "top" },
+              tooltip: {
+                callbacks: {
+                  label: ctx => {
+                    if (ctx.datasetIndex === 1) return "Target: 58%";
+                    const w = byWeek[ctx.dataIndex];
+                    return `${ctx.parsed.y.toFixed(1)}%  (${w.correct}/${w.games} games)`;
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                min: 40, max: 75,
+                ticks: { callback: v => v + "%" },
+                grid: { color: "rgba(0,0,0,0.06)" }
+              },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+      }
 
     } catch (e) {
       document.getElementById("loading").classList.add("d-none");

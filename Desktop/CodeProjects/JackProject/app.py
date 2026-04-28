@@ -661,6 +661,10 @@ FEATURE_LABELS = {
     "diff_roll10_win_pct":        "Win % (recent 10g)",
     "diff_roll3_bullpen_used":    "Bullpen Usage (3g)",
     "diff_bullpen_era":           "Bullpen ERA",
+    "diff_roll7_bullpen_ip":      "Bullpen IP (7g)",
+    "diff_rest_days":             "Rest Days",
+    "home_sp_is_lhp":             "Home SP is LHP",
+    "away_sp_is_lhp":             "Away SP is LHP",
     "diff_sp_era":                "Starter ERA",
     "diff_sp_whip":               "Starter WHIP",
     "diff_sp_xfip":               "Starter xFIP",
@@ -709,6 +713,10 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_roll30_opp_strikeouts": home_ts.get("opp_k_per_game", 8.5)        - away_ts.get("opp_k_per_game", 8.5),
         "diff_roll3_bullpen_used":    home_ts.get("bullpen_used", 3.0)          - away_ts.get("bullpen_used", 3.0),
         "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
+        "diff_roll7_bullpen_ip":      home_ts.get("roll7_bullpen_ip", 15.0)    - away_ts.get("roll7_bullpen_ip", 15.0),
+        "diff_rest_days":             home_ts.get("rest_days", 1)               - away_ts.get("rest_days", 1),
+        "home_sp_is_lhp":             1 if home_sp.get("pitch_hand", "R") == "L" else 0,
+        "away_sp_is_lhp":             1 if away_sp.get("pitch_hand", "R") == "L" else 0,
         "diff_sp_era":                home_sp.get("era", 4.0)    - away_sp.get("era", 4.0),
         "diff_sp_whip":               home_sp.get("whip", 1.3)  - away_sp.get("whip", 1.3),
         "diff_sp_ip_gs":              home_sp.get("ip_gs", 5.8) - away_sp.get("ip_gs", 5.8),
@@ -963,6 +971,11 @@ def predictions():
     sp_baselines   = _artifacts.get("sp_baselines", {})
     lr_model       = _artifacts.get("lr_model")
     scaler         = _artifacts.get("scaler")
+    # Run line models (optional — None if not yet trained)
+    _rl_lr  = _artifacts.get("lr_runline")
+    _rl_gb  = _artifacts.get("gb_runline")
+    _rl_sc  = _artifacts.get("scaler_runline")
+    runline_models = (_rl_lr, _rl_gb, _rl_sc) if (_rl_lr and _rl_gb) else None
 
     if lr_model is None:
         return jsonify({"error": "Model not loaded. Run MLBModel.py first."}), 500
@@ -1009,7 +1022,8 @@ def predictions():
         away_sp_name = game.get("away_pitcher_name") or away_sp.get("name", "TBD")
 
         try:
-            result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler)
+            result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model,
+                                  scaler=scaler, runline_models=runline_models)
         except Exception as e:
             predictions_out.append({**game, "skipped": True, "skip_reason": str(e)})
             continue
@@ -1079,6 +1093,7 @@ def predictions():
             "home_sp_is_blended":    home_sp.get("is_blended", False),
             "home_sp_is_league_avg": home_sp.get("is_league_avg", False),
             "home_sp_is_prior_year": home_sp.get("is_prior_year", False),
+            "home_sp_hand":          home_sp.get("pitch_hand", "R"),
             "away_sp_era":        round(away_sp.get("era",   4.20), 2),
             "away_sp_xfip":       round(away_sp.get("xfip",  4.20), 2),
             "away_sp_siera":      round(away_sp.get("siera", 4.20), 2),
@@ -1091,6 +1106,7 @@ def predictions():
             "away_sp_is_blended":    away_sp.get("is_blended", False),
             "away_sp_is_league_avg": away_sp.get("is_league_avg", False),
             "away_sp_is_prior_year": away_sp.get("is_prior_year", False),
+            "away_sp_hand":          away_sp.get("pitch_hand", "R"),
             "home_obp":         round(home_ts.get("obp",            0.318), 3),
             "home_slg":         round(home_ts.get("slg",            0.400), 3),
             "home_hits_pg":     round(home_ts.get("hits_per_game",  8.5),   1),
@@ -1101,6 +1117,9 @@ def predictions():
             "away_hits_pg":     round(away_ts.get("hits_per_game",  8.5),   1),
             "away_runs_pg":     round(away_ts.get("recent_runs_per_game", 4.5), 1),
             "away_bp_era":      round(away_ts.get("bullpen_era",    4.20),  2),
+            "home_cover_prob":  result.get("home_cover_prob"),
+            "away_cover_prob":  result.get("away_cover_prob"),
+            "predicted_total":  result.get("predicted_total"),
             "actual_winner":         actual_winner,
             "away_score":            away_score,
             "home_score":            home_score,
@@ -1240,9 +1259,41 @@ def accuracy():
     except Exception as e:
         print(f"[app] get_team_standings failed: {e}")
 
+    # Week-by-week accuracy breakdown (regular season only)
+    from collections import defaultdict as _dd
+    from datetime import date as _date
+    season_start = _date(2026, 3, 27)
+    weekly_acc = _dd(lambda: {"correct": 0, "games": 0})
+    for date_str, day_entries in log.items():
+        try:
+            d = _date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        week = ((d - season_start).days // 7) + 1
+        if week < 1:
+            continue
+        for e in day_entries:
+            if e.get("game_type") == "S" or e.get("correct") is None:
+                continue
+            weekly_acc[week]["games"] += 1
+            if e["correct"]:
+                weekly_acc[week]["correct"] += 1
+
+    by_week = [
+        {
+            "week":     w,
+            "label":    f"Wk {w}",
+            "games":    v["games"],
+            "correct":  v["correct"],
+            "accuracy": round(v["correct"] / v["games"], 4) if v["games"] else None,
+        }
+        for w, v in sorted(weekly_acc.items()) if v["games"] >= 3
+    ]
+
     return jsonify({
         "regular_season":  rs_stats,
         "spring_training": st_stats,
+        "by_week":         by_week,
         "last_updated":    datetime.now().isoformat(),
     })
 

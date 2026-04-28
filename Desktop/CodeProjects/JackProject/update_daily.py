@@ -18,8 +18,9 @@ import pickle
 import warnings
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from pybaseball import team_game_logs, pitching_stats, cache
+from schedule_fetcher import get_team_rest_days
 
 warnings.filterwarnings("ignore")
 cache.enable()  # Cache API responses to avoid hammering servers on repeated runs
@@ -105,6 +106,8 @@ FALLBACK_TEAM = {
     "runs_allowed_per_game":  4.5,
     "recent_runs_per_game":  4.5,
     "opp_k_per_game":        8.5,
+    "roll7_bullpen_ip":      15.0,  # ≈ 2.1 IP/game × 7 games bullpen usage
+    "rest_days":             1,
 }
 
 
@@ -202,8 +205,21 @@ def _fetch_pitching_log(br_team, season):
     df["errors"]         = pd.to_numeric(df.get("E"),  errors="coerce")
     df["opp_strikeouts"] = pd.to_numeric(df.get("SO"), errors="coerce")
 
+    # Total innings pitched by all pitchers (used to estimate bullpen IP)
+    ip_col = next((c for c in df.columns if str(c).strip() == "IP"), None)
+    if ip_col:
+        def _parse_ip(v):
+            try:
+                parts = str(v).split(".")
+                return int(parts[0]) + int(parts[1]) / 3 if len(parts) > 1 else float(v)
+            except Exception:
+                return np.nan
+        df["total_ip"] = df[ip_col].map(_parse_ip)
+    else:
+        df["total_ip"] = np.nan
+
     return df[["date", "opp_hits", "opp_walks", "opp_homeruns",
-               "errors", "pitchers_used", "opp_strikeouts"]].reset_index(drop=True)
+               "errors", "pitchers_used", "opp_strikeouts", "total_ip"]].reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +235,7 @@ def fetch_team_games(br_team, season):
         merged = bat.merge(pit, on="date", how="left")
     else:
         merged = bat.copy()
-        for col in ["opp_hits", "opp_walks", "opp_homeruns", "errors", "pitchers_used"]:
+        for col in ["opp_hits", "opp_walks", "opp_homeruns", "errors", "pitchers_used", "total_ip"]:
             merged[col] = np.nan
 
     return merged.sort_values("date").reset_index(drop=True)
@@ -344,6 +360,9 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
             "iso":                   _b(iso,                     "iso"),
             "recent_runs_per_game":  _b(round(runs / g, 3),      "recent_runs_per_game"),
             "opp_k_per_game":        _b(round(opp_k / g, 3),     "opp_k_per_game"),
+            # New features — MLB API fallback uses defaults since we don't have game-level IP
+            "roll7_bullpen_ip":      15.0,  # default (≈ 2.1 IP/game × 7 games)
+            "rest_days":             1,     # injected from get_team_rest_days() after this call
         }
     except Exception as e:
         print(f"[WARN] MLB API stats failed for {retro_code}: {e}")
@@ -351,6 +370,27 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Helper: 7-day bullpen IP (total IP - estimated starter IP over last 7 games)
+# ---------------------------------------------------------------------------
+def _compute_roll7_bullpen_ip(games):
+    """
+    Estimate cumulative bullpen IP over the last 7 games.
+    Bullpen IP ≈ total_ip - (7 * ~5.8 starter IP per game).
+    Returns float (clipped >= 0). Falls back to 15.0 (≈ 2.1 IP/game) if no IP data.
+    """
+    STARTER_IP_PER_GAME = 5.8
+    if "total_ip" not in games.columns:
+        return 15.0
+    last7 = games["total_ip"].tail(7)
+    valid = last7.dropna()
+    if len(valid) == 0:
+        return 15.0
+    total = float(valid.sum())
+    bullpen = max(total - STARTER_IP_PER_GAME * len(valid), 0.0)
+    return round(bullpen, 2)
+
+
 # Compute rolling baselines from a team's game log
 # ---------------------------------------------------------------------------
 def compute_team_baseline(games, old_baseline=None):
@@ -423,6 +463,7 @@ def compute_team_baseline(games, old_baseline=None):
         "hr_per_game":           blend(roll_last("homeruns",  30), "hr_per_game"),
         "opp_hr_per_game":       blend(roll_last("opp_homeruns",   30), "opp_hr_per_game"),
         "bullpen_used":          roll_last("pitchers_used", 3),   # always use recency as-is
+        "roll7_bullpen_ip":      _compute_roll7_bullpen_ip(games),
         "obp":                   blend(roll_last("obp_game", 30), "obp"),
         "slg":                   blend(roll_last("slg_game", 30), "slg"),
         "iso":                   blend(roll_last("iso_game", 30), "iso"),
@@ -566,10 +607,12 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
                 prior_by_name[nm] = v
 
     baselines = {}
+    mlb_id_to_key = {}  # maps MLB player id -> baseline key (for handedness batch-fetch)
     for s in splits:
         stat        = s.get("stat", {})
         player      = s.get("player", {})
         full_name   = player.get("fullName", "")
+        player_id   = player.get("id")
         if not full_name:
             continue
         gs = _f(stat.get("gamesStarted", 0), 0)
@@ -645,7 +688,35 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
             "fip_raw":   fip_raw,
             "gs":        int(gs),
             "is_blended": int(gs) < 7,
+            "pitch_hand": None,  # filled in below by batch handedness fetch
+            "mlb_id":    player_id,
         }
+        if player_id:
+            mlb_id_to_key[player_id] = key
+
+    # Batch-fetch pitcher handedness (L/R) from MLB Stats API
+    # Uses /people?personIds=... endpoint, 50 per call, to avoid 200+ individual requests
+    try:
+        all_ids = list(mlb_id_to_key.keys())
+        def _chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+        for chunk in _chunks(all_ids, 50):
+            ids_str = ",".join(str(i) for i in chunk)
+            pr = _req.get(
+                f"https://statsapi.mlb.com/api/v1/people",
+                params={"personIds": ids_str, "fields": "people,id,pitchHand,code"},
+                timeout=10,
+            )
+            pr.raise_for_status()
+            for person in pr.json().get("people", []):
+                pid  = person.get("id")
+                hand = person.get("pitchHand", {}).get("code", "R")
+                k    = mlb_id_to_key.get(pid)
+                if k and k in baselines:
+                    baselines[k]["pitch_hand"] = hand
+    except Exception as e:
+        print(f"  [WARN] Handedness batch fetch failed: {e} — defaulting to R")
 
     print(f"  MLB API pitcher baselines: {len(baselines)} starters (GS >= {min_gs})")
     return baselines if len(baselines) >= 5 else None
@@ -704,6 +775,18 @@ def main():
     print(f"\n  Updated {updated_count}/30 teams with live {SEASON} data "
           f"(avg {avg_games} games)")
 
+    # ---- Rest days -------------------------------------------------------
+    print("  Fetching team rest days...")
+    try:
+        rest_map = get_team_rest_days(date.today())
+        for retro_code, baseline in new_team_baselines.items():
+            baseline["rest_days"] = rest_map.get(retro_code, 1)
+        print(f"  Rest days computed for {len(rest_map)} teams")
+    except Exception as e:
+        print(f"  [WARN] Rest days fetch failed: {e} — defaulting to 1")
+        for baseline in new_team_baselines.values():
+            baseline.setdefault("rest_days", 1)
+
     # ---- SP baselines --------------------------------------------------
     print()
     new_sp_baselines = fetch_sp_baselines(SEASON, games_played=avg_games)
@@ -751,6 +834,8 @@ def main():
                     entry["is_blended"]    = False
                     entry["is_league_avg"] = False
                     entry["is_prior_year"] = True
+                # pitch_hand is intentionally left unset for prior-only entries
+                # (we don't know the handedness — card only shows LHP badge when explicitly L)
             merged_sp = {**filtered_old, **mlb_api_sp}
             print(f"  MLB API: {len(mlb_api_sp)} current starters + {len(filtered_old)} prior-only pitchers "
                   f"= {len(merged_sp)} total")
