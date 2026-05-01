@@ -610,6 +610,7 @@ def _restore_file_from_github(filepath):
     """On startup, pull the latest backed-up file from GitHub if the remote copy is
     larger than the local one. This recovers data that was pushed before a redeploy."""
     if not GITHUB_TOKEN:
+        print(f"[github] GITHUB_TOKEN not set — cannot restore {filepath}")
         return
     import base64
     try:
@@ -622,6 +623,7 @@ def _restore_file_from_github(filepath):
             headers=headers, timeout=10,
         )
         if r.status_code != 200:
+            print(f"[github] restore {filepath}: GitHub returned {r.status_code} (file may not exist yet)")
             return
         remote_bytes = base64.b64decode(r.json()["content"])
         local_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0

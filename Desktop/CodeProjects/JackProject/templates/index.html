@@ -149,13 +149,14 @@
               <td class="text-center small home-runline"></td>
             </tr>
             <tr class="total-row d-none">
-              <td class="ps-3 text-muted small"
-                  data-bs-toggle="tooltip" data-bs-placement="right"
+              <td class="text-center small away-est-score fw-bold" style="width:38%"></td>
+              <td class="text-center" style="width:24%"
+                  data-bs-toggle="tooltip" data-bs-placement="top"
                   title="Estimated runs scored by each team (opponent run rate × SP ERA / 4.20 × park factor)">
-                Est. Score
+                <div class="text-muted" style="font-size:0.65rem;line-height:1.2">Est. Total</div>
+                <div class="fw-semibold small est-total-value" style="font-size:0.8rem"></div>
               </td>
-              <td class="text-center small away-est-score"></td>
-              <td class="text-center small home-est-score"></td>
+              <td class="text-center small home-est-score fw-bold" style="width:38%"></td>
             </tr>
           </tbody>
         </table>
@@ -388,19 +389,21 @@
       }
     }
 
-    // Est. Score (always show when available)
+    // Est. Score + Est. Total (always show when available)
     if (game.away_est_score != null && game.home_est_score != null) {
       const totRow = q(".total-row");
       if (totRow) totRow.classList.remove("d-none");
       const awayEstEl = q(".away-est-score");
       const homeEstEl = q(".home-est-score");
+      const totalEl   = q(".est-total-value");
       if (awayEstEl) awayEstEl.textContent = game.away_est_score;
       if (homeEstEl) homeEstEl.textContent = game.home_est_score;
+      if (totalEl && game.predicted_total != null) totalEl.textContent = game.predicted_total;
       if (game.away_est_score > game.home_est_score) {
-        if (awayEstEl) awayEstEl.classList.add("fw-bold", "text-success");
+        if (awayEstEl) awayEstEl.classList.add("text-success");
         if (homeEstEl) homeEstEl.classList.add("text-danger");
       } else if (game.home_est_score > game.away_est_score) {
-        if (homeEstEl) homeEstEl.classList.add("fw-bold", "text-success");
+        if (homeEstEl) homeEstEl.classList.add("text-success");
         if (awayEstEl) awayEstEl.classList.add("text-danger");
       }
     }

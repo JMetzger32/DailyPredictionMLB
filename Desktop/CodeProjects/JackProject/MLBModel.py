@@ -730,14 +730,16 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
     h_off  = home_ts.get("recent_runs_per_game", 4.5)
     a_off  = away_ts.get("recent_runs_per_game", 4.5)
     # SP ERA relative to 4.20 league avg → scales opponent run expectation
-    h_sp_adj = home_sp.get("era", 4.20) / 4.20
+    # home team scores: their offense vs the AWAY SP
+    # away team scores: their offense vs the HOME SP
     a_sp_adj = away_sp.get("era", 4.20) / 4.20
-    home_runs_est = a_off * h_sp_adj * park
-    away_runs_est = h_off * a_sp_adj * park
+    h_sp_adj = home_sp.get("era", 4.20) / 4.20
+    home_team_runs = h_off * a_sp_adj * park
+    away_team_runs = a_off * h_sp_adj * park
     return {
-        "home":  round(home_runs_est, 1),
-        "away":  round(away_runs_est, 1),
-        "total": round(home_runs_est + away_runs_est, 1),
+        "home":  round(home_team_runs, 1),
+        "away":  round(away_team_runs, 1),
+        "total": round(home_team_runs + away_team_runs, 1),
     }
 
 
