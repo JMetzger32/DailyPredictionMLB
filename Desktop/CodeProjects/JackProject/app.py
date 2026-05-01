@@ -65,11 +65,6 @@ def load_artifacts():
 
 load_artifacts()
 
-# Restore persisted data files from GitHub in case this is a fresh Render redeploy
-# (the fresh git clone has the empty committed versions; GitHub has the real backed-up data)
-_restore_file_from_github(PICKS_LOG_PATH)
-_restore_file_from_github(PREDICTIONS_LOG)
-
 # ---------------------------------------------------------------------------
 # Schedule cache  (avoids hitting the MLB API on every page load)
 # ---------------------------------------------------------------------------
@@ -638,6 +633,11 @@ def _restore_file_from_github(filepath):
             print(f"[github] {filepath} is up-to-date locally ({local_size} bytes)")
     except Exception as e:
         print(f"[github] restore error for {filepath}: {e}")
+
+
+# Restore persisted data files from GitHub on startup (recovers data after Render redeploy)
+_restore_file_from_github(PICKS_LOG_PATH)
+_restore_file_from_github(PREDICTIONS_LOG)
 
 
 # ---------------------------------------------------------------------------
