@@ -724,7 +724,8 @@ def build_2025_baselines(df, tgl):
 
 
 def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
-    """Formula-based estimated total runs (for O/U display). Not ML — uses run rates + SP ERA."""
+    """Formula-based estimated total runs (for O/U display). Not ML — uses run rates + SP ERA.
+    Returns dict with 'home', 'away', and 'total' keys."""
     park   = home_ts.get("park_factor", 1.0)
     h_off  = home_ts.get("recent_runs_per_game", 4.5)
     a_off  = away_ts.get("recent_runs_per_game", 4.5)
@@ -733,7 +734,11 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
     a_sp_adj = away_sp.get("era", 4.20) / 4.20
     home_runs_est = a_off * h_sp_adj * park
     away_runs_est = h_off * a_sp_adj * park
-    return round(home_runs_est + away_runs_est, 1)
+    return {
+        "home":  round(home_runs_est, 1),
+        "away":  round(away_runs_est, 1),
+        "total": round(home_runs_est + away_runs_est, 1),
+    }
 
 
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
@@ -824,9 +829,12 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         result["away_cover_prob"] = None
 
     # Estimated game total (formula-based O/U)
-    result["predicted_total"] = estimate_game_total(
+    _est = estimate_game_total(
         home_team_stats, away_team_stats, home_sp_stats, away_sp_stats
     )
+    result["predicted_total"]  = _est["total"]
+    result["home_est_score"]   = _est["home"]
+    result["away_est_score"]   = _est["away"]
 
     return result
 

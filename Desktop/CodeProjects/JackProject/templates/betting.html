@@ -99,6 +99,20 @@
       </div>
     </div>
 
+    <!-- ── O/U Accuracy Card ──────────────────────────────────────── -->
+    <div id="ou-accuracy-card" class="card border-0 shadow-sm mb-4 d-none">
+      <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <span class="fw-semibold">O/U Predictions</span>
+          <span class="text-muted small ms-2">Within 2 runs of actual total</span>
+        </div>
+        <div class="text-end">
+          <span class="fs-5 fw-bold" id="ou-pct">—</span>
+          <span class="text-muted small ms-1" id="ou-games-label"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Cumulative P/L Chart ─────────────────────────────────── -->
     <div id="chart-card" class="card border-0 shadow-sm mb-4 d-none">
       <div class="card-body">
@@ -457,7 +471,23 @@
     }
   }
 
+  async function loadOUStats() {
+    try {
+      const res  = await fetch("/api/accuracy");
+      const data = await res.json();
+      const ou = data.ou_stats;
+      if (ou && ou.games >= 5) {
+        document.getElementById("ou-accuracy-card").classList.remove("d-none");
+        document.getElementById("ou-pct").textContent =
+          (ou.accuracy * 100).toFixed(1) + "%";
+        document.getElementById("ou-games-label").textContent =
+          `(${ou.correct}/${ou.games} games · avg miss ${ou.mae} runs)`;
+      }
+    } catch (e) { /* silently skip */ }
+  }
+
   loadBetting();
+  loadOUStats();
 </script>
 
 <div class="site-credit">Website made by Jack Metzger</div>

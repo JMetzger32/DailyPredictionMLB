@@ -65,6 +65,11 @@ def load_artifacts():
 
 load_artifacts()
 
+# Restore persisted data files from GitHub in case this is a fresh Render redeploy
+# (the fresh git clone has the empty committed versions; GitHub has the real backed-up data)
+_restore_file_from_github(PICKS_LOG_PATH)
+_restore_file_from_github(PREDICTIONS_LOG)
+
 # ---------------------------------------------------------------------------
 # Schedule cache  (avoids hitting the MLB API on every page load)
 # ---------------------------------------------------------------------------
@@ -201,6 +206,11 @@ def _build_prediction_entry(game, result, odds_data=None):
         "away_score":        None,
         "home_score":        None,
         "correct":           None,
+        "predicted_total":   result.get("predicted_total"),
+        "home_est_score":    result.get("home_est_score"),
+        "away_est_score":    result.get("away_est_score"),
+        "actual_total":      None,
+        "ou_correct":        None,
     }
 
 
@@ -219,19 +229,26 @@ def update_yesterday_results():
 
     changed = False
     for entry in log[yesterday]:
-        if entry.get("correct") is not None:
-            continue  # already resolved
+        moneyline_done = entry.get("correct") is not None
+        ou_done = entry.get("ou_correct") is not None
+        if moneyline_done and ou_done:
+            continue  # fully resolved
         r = results.get(entry["game_pk"])
         if r and r["final"] and r["away_score"] is not None and r["home_score"] is not None:
-            entry["away_score"] = r["away_score"]
-            entry["home_score"] = r["home_score"]
-            if r["home_score"] == r["away_score"]:
-                entry["actual_winner"] = "Tie"
-                entry["correct"] = None  # ties excluded from accuracy
-            else:
-                actual = "Home" if r["home_score"] > r["away_score"] else "Away"
-                entry["actual_winner"] = actual
-                entry["correct"] = (entry["predicted_winner"] == actual)
+            if not moneyline_done:
+                entry["away_score"] = r["away_score"]
+                entry["home_score"] = r["home_score"]
+                if r["home_score"] == r["away_score"]:
+                    entry["actual_winner"] = "Tie"
+                    entry["correct"] = None  # ties excluded from accuracy
+                else:
+                    actual = "Home" if r["home_score"] > r["away_score"] else "Away"
+                    entry["actual_winner"] = actual
+                    entry["correct"] = (entry["predicted_winner"] == actual)
+            if not ou_done and entry.get("predicted_total") is not None:
+                actual_total = r["home_score"] + r["away_score"]
+                entry["actual_total"] = actual_total
+                entry["ou_correct"] = abs(actual_total - entry["predicted_total"]) <= 2.0
             changed = True
 
     if changed:
@@ -592,6 +609,35 @@ def _push_file_to_github(filepath, commit_message):
 
 def _push_log_to_github():
     _push_file_to_github(PREDICTIONS_LOG, f"Auto-backup predictions log {_today_et().isoformat()}")
+
+
+def _restore_file_from_github(filepath):
+    """On startup, pull the latest backed-up file from GitHub if the remote copy is
+    larger than the local one. This recovers data that was pushed before a redeploy."""
+    if not GITHUB_TOKEN:
+        return
+    import base64
+    try:
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+        }
+        r = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}",
+            headers=headers, timeout=10,
+        )
+        if r.status_code != 200:
+            return
+        remote_bytes = base64.b64decode(r.json()["content"])
+        local_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        if len(remote_bytes) > local_size:
+            with open(filepath, "wb") as f:
+                f.write(remote_bytes)
+            print(f"[github] Restored {filepath} from GitHub ({len(remote_bytes)} bytes)")
+        else:
+            print(f"[github] {filepath} is up-to-date locally ({local_size} bytes)")
+    except Exception as e:
+        print(f"[github] restore error for {filepath}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1120,6 +1166,8 @@ def predictions():
             "home_cover_prob":  result.get("home_cover_prob"),
             "away_cover_prob":  result.get("away_cover_prob"),
             "predicted_total":  result.get("predicted_total"),
+            "home_est_score":   result.get("home_est_score"),
+            "away_est_score":   result.get("away_est_score"),
             "actual_winner":         actual_winner,
             "away_score":            away_score,
             "home_score":            home_score,
@@ -1290,10 +1338,31 @@ def accuracy():
         for w, v in sorted(weekly_acc.items()) if v["games"] >= 3
     ]
 
+    # O/U prediction accuracy (regular season only)
+    ou_total = ou_correct_count = 0
+    ou_errors = []
+    for day_entries in log.values():
+        for e in day_entries:
+            if e.get("game_type") == "S" or e.get("ou_correct") is None:
+                continue
+            ou_total += 1
+            if e["ou_correct"]:
+                ou_correct_count += 1
+            if e.get("actual_total") is not None and e.get("predicted_total") is not None:
+                ou_errors.append(abs(e["actual_total"] - e["predicted_total"]))
+
+    ou_stats = {
+        "games":    ou_total,
+        "correct":  ou_correct_count,
+        "accuracy": round(ou_correct_count / ou_total, 3) if ou_total else None,
+        "mae":      round(sum(ou_errors) / len(ou_errors), 2) if ou_errors else None,
+    }
+
     return jsonify({
         "regular_season":  rs_stats,
         "spring_training": st_stats,
         "by_week":         by_week,
+        "ou_stats":        ou_stats,
         "last_updated":    datetime.now().isoformat(),
     })
 
