@@ -216,7 +216,7 @@ def get_team_rest_days(game_date):
     for mlb_id, last_d in last_played.items():
         retro = MLB_TEAM_ID_TO_RETRO.get(mlb_id)
         if retro:
-            rest[retro] = (game_date - last_d).days
+            rest[retro] = (game_date - last_d).days - 1
 
     return rest
 
