@@ -1229,7 +1229,11 @@ def accuracy():
     Auto-heals the log before computing: resolves unresolved entries and
     backfills missing days for the last 7 days.
     """
-    _auto_heal_log(days=7)
+    # Heal the full season so redeploys that wiped the log get everything back
+    from datetime import date as _date
+    _season_start = _date(2026, 3, 27)
+    _days_since_start = (_today_et() - _season_start).days
+    _auto_heal_log(days=max(_days_since_start, 7))
     log = _load_log()
 
     def compute_stats(entries):
