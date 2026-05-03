@@ -49,26 +49,30 @@ GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO       = os.environ.get("GITHUB_REPO", "JMetzger32/DailyPredictionMLB")
 
 # Compute path prefix for GitHub API calls.
-# The repo root may be above the app directory (e.g. home directory tracked in git),
-# so files like picks_log.json live at Desktop/CodeProjects/JackProject/picks_log.json
-# in the repo, not at the repo root.
-try:
-    import subprocess as _sp
-    _git_root = _sp.check_output(
-        ["git", "rev-parse", "--show-toplevel"],
-        cwd=os.path.dirname(os.path.abspath(__file__)),
-        text=True, stderr=_sp.DEVNULL,
-    ).strip()
-    _app_dir = os.path.dirname(os.path.abspath(__file__))
-    _GITHUB_PATH_PREFIX = os.path.relpath(_app_dir, _git_root).replace("\\", "/")
-    if _GITHUB_PATH_PREFIX == ".":
+# If GITHUB_PATH_PREFIX is set as an env var, use it directly (most reliable).
+# Otherwise auto-detect via git. This matters when the repo root is above the app dir.
+_env_prefix = os.environ.get("GITHUB_PATH_PREFIX", "").strip()
+if _env_prefix:
+    # Ensure it ends with /
+    _GITHUB_PATH_PREFIX = _env_prefix if _env_prefix.endswith("/") else _env_prefix + "/"
+else:
+    try:
+        import subprocess as _sp
+        _git_root = _sp.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            text=True, stderr=_sp.DEVNULL,
+        ).strip()
+        _app_dir = os.path.dirname(os.path.abspath(__file__))
+        _GITHUB_PATH_PREFIX = os.path.relpath(_app_dir, _git_root).replace("\\", "/")
+        if _GITHUB_PATH_PREFIX == ".":
+            _GITHUB_PATH_PREFIX = ""
+        else:
+            _GITHUB_PATH_PREFIX += "/"
+    except Exception:
         _GITHUB_PATH_PREFIX = ""
-    else:
-        _GITHUB_PATH_PREFIX += "/"
-except Exception:
-    _GITHUB_PATH_PREFIX = ""
 
-print(f"[github] path prefix: '{_GITHUB_PATH_PREFIX}'", flush=True)
+print(f"[github] path prefix: '{_GITHUB_PATH_PREFIX}' (source: {'env' if _env_prefix else 'git'})", flush=True)
 
 
 def _github_path(filepath):

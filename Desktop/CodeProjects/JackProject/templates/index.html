@@ -155,8 +155,7 @@
               <td colspan="2" class="text-center" style="vertical-align:middle">
                 <span class="fw-semibold est-total-value"></span>
                 <span class="text-muted small ms-1">runs</span>
-                <div class="text-muted est-total-formula" style="font-size:0.68rem;line-height:1.4;margin-top:2px"></div>
-                <div class="text-muted est-ou-accuracy" style="font-size:0.68rem"></div>
+                <div class="text-muted est-ou-accuracy" style="font-size:0.68rem;margin-top:2px"></div>
               </td>
             </tr>
           </tbody>
@@ -396,17 +395,6 @@
       if (totRow) totRow.classList.remove("d-none");
       const totalEl = q(".est-total-value");
       if (totalEl) totalEl.textContent = game.predicted_total;
-
-      // Formula breakdown
-      const c = game.est_components;
-      const fmtEl = q(".est-total-formula");
-      if (fmtEl && c) {
-        const awayRuns = (c.away_off * c.home_sp_adj * c.park).toFixed(1);
-        const homeRuns = (c.home_off * c.away_sp_adj * c.park).toFixed(1);
-        fmtEl.textContent =
-          `${game.away_team_name || "Away"}: ${c.away_off} off × ${c.home_sp_adj} SP × ${c.park} park = ${awayRuns}` +
-          `   |   ${game.home_team_name || "Home"}: ${c.home_off} off × ${c.away_sp_adj} SP × ${c.park} park = ${homeRuns}`;
-      }
 
       // O/U accuracy badge (filled in after accuracy fetch below)
       const ouEl = q(".est-ou-accuracy");
@@ -755,6 +743,49 @@
       Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
       ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended, game.home_sp_is_league_avg, game.home_sp_is_prior_year)}`;
 
+    // Estimated Total Breakdown
+    const estSection = document.getElementById("modal-est-total-section");
+    const estBody    = document.getElementById("modal-est-total-body");
+    const c = game.est_components;
+    if (c && game.predicted_total != null && estSection && estBody) {
+      estSection.classList.remove("d-none");
+      const awayRuns  = (c.away_off * c.home_sp_adj * c.park).toFixed(1);
+      const homeRuns  = (c.home_off * c.away_sp_adj * c.park).toFixed(1);
+      const ouAcc     = window._ouAccuracy != null
+        ? `<br><span class="text-muted">Model has landed within 2 runs of this estimate <strong>${(window._ouAccuracy * 100).toFixed(1)}%</strong> of the time across ${window._ouGames} tracked games.</span>`
+        : "";
+      estBody.innerHTML = `
+        <div class="mb-2">
+          <strong>Formula:</strong> (Away offense × Home SP adj × Park factor) + (Home offense × Away SP adj × Park factor)
+        </div>
+        <table class="table table-sm mb-2">
+          <thead><tr><th></th><th class="text-center">Offense (R/G)</th><th class="text-center">Opp. SP adj</th><th class="text-center">Park factor</th><th class="text-center">Est. runs</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>${awayName}</td>
+              <td class="text-center">${c.away_off}</td>
+              <td class="text-center">${c.home_sp_adj}×</td>
+              <td class="text-center">${c.park}×</td>
+              <td class="text-center fw-bold">${awayRuns}</td>
+            </tr>
+            <tr>
+              <td>${homeName}</td>
+              <td class="text-center">${c.home_off}</td>
+              <td class="text-center">${c.away_sp_adj}×</td>
+              <td class="text-center">${c.park}×</td>
+              <td class="text-center fw-bold">${homeRuns}</td>
+            </tr>
+            <tr class="table-secondary fw-bold">
+              <td colspan="4">Est. Total</td>
+              <td class="text-center">${game.predicted_total}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="text-muted" style="font-size:0.8rem">SP adj = opposing SP ERA ÷ 4.20 league average. A value above 1.0 means a worse-than-average pitcher (more runs expected).${ouAcc}</div>`;
+    } else if (estSection) {
+      estSection.classList.add("d-none");
+    }
+
     new bootstrap.Modal(document.getElementById("gameDetailModal")).show();
   }
 </script>
@@ -785,6 +816,12 @@
           </thead>
           <tbody id="modal-feature-tbody"></tbody>
         </table>
+
+        <!-- Est. Total Breakdown -->
+        <div id="modal-est-total-section" class="d-none mb-4">
+          <h6 class="fw-bold mb-2">Estimated Total Breakdown</h6>
+          <div id="modal-est-total-body" class="bg-light rounded p-3 small"></div>
+        </div>
 
         <!-- Season stats snapshot -->
         <h6 class="fw-bold mb-2">Season Stats Snapshot</h6>
