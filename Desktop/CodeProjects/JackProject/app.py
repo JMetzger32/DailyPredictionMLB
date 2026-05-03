@@ -48,6 +48,34 @@ TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
 GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO       = os.environ.get("GITHUB_REPO", "JMetzger32/DailyPredictionMLB")
 
+# Compute path prefix for GitHub API calls.
+# The repo root may be above the app directory (e.g. home directory tracked in git),
+# so files like picks_log.json live at Desktop/CodeProjects/JackProject/picks_log.json
+# in the repo, not at the repo root.
+try:
+    import subprocess as _sp
+    _git_root = _sp.check_output(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        text=True, stderr=_sp.DEVNULL,
+    ).strip()
+    _app_dir = os.path.dirname(os.path.abspath(__file__))
+    _GITHUB_PATH_PREFIX = os.path.relpath(_app_dir, _git_root).replace("\\", "/")
+    if _GITHUB_PATH_PREFIX == ".":
+        _GITHUB_PATH_PREFIX = ""
+    else:
+        _GITHUB_PATH_PREFIX += "/"
+except Exception:
+    _GITHUB_PATH_PREFIX = ""
+
+print(f"[github] path prefix: '{_GITHUB_PATH_PREFIX}'", flush=True)
+
+
+def _github_path(filepath):
+    """Return the path to use in GitHub API calls (repo-root-relative)."""
+    return _GITHUB_PATH_PREFIX + filepath
+
+
 # ---------------------------------------------------------------------------
 # Artifact loading
 # ---------------------------------------------------------------------------
@@ -585,7 +613,7 @@ def _push_file_to_github(filepath, commit_message):
             "Authorization": f"token {GITHUB_TOKEN}",
             "Accept": "application/vnd.github+json",
         }
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}"
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{_github_path(filepath)}"
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
         with open(filepath, "rb") as f:
@@ -595,9 +623,9 @@ def _push_file_to_github(filepath, commit_message):
             payload["sha"] = sha
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
-            print(f"[github] {filepath} backed up to GitHub")
+            print(f"[github] {filepath} backed up to GitHub ({_github_path(filepath)})", flush=True)
         else:
-            print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}")
+            print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}", flush=True)
     except Exception as e:
         print(f"[github] backup error: {e}")
 
@@ -619,20 +647,20 @@ def _restore_file_from_github(filepath):
             "Accept": "application/vnd.github+json",
         }
         r = requests.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filepath}",
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{_github_path(filepath)}",
             headers=headers, timeout=10,
         )
         if r.status_code != 200:
-            print(f"[github] restore {filepath}: GitHub returned {r.status_code} (file may not exist yet)")
+            print(f"[github] restore {filepath}: GitHub returned {r.status_code} (path: {_github_path(filepath)})", flush=True)
             return
         remote_bytes = base64.b64decode(r.json()["content"])
         local_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
         if len(remote_bytes) > local_size:
             with open(filepath, "wb") as f:
                 f.write(remote_bytes)
-            print(f"[github] Restored {filepath} from GitHub ({len(remote_bytes)} bytes)")
+            print(f"[github] Restored {filepath} from GitHub ({len(remote_bytes)} bytes)", flush=True)
         else:
-            print(f"[github] {filepath} is up-to-date locally ({local_size} bytes)")
+            print(f"[github] {filepath} is up-to-date locally ({local_size} bytes)", flush=True)
     except Exception as e:
         print(f"[github] restore error for {filepath}: {e}")
 
