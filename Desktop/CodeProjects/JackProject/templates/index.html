@@ -149,14 +149,15 @@
               <td class="text-center small home-runline"></td>
             </tr>
             <tr class="total-row d-none">
-              <td class="text-center small away-est-score fw-bold" style="width:38%"></td>
-              <td class="text-center" style="width:24%"
-                  data-bs-toggle="tooltip" data-bs-placement="top"
-                  title="Estimated runs scored by each team (opponent run rate × SP ERA / 4.20 × park factor)">
-                <div class="text-muted" style="font-size:0.65rem;line-height:1.2">Est. Total</div>
-                <div class="fw-semibold small est-total-value" style="font-size:0.8rem"></div>
+              <td class="ps-3 text-muted small" style="vertical-align:middle">
+                Est. Total
               </td>
-              <td class="text-center small home-est-score fw-bold" style="width:38%"></td>
+              <td colspan="2" class="text-center" style="vertical-align:middle">
+                <span class="fw-semibold est-total-value"></span>
+                <span class="text-muted small ms-1">runs</span>
+                <div class="text-muted est-total-formula" style="font-size:0.68rem;line-height:1.4;margin-top:2px"></div>
+                <div class="text-muted est-ou-accuracy" style="font-size:0.68rem"></div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -389,22 +390,28 @@
       }
     }
 
-    // Est. Score + Est. Total (always show when available)
-    if (game.away_est_score != null && game.home_est_score != null) {
+    // Est. Total + formula breakdown
+    if (game.predicted_total != null) {
       const totRow = q(".total-row");
       if (totRow) totRow.classList.remove("d-none");
-      const awayEstEl = q(".away-est-score");
-      const homeEstEl = q(".home-est-score");
-      const totalEl   = q(".est-total-value");
-      if (awayEstEl) awayEstEl.textContent = game.away_est_score;
-      if (homeEstEl) homeEstEl.textContent = game.home_est_score;
-      if (totalEl && game.predicted_total != null) totalEl.textContent = game.predicted_total;
-      if (game.away_est_score > game.home_est_score) {
-        if (awayEstEl) awayEstEl.classList.add("text-success");
-        if (homeEstEl) homeEstEl.classList.add("text-danger");
-      } else if (game.home_est_score > game.away_est_score) {
-        if (homeEstEl) homeEstEl.classList.add("text-success");
-        if (awayEstEl) awayEstEl.classList.add("text-danger");
+      const totalEl = q(".est-total-value");
+      if (totalEl) totalEl.textContent = game.predicted_total;
+
+      // Formula breakdown
+      const c = game.est_components;
+      const fmtEl = q(".est-total-formula");
+      if (fmtEl && c) {
+        const awayRuns = (c.away_off * c.home_sp_adj * c.park).toFixed(1);
+        const homeRuns = (c.home_off * c.away_sp_adj * c.park).toFixed(1);
+        fmtEl.textContent =
+          `${game.away_team_name || "Away"}: ${c.away_off} off × ${c.home_sp_adj} SP × ${c.park} park = ${awayRuns}` +
+          `   |   ${game.home_team_name || "Home"}: ${c.home_off} off × ${c.away_sp_adj} SP × ${c.park} park = ${homeRuns}`;
+      }
+
+      // O/U accuracy badge (filled in after accuracy fetch below)
+      const ouEl = q(".est-ou-accuracy");
+      if (ouEl && window._ouAccuracy != null) {
+        ouEl.textContent = `Model within 2 runs of actual ${(window._ouAccuracy * 100).toFixed(1)}% of the time (${window._ouGames} games tracked)`;
       }
     }
 
@@ -654,6 +661,25 @@
   }
 
   loadPredictions();
+
+  // Fetch O/U accuracy once and store globally so each card can show it
+  window._ouAccuracy = null;
+  window._ouGames    = 0;
+  (async () => {
+    try {
+      const res  = await fetch("/api/accuracy");
+      const data = await res.json();
+      const ou   = data.ou_stats;
+      if (ou && ou.games >= 5 && ou.accuracy != null) {
+        window._ouAccuracy = ou.accuracy;
+        window._ouGames    = ou.games;
+        // Update any already-rendered cards
+        document.querySelectorAll(".est-ou-accuracy").forEach(el => {
+          el.textContent = `Model within 2 runs of actual ${(ou.accuracy * 100).toFixed(1)}% of the time (${ou.games} games tracked)`;
+        });
+      }
+    } catch (e) { /* silently skip */ }
+  })();
 
   // ── Game Detail Modal ─────────────────────────────────────────────
   function openGameModal(game) {

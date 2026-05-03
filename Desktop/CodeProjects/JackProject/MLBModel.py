@@ -740,6 +740,13 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
         "home":  round(home_team_runs, 1),
         "away":  round(away_team_runs, 1),
         "total": round(home_team_runs + away_team_runs, 1),
+        "components": {
+            "away_off":   round(a_off, 2),
+            "home_off":   round(h_off, 2),
+            "home_sp_adj": round(h_sp_adj, 2),
+            "away_sp_adj": round(a_sp_adj, 2),
+            "park":        round(park, 2),
+        },
     }
 
 
@@ -834,9 +841,10 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     _est = estimate_game_total(
         home_team_stats, away_team_stats, home_sp_stats, away_sp_stats
     )
-    result["predicted_total"]  = _est["total"]
-    result["home_est_score"]   = _est["home"]
-    result["away_est_score"]   = _est["away"]
+    result["predicted_total"]    = _est["total"]
+    result["home_est_score"]     = _est["home"]
+    result["away_est_score"]     = _est["away"]
+    result["est_components"]     = _est["components"]
 
     return result
 
