@@ -508,9 +508,11 @@ def get_mlb_odds(api_key):
         if not home_retro or not away_retro:
             continue
 
-        # Average odds across all available bookmakers
+        # Collect per-bookmaker odds and compute average
         away_prices, home_prices = [], []
+        books = []
         for bm in event.get("bookmakers", []):
+            bm_away = bm_home = None
             for mkt in bm.get("markets", []):
                 if mkt.get("key") != "h2h":
                     continue
@@ -520,9 +522,19 @@ def get_mlb_odds(api_key):
                     if p is None:
                         continue
                     if n == away_name:
-                        away_prices.append(p)
+                        bm_away = p
                     elif n == home_name:
-                        home_prices.append(p)
+                        bm_home = p
+            if bm_away is not None:
+                away_prices.append(bm_away)
+            if bm_home is not None:
+                home_prices.append(bm_home)
+            if bm_away is not None and bm_home is not None:
+                books.append({
+                    "name":     bm.get("title", "Unknown"),
+                    "away_ml":  round(bm_away),
+                    "home_ml":  round(bm_home),
+                })
 
         if not away_prices or not home_prices:
             continue
@@ -538,11 +550,25 @@ def get_mlb_odds(api_key):
         home_raw = _american_to_raw(home_ml)
         total    = away_raw + home_raw  # >1 due to vig
 
+        # Arbitrage: best away line + best home line across all books
+        def _ml_to_dec(ml):
+            return ml / 100 + 1 if ml >= 0 else 100 / abs(ml) + 1
+
+        arbitrage = None
+        if books:
+            best_away_dec = max(_ml_to_dec(b["away_ml"]) for b in books)
+            best_home_dec = max(_ml_to_dec(b["home_ml"]) for b in books)
+            arb_pct = 1 / best_away_dec + 1 / best_home_dec
+            if arb_pct < 1.0:
+                arbitrage = {"exists": True, "profit_pct": round((1 - arb_pct) * 100, 2)}
+
         odds_map[(away_retro, home_retro)] = {
             "away_ml":      away_ml,
             "home_ml":      home_ml,
             "away_implied": round(away_raw / total, 4),
             "home_implied": round(home_raw / total, 4),
+            "books":        books[:8],   # cap at 8 for display
+            "arbitrage":    arbitrage,
         }
 
     print(f"[odds] Fetched odds for {len(odds_map)} games")

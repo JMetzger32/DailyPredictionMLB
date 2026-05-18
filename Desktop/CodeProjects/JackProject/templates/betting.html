@@ -17,6 +17,7 @@
     <span class="text-white-50 small d-none d-sm-inline">Betting Stats</span>
     <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
     <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
+    <a href="/explain"     class="btn btn-outline-light btn-sm">Model</a>
   </div>
 </nav>
 
@@ -109,6 +110,20 @@
         <div class="text-end">
           <span class="fs-5 fw-bold" id="ou-pct">—</span>
           <span class="text-muted small ms-1" id="ou-games-label"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Closing Line Value Card ──────────────────────────────── -->
+    <div id="clv-card" class="card border-0 shadow-sm mb-4 d-none">
+      <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <span class="fw-semibold">Closing Line Value</span>
+          <span class="text-muted small ms-2">Positive CLV = model beat the closing line</span>
+        </div>
+        <div class="text-end">
+          <span class="fs-5 fw-bold" id="clv-avg-display">—</span>
+          <span class="text-muted small ms-1" id="clv-games-label"></span>
         </div>
       </div>
     </div>
@@ -486,7 +501,24 @@
     } catch (e) { /* silently skip */ }
   }
 
+  async function loadCLVStats() {
+    try {
+      const res  = await fetch("/api/betting");
+      const data = await res.json();
+      const clv = data.clv_stats;
+      if (clv && clv.games >= 5) {
+        document.getElementById("clv-card").classList.remove("d-none");
+        const sign = clv.avg_clv >= 0 ? "+" : "";
+        document.getElementById("clv-avg-display").textContent =
+          sign + (clv.avg_clv * 100).toFixed(2) + "%";
+        document.getElementById("clv-games-label").textContent =
+          `(${clv.positive}/${clv.games} picks above closing line)`;
+      }
+    } catch (e) { /* silently skip */ }
+  }
+
   loadBetting();
+  loadCLVStats();
   loadOUStats();
 </script>
 

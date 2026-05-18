@@ -17,6 +17,7 @@
     <input type="date" id="date-picker" class="form-control form-control-sm date-input" />
     <button id="next-day" class="btn btn-outline-light btn-sm">&#8250;</button>
     <a href="/accuracy" class="btn btn-outline-light btn-sm ms-1">Season Record</a>
+    <a href="/explain"  class="btn btn-outline-light btn-sm">Model</a>
     <button id="refresh-btn" class="btn btn-outline-light btn-sm">Refresh Baselines</button>
   </div>
 </nav>
@@ -41,7 +42,7 @@
     Rosters and pitcher usage differ from the regular season; treat confidence levels loosely.
   </div>
 
-  <!-- Filter bar + confidence toggle -->
+  <!-- Filter bar + confidence toggle + parlay/weights buttons -->
   <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <div id="filter-bar" class="d-flex flex-wrap gap-2 d-none">
       <button class="btn btn-sm btn-primary filter-pill active" data-team="all">All Games</button>
@@ -51,10 +52,46 @@
         ⚡ High Confidence Only (≥60%)
       </button>
     </div>
+    <div class="d-none ms-auto" id="extra-controls-wrap">
+      <button id="parlay-mode-btn" class="btn btn-sm btn-outline-primary">Parlay Builder</button>
+      <button class="btn btn-sm btn-outline-secondary ms-1" data-bs-toggle="offcanvas" data-bs-target="#weightsOffcanvas">Custom Weights</button>
+    </div>
   </div>
 
   <div id="games-grid" class="row g-3 d-none"></div>
 
+</div>
+
+<!-- ── Parlay Panel (fixed bottom) ───────────────────────────────── -->
+<div id="parlay-panel" class="d-none" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid #0d6efd;box-shadow:0 -2px 12px rgba(0,0,0,0.15);z-index:1040;padding:12px 20px;">
+  <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+    <div>
+      <span class="fw-semibold">Parlay Builder</span>
+      <span id="parlay-legs" class="text-muted small ms-2"></span>
+    </div>
+    <div id="parlay-stats" class="text-center small"></div>
+    <div class="d-flex gap-2">
+      <button id="clear-parlay" class="btn btn-sm btn-outline-secondary">Clear</button>
+      <button id="parlay-mode-exit" class="btn btn-sm btn-primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Custom Weights Offcanvas ──────────────────────────────────── -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="weightsOffcanvas" style="width:320px;">
+  <div class="offcanvas-header border-bottom">
+    <h6 class="offcanvas-title fw-semibold">Custom Model Weights</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <p class="text-muted small mb-3">Adjust how much each factor influences the LR model's win probability. 1× = model default. 0× = ignore entirely.</p>
+    <div id="weight-sliders"></div>
+    <div class="d-flex gap-2 mt-3">
+      <button id="apply-weights-btn" class="btn btn-sm btn-primary flex-grow-1">Apply</button>
+      <button id="reset-weights-btn" class="btn btn-sm btn-outline-secondary">Reset to Model</button>
+    </div>
+    <div id="weights-status" class="text-muted small mt-2"></div>
+  </div>
 </div>
 
 <!-- ── Card template (hidden, cloned by JS) ──────────────────────── -->
@@ -64,8 +101,12 @@
       <div class="card-header d-flex justify-content-between align-items-center gap-2">
         <span class="fw-semibold matchup-label" style="font-size:0.88rem;"></span>
         <div class="d-flex align-items-center gap-1 flex-shrink-0">
+          <span class="badge bg-success arb-badge d-none" style="font-size:0.62rem;" title="Arbitrage opportunity detected across sportsbooks">ARB <span class="arb-pct"></span></span>
           <span class="badge bg-warning text-dark st-badge d-none" style="font-size:0.65rem;">ST</span>
           <span class="badge bg-secondary game-time-badge"></span>
+          <label class="parlay-check-label d-none mb-0" style="font-size:0.72rem;cursor:pointer;" title="Add to parlay">
+            <input type="checkbox" class="parlay-toggle form-check-input me-1" style="vertical-align:middle;">Parlay
+          </label>
         </div>
       </div>
       <div class="card-body p-0">
@@ -630,8 +671,14 @@
         // Store max win prob on the column wrapper for confidence filter
         const col = grid.lastElementChild;
         col.dataset.maxProb = Math.max(game.home_win_prob || 0.5, game.away_win_prob || 0.5);
+        col.dataset.gamePk  = game.game_pk;
+        // Arb badge + parlay checkbox wiring
+        setupCardExtras(col, game);
       }
       grid.classList.remove("d-none");
+
+      // Show extra controls (parlay + weights buttons)
+      document.getElementById("extra-controls-wrap").classList.remove("d-none");
 
       // Initialize tooltips now that nodes are in the DOM
       grid.querySelectorAll("[data-bs-toggle='tooltip']").forEach(el => {
@@ -786,8 +833,217 @@
       estSection.classList.add("d-none");
     }
 
+    // Odds by Sportsbook
+    const bookSection = document.getElementById("modal-odds-by-book");
+    const bookBody    = document.getElementById("modal-book-odds-body");
+    const books       = game.odds_books || [];
+    if (books.length > 0) {
+      document.getElementById("modal-book-away-hdr").textContent = awayName;
+      document.getElementById("modal-book-home-hdr").textContent = homeName;
+      bookBody.innerHTML = books.map(b => {
+        const aStr = b.away_ml > 0 ? `+${b.away_ml}` : `${b.away_ml}`;
+        const hStr = b.home_ml > 0 ? `+${b.home_ml}` : `${b.home_ml}`;
+        return `<tr><td>${b.name}</td><td class="text-center">${aStr}</td><td class="text-center">${hStr}</td></tr>`;
+      }).join("");
+      const arbAlert = document.getElementById("modal-arb-alert");
+      if (game.arbitrage?.exists) {
+        arbAlert.textContent = `Arbitrage: guaranteed ${game.arbitrage.profit_pct}% profit if you split bets optimally across the best lines above.`;
+        arbAlert.classList.remove("d-none");
+      } else {
+        arbAlert.classList.add("d-none");
+      }
+      bookSection.classList.remove("d-none");
+    } else {
+      bookSection.classList.add("d-none");
+    }
+
     new bootstrap.Modal(document.getElementById("gameDetailModal")).show();
   }
+
+  // ── Arb badge + parlay toggle on each card ────────────────────────
+  function setupCardExtras(cardEl, game) {
+    // Arb badge
+    const arbBadge = cardEl.querySelector(".arb-badge");
+    if (game.arbitrage?.exists && arbBadge) {
+      arbBadge.classList.remove("d-none");
+      const pctEl = cardEl.querySelector(".arb-pct");
+      if (pctEl) pctEl.textContent = game.arbitrage.profit_pct + "%";
+    }
+    // Parlay checkbox (shown when parlay mode is active)
+    const chk = cardEl.querySelector(".parlay-toggle");
+    if (chk) {
+      chk.addEventListener("change", () => {
+        const isChecked = chk.checked;
+        const pick      = game.predicted_winner === "Home" ? (game.home_team_name || game.home_team) : (game.away_team_name || game.away_team);
+        const ml        = game.predicted_team_ml;
+        const winProb   = game.predicted_winner === "Home" ? game.home_win_prob : game.away_win_prob;
+        if (isChecked) {
+          if (!parlayGames.find(g => g.game_pk === game.game_pk)) {
+            parlayGames.push({ game_pk: game.game_pk, pick, ml, win_prob: winProb, matchup: `${game.away_team_name||game.away_team} @ ${game.home_team_name||game.home_team}` });
+          }
+        } else {
+          parlayGames = parlayGames.filter(g => g.game_pk !== game.game_pk);
+        }
+        updateParlayPanel();
+      });
+    }
+  }
+
+  // ── Parlay builder logic ──────────────────────────────────────────
+  let parlayGames = [];
+  let parlayModeActive = false;
+
+  function mlToDecimal(ml) {
+    if (ml == null) return null;
+    return ml >= 0 ? ml / 100 + 1 : 100 / Math.abs(ml) + 1;
+  }
+
+  function decimalToMl(dec) {
+    if (dec == null) return null;
+    if (dec >= 2.0) return Math.round((dec - 1) * 100);
+    return -Math.round(100 / (dec - 1));
+  }
+
+  function updateParlayPanel() {
+    const panel   = document.getElementById("parlay-panel");
+    const legsEl  = document.getElementById("parlay-legs");
+    const statsEl = document.getElementById("parlay-stats");
+    if (!parlayModeActive) { panel.classList.add("d-none"); return; }
+    panel.classList.remove("d-none");
+
+    const n = parlayGames.length;
+    legsEl.textContent = n < 2 ? `(select at least 2 picks)` : `${n}-leg parlay`;
+
+    if (n < 2) { statsEl.innerHTML = ""; return; }
+
+    const validGames = parlayGames.filter(g => g.ml != null && g.win_prob != null);
+    if (validGames.length < 2) { statsEl.innerHTML = `<span class="text-muted">Need odds for selected picks</span>`; return; }
+
+    const combinedDec  = validGames.map(g => mlToDecimal(g.ml)).reduce((a, b) => a * b, 1);
+    const combinedProb = validGames.map(g => g.win_prob).reduce((a, b) => a * b, 1);
+    const combinedMl   = decimalToMl(combinedDec);
+    const payout10     = ((combinedDec - 1) * 10).toFixed(2);
+    const ev           = combinedProb * (combinedDec - 1) * 10 - (1 - combinedProb) * 10;
+    const mlStr        = combinedMl >= 0 ? `+${combinedMl}` : `${combinedMl}`;
+    const evCls        = ev >= 0 ? "text-success" : "text-danger";
+    const evSign       = ev >= 0 ? "+" : "";
+    const picks        = validGames.map(g => g.pick).join(", ");
+    statsEl.innerHTML = `
+      <div class="fw-semibold">${picks}</div>
+      <div class="small">Odds: <strong>${mlStr}</strong> &nbsp;·&nbsp; Payout on $10: <strong>$${payout10}</strong> &nbsp;·&nbsp; Model EV: <strong class="${evCls}">${evSign}$${ev.toFixed(2)}</strong></div>
+      <div class="text-muted" style="font-size:0.72rem;">Win prob (if independent): ${(combinedProb * 100).toFixed(1)}%</div>`;
+  }
+
+  document.getElementById("parlay-mode-btn").addEventListener("click", () => {
+    parlayModeActive = !parlayModeActive;
+    document.querySelectorAll(".parlay-check-label").forEach(el => {
+      el.classList.toggle("d-none", !parlayModeActive);
+    });
+    const btn = document.getElementById("parlay-mode-btn");
+    btn.textContent = parlayModeActive ? "Cancel Parlay" : "Parlay Builder";
+    btn.classList.toggle("btn-primary", !parlayModeActive);
+    btn.classList.toggle("btn-danger",  parlayModeActive);
+    if (!parlayModeActive) { parlayGames = []; document.querySelectorAll(".parlay-toggle").forEach(c => c.checked = false); }
+    updateParlayPanel();
+  });
+
+  document.getElementById("clear-parlay").addEventListener("click", () => {
+    parlayGames = [];
+    document.querySelectorAll(".parlay-toggle").forEach(c => c.checked = false);
+    updateParlayPanel();
+  });
+
+  document.getElementById("parlay-mode-exit").addEventListener("click", () => {
+    parlayModeActive = false;
+    parlayGames = [];
+    document.querySelectorAll(".parlay-toggle").forEach(c => c.checked = false);
+    document.querySelectorAll(".parlay-check-label").forEach(el => el.classList.add("d-none"));
+    const btn = document.getElementById("parlay-mode-btn");
+    btn.textContent = "Parlay Builder";
+    btn.classList.replace("btn-danger", "btn-outline-primary");
+    updateParlayPanel();
+  });
+
+  // ── Custom Model Weights ──────────────────────────────────────────
+  const WEIGHT_FEATURES = [
+    { key: "diff_sp_era",          label: "Starting Pitcher ERA" },
+    { key: "diff_sp_whip",         label: "Starting Pitcher WHIP" },
+    { key: "diff_sp_k_bb",         label: "SP Command (K/BB)" },
+    { key: "diff_roll30_obp",      label: "Team Offense (OBP)" },
+    { key: "diff_roll10_win_pct",  label: "Recent Form (10g)" },
+    { key: "home_park_factor",     label: "Park Factor" },
+    { key: "diff_bullpen_era",     label: "Bullpen ERA" },
+    { key: "diff_rest_days",       label: "Rest Days" },
+  ];
+
+  function buildWeightSliders() {
+    const container = document.getElementById("weight-sliders");
+    container.innerHTML = WEIGHT_FEATURES.map(f => `
+      <div class="mb-3">
+        <div class="d-flex justify-content-between mb-1">
+          <label class="small fw-semibold">${f.label}</label>
+          <span class="small text-muted" id="wlbl-${f.key}">1.0×</span>
+        </div>
+        <input type="range" class="form-range weight-slider" id="ws-${f.key}"
+               min="0" max="3" step="0.1" value="1"
+               data-feature="${f.key}">
+      </div>`).join("");
+    container.querySelectorAll(".weight-slider").forEach(sl => {
+      sl.addEventListener("input", () => {
+        document.getElementById(`wlbl-${sl.dataset.feature}`).textContent = parseFloat(sl.value).toFixed(1) + "×";
+      });
+    });
+  }
+
+  buildWeightSliders();
+
+  document.getElementById("reset-weights-btn").addEventListener("click", () => {
+    document.querySelectorAll(".weight-slider").forEach(sl => {
+      sl.value = 1;
+      document.getElementById(`wlbl-${sl.dataset.feature}`).textContent = "1.0×";
+    });
+  });
+
+  document.getElementById("apply-weights-btn").addEventListener("click", async () => {
+    const multipliers = {};
+    document.querySelectorAll(".weight-slider").forEach(sl => {
+      multipliers[sl.dataset.feature] = parseFloat(sl.value);
+    });
+    const statusEl = document.getElementById("weights-status");
+    statusEl.textContent = "Applying…";
+    try {
+      const res  = await fetch("/api/predict/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ multipliers }),
+      });
+      const data = await res.json();
+      const results = data.results || [];
+      let updated = 0;
+      results.forEach(r => {
+        const cards = document.querySelectorAll(`[data-game-pk="${r.game_pk}"]`);
+        cards.forEach(cardWrap => {
+          // Update the probability bar
+          const awayPct = Math.round((r.away_win_prob || 0.5) * 100);
+          const homePct = 100 - awayPct;
+          const awayBar = cardWrap.querySelector(".away-bar");
+          const homeBar = cardWrap.querySelector(".home-bar");
+          if (awayBar) { awayBar.style.width = awayPct + "%"; }
+          if (homeBar) { homeBar.style.width = homePct + "%"; }
+          const awayLbl = cardWrap.querySelector(".away-prob-label");
+          const homeLbl = cardWrap.querySelector(".home-prob-label");
+          const awayBadge = cardWrap.querySelector(".away-badge");
+          const homeBadge = cardWrap.querySelector(".home-badge");
+          if (awayBadge) awayBadge.textContent = awayPct + "% (adj)";
+          if (homeBadge) homeBadge.textContent = homePct + "% (adj)";
+          updated++;
+        });
+      });
+      statusEl.textContent = `Updated ${updated} game card(s). Close to dismiss.`;
+    } catch (e) {
+      statusEl.textContent = "Error: " + e.message;
+    }
+  });
 </script>
 
 <!-- ── Game Detail Modal ────────────────────────────────────────────── -->
@@ -821,6 +1077,24 @@
         <div id="modal-est-total-section" class="d-none mb-4">
           <h6 class="fw-bold mb-2">Estimated Total Breakdown</h6>
           <div id="modal-est-total-body" class="bg-light rounded p-3 small"></div>
+        </div>
+
+        <!-- Odds by Sportsbook -->
+        <div id="modal-odds-by-book" class="d-none mb-4">
+          <h6 class="fw-bold mb-2">Odds by Sportsbook</h6>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Book</th>
+                  <th class="text-center" id="modal-book-away-hdr"></th>
+                  <th class="text-center" id="modal-book-home-hdr"></th>
+                </tr>
+              </thead>
+              <tbody id="modal-book-odds-body"></tbody>
+            </table>
+          </div>
+          <div id="modal-arb-alert" class="alert alert-success py-1 px-2 small d-none mt-2 mb-0">Arbitrage opportunity detected! Best lines across books guarantee a risk-free profit.</div>
         </div>
 
         <!-- Season stats snapshot -->

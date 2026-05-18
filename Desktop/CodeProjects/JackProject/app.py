@@ -226,6 +226,8 @@ def _build_prediction_entry(game, result, odds_data=None):
         "predicted_winner":  result["predicted_winner"],
         "away_win_prob":     round(result["away_win_prob"], 4),
         "home_win_prob":     round(result["home_win_prob"], 4),
+        "away_ml":           odds_data.get("away_ml"),
+        "home_ml":           odds_data.get("home_ml"),
         "bet_rating":        odds_data.get("bet_rating"),
         "predicted_team_ml": odds_data.get("predicted_team_ml"),
         "model_edge":        odds_data.get("model_edge"),
@@ -238,6 +240,7 @@ def _build_prediction_entry(game, result, odds_data=None):
         "away_est_score":    result.get("away_est_score"),
         "actual_total":      None,
         "ou_correct":        None,
+        "x_scaled_features": result.get("x_scaled_features"),
     }
 
 
@@ -708,13 +711,51 @@ def resolve_todays_completed_games():
         print(f"[app] resolve_todays_completed_games failed: {e}")
 
 
+def _store_closing_odds():
+    """Fetch odds near first pitch and store as closing line for CLV tracking."""
+    today = _today_et().isoformat()
+    try:
+        # Bypass cache: clear the odds cache entry so we get a fresh fetch
+        _odds_cache.pop(today, None)
+        odds = get_mlb_odds(ODDS_API_KEY)
+        log = _load_log()
+        changed = False
+        for entry in log.get(today, []):
+            if entry.get("closing_away_ml") is not None:
+                continue
+            key = (entry.get("away_team"), entry.get("home_team"))
+            game_odds = odds.get(key, {})
+            if not game_odds:
+                continue
+            closing_away_impl = game_odds.get("away_implied")
+            closing_home_impl = game_odds.get("home_implied")
+            entry["closing_away_ml"]      = game_odds.get("away_ml")
+            entry["closing_home_ml"]      = game_odds.get("home_ml")
+            entry["closing_away_implied"] = closing_away_impl
+            entry["closing_home_implied"] = closing_home_impl
+            # CLV = model's implied prob - closing line's implied prob for predicted team
+            predicted = entry.get("predicted_winner")
+            model_prob = entry.get("home_win_prob") if predicted == "Home" else entry.get("away_win_prob")
+            closing_impl = closing_home_impl if predicted == "Home" else closing_away_impl
+            if model_prob is not None and closing_impl is not None:
+                entry["clv"] = round(model_prob - closing_impl, 4)
+            changed = True
+        if changed:
+            _save_log(log)
+            _push_log_to_github()
+            print(f"[app] Closing odds stored for {today}", flush=True)
+    except Exception as e:
+        print(f"[app] _store_closing_odds failed: {e}", flush=True)
+
+
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_daily_update, "cron", hour=8, minute=0, timezone="America/New_York")
     scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
+    scheduler.add_job(_store_closing_odds, "cron", hour=18, minute=45, timezone="America/New_York")
     scheduler.start()
-    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min")
+    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM")
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
@@ -873,6 +914,8 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
         "bet_rating":        bet_rating,
         "predicted_team_ml": predicted_team_ml,
         "model_edge":        model_edge,
+        "odds_books":        game_odds.get("books", []),
+        "arbitrage":         game_odds.get("arbitrage"),
     }
 
 
@@ -1234,16 +1277,20 @@ def accuracy():
     _season_start = _date(2026, 3, 27)
     _days_since_start = (_today_et() - _season_start).days
 
-    # Quick check: how many season days are missing from the log entirely?
-    # If many are missing (post-wipe), do a full backfill; otherwise just heal last 7.
+    # Always heal in the background so this request returns immediately.
+    # The log is read after a brief delay to catch any already-cached results,
+    # but we never block on API calls inside the request path.
+    import threading as _threading
     _existing = _load_log()
     _missing = sum(
         1 for i in range(1, _days_since_start + 1)
         if (_today_et() - timedelta(days=i)).isoformat() not in _existing
     )
-    _heal_days = _days_since_start if _missing > 3 else 7
-    _auto_heal_log(days=_heal_days)
-    log = _load_log()
+    _heal_target = _days_since_start if _missing > 3 else 7
+    _threading.Thread(
+        target=_auto_heal_log, kwargs={"days": _heal_target}, daemon=True
+    ).start()
+    log = _existing  # serve current log immediately; background thread updates it
 
     def compute_stats(entries):
         team_stats = {}
@@ -1544,6 +1591,16 @@ def betting_stats():
         for team, v in team_map.items()
     ], key=lambda x: x["net_pl"], reverse=True)
 
+    # Closing Line Value stats (entries with clv logged)
+    clv_entries = [e for day in log.values() for e in day
+                   if e.get("clv") is not None and e.get("game_type") != "S"]
+    clv_values = [e["clv"] for e in clv_entries]
+    clv_stats = {
+        "games":    len(clv_values),
+        "positive": sum(1 for c in clv_values if c > 0),
+        "avg_clv":  round(sum(clv_values) / len(clv_values), 4) if clv_values else None,
+    }
+
     return jsonify({
         "value_bets":      cat_stats(categories["good"]),
         "toss_ups":        cat_stats(categories["unsure"]),
@@ -1552,6 +1609,7 @@ def betting_stats():
         "recent_bets":     recent_value_bets,
         "team_stats":      team_stats,
         "tracking_start":  tracking_start,
+        "clv_stats":       clv_stats,
         "last_updated":    datetime.now().isoformat(),
     })
 
@@ -1630,6 +1688,97 @@ def teams():
         }
         for code, info in sorted(team_baselines.items())
     })
+
+
+# ---------------------------------------------------------------------------
+# Model Explainer (Feature 6)
+# ---------------------------------------------------------------------------
+@app.route("/explain")
+def explain():
+    return render_template("explain.html")
+
+
+@app.route("/api/model/info")
+def model_info():
+    """Return LR coefficients, GBM importances, and training metadata for the explainer page."""
+    from MLBModel import FEATURE_COLS as _FC
+    arts       = _artifacts
+    lr         = arts.get("lr_model")
+    gb         = arts.get("gb_model")
+    feat_cols  = arts.get("feature_cols", _FC)
+
+    lr_coefs = {}
+    if lr is not None:
+        for feat, coef in zip(feat_cols, lr.coef_[0]):
+            lr_coefs[feat] = round(float(coef), 4)
+
+    gb_importances = {}
+    if gb is not None:
+        for feat, imp in zip(feat_cols, gb.feature_importances_):
+            gb_importances[feat] = round(float(imp), 4)
+
+    # Human-readable labels from FEATURE_LABELS (already defined in this file)
+    labels = {k: v for k, v in FEATURE_LABELS.items() if k in feat_cols}
+
+    return jsonify({
+        "features":        feat_cols,
+        "feature_labels":  labels,
+        "lr_coefs":        lr_coefs,
+        "gb_importances":  gb_importances,
+        "training_info": {
+            "games":         9510,
+            "seasons":       "2021–2025",
+            "models":        "Logistic Regression (C=0.5) + Gradient Boosting ensemble",
+            "ensemble_rule": "Average of LR and GBM probabilities",
+            "accuracy_note": "See /api/accuracy for live season accuracy",
+        },
+    })
+
+
+# ---------------------------------------------------------------------------
+# Custom Model Weights (Feature 7)
+# ---------------------------------------------------------------------------
+@app.route("/api/predict/custom", methods=["POST"])
+def predict_custom():
+    """
+    Re-score today's predictions using user-specified LR feature weight multipliers.
+    Body: {"multipliers": {"diff_sp_era": 1.5, "home_park_factor": 0.0, ...}}
+    Returns: {"results": [{"game_pk": ..., "home_win_prob": ..., "away_win_prob": ...}, ...]}
+    Only the LR portion is adjusted; GBM is not affected.
+    """
+    import numpy as np
+    body = request.get_json(force=True, silent=True) or {}
+    multipliers = body.get("multipliers", {})
+
+    from MLBModel import FEATURE_COLS as _FC
+    arts        = _artifacts
+    lr          = arts.get("lr_model")
+    feat_cols   = arts.get("feature_cols", _FC)
+
+    if lr is None:
+        return jsonify({"error": "Model not loaded"}), 500
+
+    # Clamp multipliers to [0, 3]
+    mults = {f: max(0.0, min(3.0, float(multipliers.get(f, 1.0)))) for f in feat_cols}
+    coef_adjusted = np.array([lr.coef_[0][i] * mults[f] for i, f in enumerate(feat_cols)])
+
+    today = _today_et().isoformat()
+    log   = _load_log()
+    results = []
+    for entry in log.get(today, []):
+        x_scaled = entry.get("x_scaled_features")
+        if x_scaled is None:
+            continue
+        x = np.array(x_scaled)
+        log_odds = float(np.dot(coef_adjusted, x)) + float(lr.intercept_[0])
+        prob = 1.0 / (1.0 + np.exp(-log_odds))
+        results.append({
+            "game_pk":       entry["game_pk"],
+            "home_win_prob": round(prob, 3),
+            "away_win_prob": round(1 - prob, 3),
+        })
+
+    return jsonify({"results": results, "multipliers_applied": mults})
 
 
 # ---------------------------------------------------------------------------

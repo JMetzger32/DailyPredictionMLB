@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Explainer — DailyPredictionMLB</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark bg-dark px-3 py-2">
+  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-white-50 small d-none d-sm-inline">Model Explainer</span>
+    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
+    <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
+    <a href="/betting"     class="btn btn-outline-light btn-sm">Betting</a>
+  </div>
+</nav>
+
+<!-- ── Main content ──────────────────────────────────────────────── -->
+<div class="container-xl py-4">
+
+  <div id="loading" class="text-center py-5">
+    <div class="spinner-border text-secondary mb-3" role="status"></div>
+    <p class="text-muted">Loading model data…</p>
+  </div>
+
+  <div id="content" class="d-none">
+
+    <!-- ── How the Model Works ───────────────────────── -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h4 class="fw-bold mb-3">How the Model Works</h4>
+        <div class="row g-4">
+          <div class="col-md-6">
+            <h6 class="fw-semibold">Training Data</h6>
+            <p class="small text-muted mb-2" id="training-desc">Loading…</p>
+            <h6 class="fw-semibold mt-3">Ensemble Architecture</h6>
+            <p class="small text-muted mb-2" id="model-desc">Loading…</p>
+          </div>
+          <div class="col-md-6">
+            <h6 class="fw-semibold">O/U Formula (Estimated Total Runs)</h6>
+            <div class="bg-light rounded p-3 small">
+              <p class="mb-1"><strong>Away team runs</strong> = Away Offense (R/G) × (Home SP ERA ÷ 4.20) × Park Factor</p>
+              <p class="mb-1"><strong>Home team runs</strong> = Home Offense (R/G) × (Away SP ERA ÷ 4.20) × Park Factor</p>
+              <p class="mb-0 text-muted">SP adj above 1.0 means a worse-than-average pitcher — more runs expected. Park factor &gt;1.0 means a hitter-friendly park (e.g. Coors Field = 1.23×).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Feature Importance (GBM) ─────────────────── -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="fw-bold mb-1">Feature Importance <span class="text-muted fw-normal small">(Gradient Boosting)</span></h5>
+        <p class="text-muted small mb-3">How much each feature contributes to the GBM model's prediction. Higher = model relies on it more.</p>
+        <canvas id="importance-chart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- ── LR Coefficients ───────────────────────────── -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="fw-bold mb-1">Logistic Regression Coefficients</h5>
+        <p class="text-muted small mb-3">Direction and magnitude of effect for each feature on the home team's win probability. Positive = favors home; negative = favors away.</p>
+        <canvas id="coef-chart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Calibration ───────────────────────────────── -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="fw-bold mb-1">Calibration Curve</h5>
+        <p class="text-muted small mb-3">How well model confidence aligns with actual win rates. A perfectly calibrated model falls on the dashed diagonal.</p>
+        <canvas id="calibration-chart" height="140"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Feature Reference Table ──────────────────── -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="fw-bold mb-3">Feature Reference</h5>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover" id="feature-table">
+            <thead class="table-dark">
+              <tr>
+                <th>Feature</th>
+                <th class="text-end">GBM Importance</th>
+                <th class="text-end">LR Coefficient</th>
+              </tr>
+            </thead>
+            <tbody id="feature-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div>
+
+<div class="site-credit">Website made by Jack Metzger</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  async function loadExplainer() {
+    const loading = document.getElementById("loading");
+    const content = document.getElementById("content");
+    try {
+      const [modelRes, calRes] = await Promise.all([
+        fetch("/api/model/info"),
+        fetch("/api/calibration"),
+      ]);
+      const model = await modelRes.json();
+      const calData = await calRes.json();
+
+      // Training info
+      const ti = model.training_info || {};
+      document.getElementById("training-desc").textContent =
+        `Trained on ${ti.games?.toLocaleString() || "9,510"} MLB games, seasons ${ti.seasons || "2021–2025"}. Features are computed as home minus away team differentials (except park factor, which is a home-team property).`;
+      document.getElementById("model-desc").innerHTML =
+        `${ti.models || "Logistic Regression (C=0.5) + Gradient Boosting"}.<br>${ti.ensemble_rule || "Final probability = average of both models."}`;
+
+      const features = model.features || [];
+      const labels   = model.feature_labels || {};
+      const gbImps   = model.gb_importances || {};
+      const lrCoefs  = model.lr_coefs || {};
+
+      // Sort by GBM importance descending
+      const sorted = [...features].sort((a, b) => (gbImps[b] || 0) - (gbImps[a] || 0));
+
+      // ── Feature Importance Chart ──────────────────────────────────
+      const impLabels = sorted.map(f => labels[f] || f);
+      const impValues = sorted.map(f => ((gbImps[f] || 0) * 100).toFixed(2));
+      new Chart(document.getElementById("importance-chart"), {
+        type: "bar",
+        data: {
+          labels: impLabels,
+          datasets: [{
+            label: "GBM Importance (%)",
+            data: impValues,
+            backgroundColor: "rgba(13, 110, 253, 0.7)",
+            borderColor: "rgba(13, 110, 253, 1)",
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { title: { display: true, text: "Importance (%)" } },
+          },
+        },
+      });
+
+      // ── LR Coefficients Chart ─────────────────────────────────────
+      const coefSorted = [...features].sort((a, b) => (lrCoefs[b] || 0) - (lrCoefs[a] || 0));
+      const coefLabels = coefSorted.map(f => labels[f] || f);
+      const coefValues = coefSorted.map(f => lrCoefs[f] || 0);
+      const coefColors = coefValues.map(v => v >= 0 ? "rgba(25, 135, 84, 0.7)" : "rgba(220, 53, 69, 0.7)");
+      new Chart(document.getElementById("coef-chart"), {
+        type: "bar",
+        data: {
+          labels: coefLabels,
+          datasets: [{
+            label: "LR Coefficient",
+            data: coefValues,
+            backgroundColor: coefColors,
+            borderColor: coefColors.map(c => c.replace("0.7", "1")),
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { title: { display: true, text: "Coefficient (positive = favors home)" } },
+          },
+        },
+      });
+
+      // ── Calibration Chart ─────────────────────────────────────────
+      const calPoints = calData.filter(b => b.actual !== null);
+      new Chart(document.getElementById("calibration-chart"), {
+        type: "scatter",
+        data: {
+          datasets: [
+            {
+              label: "Model calibration",
+              data: calPoints.map(b => ({ x: b.predicted * 100, y: b.actual * 100 })),
+              backgroundColor: "rgba(13, 110, 253, 0.8)",
+              pointRadius: 8,
+            },
+            {
+              label: "Perfect calibration",
+              data: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
+              type: "line",
+              borderColor: "#aaa",
+              borderDash: [6, 4],
+              pointRadius: 0,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const b = calPoints[ctx.dataIndex] || {};
+                  return `Predicted: ${ctx.parsed.x.toFixed(0)}% → Actual: ${ctx.parsed.y.toFixed(1)}% (${b.count} games)`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: { min: 0, max: 100, title: { display: true, text: "Model predicted win % (home)" } },
+            y: { min: 0, max: 100, title: { display: true, text: "Actual win % (home)" } },
+          },
+        },
+      });
+
+      // ── Feature Reference Table ───────────────────────────────────
+      const tbody = document.getElementById("feature-tbody");
+      tbody.innerHTML = sorted.map(f => {
+        const imp  = gbImps[f] != null ? (gbImps[f] * 100).toFixed(2) + "%" : "—";
+        const coef = lrCoefs[f] != null ? (lrCoefs[f] >= 0 ? "+" : "") + lrCoefs[f].toFixed(4) : "—";
+        const coefCls = lrCoefs[f] > 0 ? "text-success" : lrCoefs[f] < 0 ? "text-danger" : "";
+        return `<tr>
+          <td class="small">${labels[f] || f}<br><span class="text-muted" style="font-size:0.72rem;">${f}</span></td>
+          <td class="text-end small">${imp}</td>
+          <td class="text-end small fw-semibold ${coefCls}">${coef}</td>
+        </tr>`;
+      }).join("");
+
+      loading.classList.add("d-none");
+      content.classList.remove("d-none");
+
+    } catch (e) {
+      loading.innerHTML = `<p class="text-danger">Failed to load model data: ${e.message}</p>`;
+    }
+  }
+
+  loadExplainer();
+</script>
+</body>
+</html>
