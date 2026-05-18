@@ -422,7 +422,8 @@ def _auto_heal_log(days=7):
                 changed = True
     if changed:
         _save_log(log)
-        print(f"[app] _auto_heal_log: log updated")
+        _push_log_to_github()
+        print(f"[app] _auto_heal_log: log updated and pushed to GitHub", flush=True)
     # Resolve picks for any recently-healed dates
     for i in range(1, days + 1):
         _resolve_picks_for_date(_today_et() - timedelta(days=i))
@@ -1229,11 +1230,19 @@ def accuracy():
     Auto-heals the log before computing: resolves unresolved entries and
     backfills missing days for the last 7 days.
     """
-    # Heal the full season so redeploys that wiped the log get everything back
     from datetime import date as _date
     _season_start = _date(2026, 3, 27)
     _days_since_start = (_today_et() - _season_start).days
-    _auto_heal_log(days=max(_days_since_start, 7))
+
+    # Quick check: how many season days are missing from the log entirely?
+    # If many are missing (post-wipe), do a full backfill; otherwise just heal last 7.
+    _existing = _load_log()
+    _missing = sum(
+        1 for i in range(1, _days_since_start + 1)
+        if (_today_et() - timedelta(days=i)).isoformat() not in _existing
+    )
+    _heal_days = _days_since_start if _missing > 3 else 7
+    _auto_heal_log(days=_heal_days)
     log = _load_log()
 
     def compute_stats(entries):
