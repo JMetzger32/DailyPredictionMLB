@@ -676,6 +676,7 @@ def _restore_file_from_github(filepath):
 # Restore persisted data files from GitHub on startup (recovers data after Render redeploy)
 _restore_file_from_github(PICKS_LOG_PATH)
 _restore_file_from_github(PREDICTIONS_LOG)
+_restore_file_from_github(ARTIFACTS_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +689,7 @@ def run_daily_update():
         import update_daily
         update_daily.main()
         load_artifacts()
+        _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup model artifacts {_today_et().isoformat()}")
         update_yesterday_results()
         log_todays_predictions()
         send_daily_email()
