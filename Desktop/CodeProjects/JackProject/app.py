@@ -678,6 +678,24 @@ _restore_file_from_github(PICKS_LOG_PATH)
 _restore_file_from_github(PREDICTIONS_LOG)
 _restore_file_from_github(ARTIFACTS_PATH)
 
+# Bootstrap 2026 game data into DB on startup if missing (DB is gitignored, so Render starts empty)
+try:
+    import sqlite3 as _sqlite3, fetch_2026_games as _f26
+    _conn = _sqlite3.connect(_f26.DB_PATH)
+    _cur  = _conn.cursor()
+    _cur.execute("SELECT COUNT(*) FROM games WHERE season=2026")
+    _count_2026 = _cur.fetchone()[0]
+    _conn.close()
+    if _count_2026 == 0:
+        print("[startup] No 2026 games in DB — bootstrapping full season...", flush=True)
+        _f26.fetch_and_insert(_f26.RS_START, _today_et() - timedelta(days=1), verbose=False)
+        print("[startup] 2026 game bootstrap complete.", flush=True)
+    else:
+        # Catch up any missing days since last run
+        _f26.fetch_and_insert(_f26.RS_START, _today_et() - timedelta(days=1), verbose=False)
+except Exception as _e:
+    print(f"[startup] 2026 game fetch failed: {_e}", flush=True)
+
 
 # ---------------------------------------------------------------------------
 # APScheduler — 8 AM daily refresh
@@ -686,6 +704,10 @@ def run_daily_update():
     """Wrapper called by APScheduler at 8 AM."""
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Running scheduled daily update...")
     try:
+        import fetch_2026_games
+        fetch_2026_games.fetch_and_insert(
+            fetch_2026_games.RS_START, _today_et() - timedelta(days=1), verbose=False
+        )
         import update_daily
         update_daily.main()
         load_artifacts()
