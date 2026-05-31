@@ -40,6 +40,7 @@ app = Flask(__name__)
 
 ARTIFACTS_PATH    = os.environ.get("ARTIFACTS_PATH", "mlb_model_artifacts.pkl")
 PREDICTIONS_LOG   = os.environ.get("PREDICTIONS_LOG", "predictions_log.json")
+BETTING_LOG_PATH  = os.environ.get("BETTING_LOG_PATH", "betting_log.json")
 SUBSCRIBERS_PATH  = os.environ.get("SUBSCRIBERS_PATH", "subscribers.json")
 PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH", "picks_log.json")
 RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
@@ -146,6 +147,83 @@ def _load_log():
 def _save_log(log):
     with open(PREDICTIONS_LOG, "w") as f:
         json.dump(log, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Betting log — separate persistent store for entries that have odds data.
+# Never touched by backfills; backed up to GitHub independently.
+# ---------------------------------------------------------------------------
+def _load_betting_log():
+    try:
+        with open(BETTING_LOG_PATH) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def _save_betting_log(blog):
+    with open(BETTING_LOG_PATH, "w") as f:
+        json.dump(blog, f, indent=2)
+
+
+def _push_betting_log_to_github():
+    _push_file_to_github(BETTING_LOG_PATH, f"Auto-backup betting log {_today_et().isoformat()}")
+
+
+def _upsert_betting_entries(entries):
+    """Write entries with odds data into betting_log.json (keyed by date).
+    Skips entries with no bet_rating. Merges by game_pk so result updates
+    don't create duplicates. Saves and pushes to GitHub if anything changed."""
+    odds_entries = [e for e in entries if e.get("bet_rating") is not None]
+    if not odds_entries:
+        return
+    blog = _load_betting_log()
+    changed = False
+    for entry in odds_entries:
+        date_str = entry.get("date")
+        if not date_str:
+            continue
+        if date_str not in blog:
+            blog[date_str] = []
+        # Merge by game_pk
+        existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
+        pk = entry.get("game_pk")
+        if pk and pk in existing:
+            existing[pk].update(entry)
+        else:
+            blog[date_str].append(entry)
+            if pk:
+                existing[pk] = entry
+        changed = True
+    if changed:
+        _save_betting_log(blog)
+        _push_betting_log_to_github()
+
+
+def _resolve_betting_log_results(date_str, results):
+    """Update correct/scores for betting_log entries on date_str using results dict."""
+    blog = _load_betting_log()
+    if date_str not in blog:
+        return
+    changed = False
+    for entry in blog[date_str]:
+        if entry.get("correct") is not None:
+            continue
+        r = results.get(entry.get("game_pk"))
+        if r and r["final"] and r["away_score"] is not None:
+            entry["away_score"] = r["away_score"]
+            entry["home_score"] = r["home_score"]
+            if r["home_score"] == r["away_score"]:
+                entry["actual_winner"] = "Tie"
+                entry["correct"] = None
+            else:
+                actual = "Home" if r["home_score"] > r["away_score"] else "Away"
+                entry["actual_winner"] = actual
+                entry["correct"] = (entry["predicted_winner"] == actual)
+            changed = True
+    if changed:
+        _save_betting_log(blog)
+        _push_betting_log_to_github()
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +361,7 @@ def update_yesterday_results():
 
     if changed:
         _save_log(log)
+        _resolve_betting_log_results(yesterday, results)
         print(f"[app] Updated results for {yesterday}")
 
 
@@ -353,6 +432,8 @@ def _log_predictions_for_date(target_date, log=None):
             print(f"[app] Could not resolve results for {date_str}: {e}")
 
     log[date_str] = entries
+    # Persist any entries that have odds data into the separate betting log
+    _upsert_betting_entries(entries)
     print(f"[app] Backfilled {len(entries)} predictions for {date_str}")
     return log
 
@@ -676,6 +757,7 @@ def _restore_file_from_github(filepath):
 # Restore persisted data files from GitHub on startup (recovers data after Render redeploy)
 _restore_file_from_github(PICKS_LOG_PATH)
 _restore_file_from_github(PREDICTIONS_LOG)
+_restore_file_from_github(BETTING_LOG_PATH)
 _restore_file_from_github(ARTIFACTS_PATH)
 
 # Bootstrap 2026 game data into DB on startup if missing (DB is gitignored, so Render starts empty)
@@ -767,6 +849,7 @@ def _store_closing_odds():
         if changed:
             _save_log(log)
             _push_log_to_github()
+            _upsert_betting_entries(log.get(today, []))
             print(f"[app] Closing odds stored for {today}", flush=True)
     except Exception as e:
         print(f"[app] _store_closing_odds failed: {e}", flush=True)
@@ -1487,7 +1570,7 @@ def accuracy():
 @app.route("/api/betting")
 def betting_stats():
     """Return betting accuracy stats broken down by bet_rating category."""
-    log = _load_log()
+    log = _load_betting_log()
 
     # Only include RS entries with odds data that are resolved
     all_entries = [
