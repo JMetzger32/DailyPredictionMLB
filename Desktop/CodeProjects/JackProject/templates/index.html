@@ -1032,10 +1032,21 @@
           if (homeBar) { homeBar.style.width = homePct + "%"; }
           const awayLbl = cardWrap.querySelector(".away-prob-label");
           const homeLbl = cardWrap.querySelector(".home-prob-label");
+          if (awayLbl) awayLbl.textContent = cardWrap.querySelector(".matchup-label")?.textContent.split("@")[0].trim() || "Away";
+          if (homeLbl) homeLbl.textContent = cardWrap.querySelector(".matchup-label")?.textContent.split("@")[1]?.trim() || "Home";
           const awayBadge = cardWrap.querySelector(".away-badge");
           const homeBadge = cardWrap.querySelector(".home-badge");
           if (awayBadge) awayBadge.textContent = awayPct + "% (adj)";
           if (homeBadge) homeBadge.textContent = homePct + "% (adj)";
+          // Update winner badge if prediction flips
+          const winnerBadge = cardWrap.querySelector(".winner-badge");
+          if (winnerBadge) {
+            const newWinner = homePct >= awayPct ? "Home" : "Away";
+            const winnerName = newWinner === "Home"
+              ? (cardWrap.querySelector(".matchup-label")?.textContent.split("@")[1]?.trim() || "Home")
+              : (cardWrap.querySelector(".matchup-label")?.textContent.split("@")[0]?.trim() || "Away");
+            winnerBadge.textContent = "Predicted: " + winnerName;
+          }
           updated++;
         });
       });

@@ -86,20 +86,21 @@ def backfill_date(target_date, artifacts, log):
             continue
 
         entry = {
-            "game_pk":          game.get("game_pk"),
-            "date":             date_str,
-            "game_type":        game.get("game_type", "R"),
-            "away_team":        away,
-            "away_team_name":   game.get("away_team_name"),
-            "home_team":        home,
-            "home_team_name":   game.get("home_team_name"),
-            "predicted_winner": result["predicted_winner"],
-            "away_win_prob":    round(result["away_win_prob"], 4),
-            "home_win_prob":    round(result["home_win_prob"], 4),
-            "actual_winner":    None,
-            "away_score":       None,
-            "home_score":       None,
-            "correct":          None,
+            "game_pk":           game.get("game_pk"),
+            "date":              date_str,
+            "game_type":         game.get("game_type", "R"),
+            "away_team":         away,
+            "away_team_name":    game.get("away_team_name"),
+            "home_team":         home,
+            "home_team_name":    game.get("home_team_name"),
+            "predicted_winner":  result["predicted_winner"],
+            "away_win_prob":     round(result["away_win_prob"], 4),
+            "home_win_prob":     round(result["home_win_prob"], 4),
+            "x_scaled_features": result.get("x_scaled_features"),
+            "actual_winner":     None,
+            "away_score":        None,
+            "home_score":        None,
+            "correct":           None,
         }
 
         # Attach actual results if the game is already final
