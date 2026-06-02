@@ -778,6 +778,26 @@ try:
 except Exception as _e:
     print(f"[startup] 2026 game fetch failed: {_e}", flush=True)
 
+# Seed today's predictions on startup (Render free tier may sleep through the 8 AM scheduler).
+# This ensures x_scaled_features and odds data are always logged for today's games.
+try:
+    _startup_today = _today_et().isoformat()
+    _startup_log   = _load_log()
+    _today_entries = _startup_log.get(_startup_today, [])
+    _missing_features = _today_entries and all(e.get("x_scaled_features") is None for e in _today_entries)
+    if _startup_today not in _startup_log or _missing_features:
+        reason = "missing features" if _missing_features else "not in log"
+        print(f"[startup] Today {reason} — re-seeding predictions now...", flush=True)
+        _startup_log.pop(_startup_today, None)  # clear stale entry so it gets re-logged
+        _startup_log = _log_predictions_for_date(_today_et(), _startup_log)
+        _save_log(_startup_log)
+        _push_log_to_github()
+        print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
+    # Always sync betting log from today's entries (catches newly added odds fields)
+    _upsert_betting_entries(_startup_log.get(_startup_today, []))
+except Exception as _e:
+    print(f"[startup] Today-seeding failed: {_e}", flush=True)
+
 
 # ---------------------------------------------------------------------------
 # APScheduler — 8 AM daily refresh
