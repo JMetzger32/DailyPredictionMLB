@@ -171,9 +171,10 @@ def _push_betting_log_to_github():
 
 
 def _upsert_betting_entries(entries):
-    """Write entries with odds data into betting_log.json (keyed by date).
-    Skips entries with no bet_rating. Merges by game_pk so result updates
-    don't create duplicates. Saves and pushes to GitHub if anything changed."""
+    """Write entries that have odds data into betting_log.json (keyed by date).
+    Only saves entries with bet_rating set (value/toss-up/no-value).
+    Merges by game_pk so result updates don't create duplicates.
+    Saves and pushes to GitHub if anything changed."""
     odds_entries = [e for e in entries if e.get("bet_rating") is not None]
     if not odds_entries:
         return
