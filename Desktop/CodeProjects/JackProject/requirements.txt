@@ -4,7 +4,7 @@ requests
 gunicorn
 pybaseball
 pandas
-scikit-learn>=1.4,<2.0
+scikit-learn==1.7.1
 numpy
 seaborn
 resend
