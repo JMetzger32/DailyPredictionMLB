@@ -28,8 +28,13 @@ from zoneinfo import ZoneInfo
 _ET = ZoneInfo("America/New_York")
 
 def _today_et():
-    """Return today's date in US Eastern time (avoids UTC midnight flip on Render)."""
-    return datetime.now(tz=_ET).date()
+    """Return the current prediction date in US Eastern time.
+    Before 7 AM ET, returns yesterday — predictions aren't posted yet and the
+    page shouldn't flip away from the previous day's games until morning lines load."""
+    now = datetime.now(tz=_ET)
+    if now.hour < 7:
+        return (now - timedelta(days=1)).date()
+    return now.date()
 
 from flask import Flask, jsonify, render_template, request
 
@@ -828,12 +833,17 @@ def run_daily_update():
 def resolve_todays_completed_games():
     """Persist results of any games that finished today. Called every 30 min."""
     try:
+        today = _today_et()
         log = _load_log()
-        if _resolve_unresolved_for_date(log, _today_et()):
+        if _resolve_unresolved_for_date(log, today):
             _save_log(log)
-            print(f"[app] Interval job: resolved completed games for {_today_et().isoformat()}")
             _push_log_to_github()
-        _resolve_picks_for_date(_today_et())
+            # Mirror results into betting_log so it stays current throughout the day
+            from schedule_fetcher import get_game_results
+            results = get_game_results(today)
+            _resolve_betting_log_results(today.isoformat(), results)
+            print(f"[app] Interval job: resolved completed games for {today.isoformat()}")
+        _resolve_picks_for_date(today)
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
 
