@@ -817,7 +817,7 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "away_win_prob": round(1 - prob, 3),
         "predicted_winner": "Home" if prob > 0.5 else "Away",
         "confidence": round(abs(prob - 0.5) * 2, 3),
-        "x_scaled_features": X_scaled[0].tolist() if hasattr(X_scaled, "tolist") else list(X_scaled[0]),
+        "x_scaled_features": (X_scaled.values[0] if hasattr(X_scaled, "values") else X_scaled[0]).tolist(),
     }
 
     # Run line prediction (-1.5): ensemble of LR + GBM if models provided
