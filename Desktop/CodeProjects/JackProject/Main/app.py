@@ -1899,10 +1899,18 @@ def model_info():
         "lr_coefs":        lr_coefs,
         "gb_importances":  gb_importances,
         "training_info": {
-            "games":         9510,
-            "seasons":       "2021–2025",
-            "models":        "Logistic Regression (C=0.5) + Gradient Boosting ensemble",
-            "ensemble_rule": "Average of LR and GBM probabilities",
+            "games":         12233,
+            "seasons":       "2021–2026",
+            "models":        "Logistic Regression (C=0.5) + Gradient Boosting + XGBoost ensemble",
+            "ensemble_rule": "Final probability = average of LR, GBM, and XGBoost predictions. "
+                             "LR uses scaled features; tree models use raw differentials.",
+            "rolling_stats": "Team baselines updated daily from 30-game rolling windows "
+                             "(10-game for recent form) computed directly from the game database — "
+                             "same pipeline as training, no distribution mismatch.",
+            "hyperparams":   "GBM/XGBoost params tuned via 12-combo grid search on 2025 holdout: "
+                             "best = n_estimators=200, max_depth=3, learning_rate=0.03.",
+            "sp_era_boost":  "SP ERA coefficient boosted 1.4× post-hoc in LR (StandardScaler "
+                             "absorbs training-time scaling; post-hoc is the only effective method).",
             "accuracy_note": "See /api/accuracy for live season accuracy",
         },
     })

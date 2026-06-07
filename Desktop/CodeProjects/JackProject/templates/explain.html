@@ -41,6 +41,10 @@
             <p class="small text-muted mb-2" id="training-desc">Loading…</p>
             <h6 class="fw-semibold mt-3">Ensemble Architecture</h6>
             <p class="small text-muted mb-2" id="model-desc">Loading…</p>
+            <h6 class="fw-semibold mt-3">Rolling Stats</h6>
+            <p class="small text-muted mb-2" id="rolling-desc">Loading…</p>
+            <h6 class="fw-semibold mt-3">Hyperparameter Tuning</h6>
+            <p class="small text-muted mb-0" id="hyperparam-desc">Loading…</p>
           </div>
           <div class="col-md-6">
             <h6 class="fw-semibold">O/U Formula (Estimated Total Runs)</h6>
@@ -121,9 +125,13 @@
       // Training info
       const ti = model.training_info || {};
       document.getElementById("training-desc").textContent =
-        `Trained on ${ti.games?.toLocaleString() || "9,510"} MLB games, seasons ${ti.seasons || "2021–2025"}. Features are computed as home minus away team differentials (except park factor, which is a home-team property).`;
+        `Trained on ${(ti.games || 12233).toLocaleString()} MLB games, seasons ${ti.seasons || "2021–2026"}. Features are computed as home minus away team differentials (except park factor, which is a home-team property).`;
       document.getElementById("model-desc").innerHTML =
-        `${ti.models || "Logistic Regression (C=0.5) + Gradient Boosting"}.<br>${ti.ensemble_rule || "Final probability = average of both models."}`;
+        `${ti.models || "LR + GBM + XGBoost ensemble"}.<br><span class="text-muted">${ti.ensemble_rule || "Final probability = average of LR, GBM, and XGBoost."}</span>`;
+      document.getElementById("rolling-desc").textContent =
+        ti.rolling_stats || "30-game and 10-game rolling windows computed from game database daily.";
+      document.getElementById("hyperparam-desc").textContent =
+        ti.hyperparams || "12-combo grid search on 2025 holdout to select GBM/XGBoost params.";
 
       const features = model.features || [];
       const labels   = model.feature_labels || {};
