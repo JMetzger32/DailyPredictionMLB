@@ -14,6 +14,8 @@ To schedule at 8 AM daily via cron:
   0 8 * * * cd /Users/jackmetzger/Desktop/CodeProjects/JackProject && python3 update_daily.py >> update_log.txt 2>&1
 """
 
+import os
+import sys
 import pickle
 import warnings
 import numpy as np
@@ -28,9 +30,16 @@ cache.enable()  # Cache API responses to avoid hammering servers on repeated run
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-SEASON        = 2026
-ARTIFACTS_PATH = "mlb_model_artifacts.pkl"
-PYTH_EXP      = 1.83
+_UPDATES_DIR = os.path.dirname(os.path.abspath(__file__))  # updates/
+_ROOT        = os.path.dirname(_UPDATES_DIR)               # JackProject/
+
+# Ensure Main/ is importable for MLBModel (used in compute_rolling_baselines_from_db)
+sys.path.insert(0, os.path.join(_ROOT, "Main"))
+
+SEASON         = 2026
+ARTIFACTS_PATH = os.environ.get("ARTIFACTS_PATH", os.path.join(_UPDATES_DIR, "mlb_model_artifacts.pkl"))
+DB_PATH        = os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db")
+PYTH_EXP       = 1.83
 MIN_GAMES_FOR_LIVE_UPDATE = 1   # process team if any RS games exist; thresholds handled inside
 RS_START_DATE = pd.Timestamp(f"{SEASON}-03-25")  # regular season never starts before this
 
@@ -723,6 +732,84 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
 
 
 # ---------------------------------------------------------------------------
+# Rolling stats from DB — primary data source for team baselines
+# ---------------------------------------------------------------------------
+def compute_rolling_baselines_from_db():
+    """Compute per-team rolling stats for SEASON using mlb_allseasons.db.
+    Uses the same MLBModel pipeline as training, guaranteeing no feature mismatch.
+    Returns dict keyed by Retrosheet team code, or None on failure."""
+    try:
+        from MLBModel import (load_data, build_team_game_log,
+                              compute_rolling_team_features, merge_bullpen_era,
+                              PARK_FACTORS)
+
+        df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
+        tgl = build_team_game_log(df)
+        tgl = compute_rolling_team_features(tgl)
+        tgl = merge_bullpen_era(tgl, bullpen_stats)
+
+        season_tgl = tgl[tgl["season"] == SEASON].copy()
+        if len(season_tgl) == 0:
+            print(f"  [WARN] No {SEASON} rows in DB after pipeline — skipping DB rolling", flush=True)
+            return None
+
+        latest = (season_tgl.sort_values("date")
+                             .groupby("team")
+                             .tail(1)
+                             .set_index("team"))
+
+        def _s(row, col, default):
+            v = row.get(col, default)
+            try:
+                fv = float(v)
+                return fv if pd.notna(fv) else default
+            except (TypeError, ValueError):
+                return default
+
+        baselines = {}
+        for team, row in latest.iterrows():
+            baselines[team] = {
+                # Win% and Pythagorean (computed from actual 2026 results in DB)
+                "win_pct":               _s(row, "season_win_pct",       0.500),
+                "pyth_win_pct":          _s(row, "pyth_win_pct",         0.500),
+                # Rolling offensive stats (30-game and 10-game windows)
+                "runs_per_game":         _s(row, "roll30_runs_scored",    4.50),
+                "runs_allowed_per_game": _s(row, "roll30_runs_allowed",   4.50),
+                "recent_runs_per_game":  _s(row, "roll10_runs_scored",    4.50),
+                "hits_per_game":         _s(row, "roll30_hits",           8.50),
+                "opp_hits_per_game":     _s(row, "roll30_opp_hits",       8.50),
+                "walks_per_game":        _s(row, "roll30_walks",          3.20),
+                "opp_walks_per_game":    _s(row, "roll30_opp_walks",      3.20),
+                "errors_per_game":       _s(row, "roll30_errors",         0.60),
+                "hr_per_game":           _s(row, "roll30_homeruns",       1.10),
+                "opp_hr_per_game":       _s(row, "roll30_opp_homeruns",   1.10),
+                "recent_win_pct":        _s(row, "roll10_win_pct",        0.500),
+                "recent_hr_per_game":    _s(row, "roll10_homeruns",       1.10),
+                "opp_k_per_game":        _s(row, "roll30_opp_strikeouts", 8.50),
+                # Rate stats (OBP/SLG/ISO)
+                "obp":                   _s(row, "roll30_obp",            0.318),
+                "slg":                   _s(row, "roll30_slg",            0.400),
+                "iso":                   _s(row, "roll30_iso",            0.155),
+                # Bullpen
+                "bullpen_used":          _s(row, "roll3_bullpen_used",    4.00),
+                "roll7_bullpen_ip":      _s(row, "roll7_bullpen_ip",      15.0),
+                "bullpen_era":           _s(row, "bullpen_era",           4.20),
+                # Park factor (static per venue)
+                "park_factor":           PARK_FACTORS.get(team, 1.0),
+                # rest_days will be overwritten by get_team_rest_days() in main()
+                "rest_days":             1,
+            }
+
+        print(f"  [DB rolling] Computed rolling stats for {len(baselines)} teams from {SEASON} data",
+              flush=True)
+        return baselines
+
+    except Exception as e:
+        print(f"  [WARN] compute_rolling_baselines_from_db failed: {e}", flush=True)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -737,43 +824,36 @@ def main():
     old_sp_baselines   = artifacts.get("sp_baselines",   {})
     print(f"  Loaded artifacts  ({len(old_team_baselines)} teams, {len(old_sp_baselines)} pitchers)")
 
-    # ---- Team baselines ------------------------------------------------
-    print(f"\n  Fetching {SEASON} game logs for all 30 teams...")
+    # ---- Team baselines (primary: DB rolling stats) -------------------------
+    print(f"\n  Computing {SEASON} team baselines from DB rolling pipeline...")
     new_team_baselines = {}
-    games_fetched = []
-    updated_count = 0
+    avg_games = 0
 
-    for retro_code, br_code in RETRO_TO_BR.items():
-        print(f"    {retro_code} ({br_code:<3s}) ", end="", flush=True)
-        games = fetch_team_games(br_code, SEASON)
+    db_baselines = compute_rolling_baselines_from_db()
+    if db_baselines and len(db_baselines) >= 20:
+        new_team_baselines = dict(db_baselines)
+        avg_games = 70  # approximate — DB has full-season rolling windows
+        print(f"  [DB rolling] {len(new_team_baselines)}/30 teams loaded from DB")
+    else:
+        print("  [WARN] DB rolling unavailable — falling back to MLB API for all teams...")
 
-        if games is not None and len(games) >= MIN_GAMES_FOR_LIVE_UPDATE:
-            games_fetched.append(len(games))
-            baseline = compute_team_baseline(games, old_team_baselines.get(retro_code))
-            new_team_baselines[retro_code] = baseline
-            updated_count += 1
-            print(f"-> {len(games):3d} games  W={baseline['win_pct']:.3f}  "
-                  f"BP={baseline.get('bullpen_used', 0):.1f}")
+    # For any team missing from DB (or if DB failed), fall back to MLB API
+    for retro_code in RETRO_TO_BR:
+        if retro_code in new_team_baselines:
+            continue
+        print(f"    {retro_code}: DB missing — trying MLB API...", end="", flush=True)
+        api_baseline = fetch_team_baseline_from_mlb_api(
+            retro_code, SEASON, old_team_baselines.get(retro_code)
+        )
+        if api_baseline:
+            new_team_baselines[retro_code] = api_baseline
+            avg_games = max(avg_games, 9)
+            print(f"  MLB API  W={api_baseline['win_pct']:.3f}")
         else:
-            # BR unavailable — try MLB Stats API fallback
-            api_baseline = fetch_team_baseline_from_mlb_api(
-                retro_code, SEASON, old_team_baselines.get(retro_code)
+            new_team_baselines[retro_code] = old_team_baselines.get(
+                retro_code, dict(FALLBACK_TEAM)
             )
-            if api_baseline:
-                new_team_baselines[retro_code] = api_baseline
-                updated_count += 1
-                games_fetched.append(9)  # approximate
-                print(f"-> MLB API (season stats)  W={api_baseline['win_pct']:.3f}  "
-                      f"OBP={api_baseline['obp']:.3f}")
-            else:
-                new_team_baselines[retro_code] = old_team_baselines.get(
-                    retro_code, dict(FALLBACK_TEAM)
-                )
-                print(f"-> kept prior baseline (BR + MLB API both failed)")
-
-    avg_games = int(sum(games_fetched) / len(games_fetched)) if games_fetched else 0
-    print(f"\n  Updated {updated_count}/30 teams with live {SEASON} data "
-          f"(avg {avg_games} games)")
+            print("  kept prior baseline")
 
     # ---- Rest days -------------------------------------------------------
     print("  Fetching team rest days...")

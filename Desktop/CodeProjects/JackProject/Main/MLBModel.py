@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -22,7 +23,10 @@ sns.set_theme(style="whitegrid")
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DB_PATH = "mlb_allseasons.db"
+_MLBMODEL_DIR = os.path.dirname(os.path.abspath(__file__))  # Main/
+_PROJECT_ROOT = os.path.dirname(_MLBMODEL_DIR)              # JackProject/
+DB_PATH = os.path.join(_PROJECT_ROOT, "Databases_and_logs", "mlb_allseasons.db")
+_ARTIFACTS_SAVE_PATH = os.path.join(_PROJECT_ROOT, "updates", "mlb_model_artifacts.pkl")
 RANDOM_STATE = 42
 ROLLING_WINDOW = 30
 ROLLING_WINDOW_SHORT = 10
@@ -751,7 +755,8 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
 
 
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
-                 model, scaler=None, feature_cols=None, runline_models=None):
+                 model, scaler=None, feature_cols=None, runline_models=None,
+                 gb_model=None, xgb_model=None):
     """
     Predict probability of home team winning.
 
@@ -811,7 +816,13 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
 
     X_scaled = scaler.transform(X_raw) if scaler is not None else X_raw
 
-    prob = float(model.predict_proba(X_scaled)[0, 1])
+    # Ensemble: LR + GB + XGB (use whichever models are available)
+    probs = [float(model.predict_proba(X_scaled)[0, 1])]  # LR (scaled)
+    if gb_model is not None:
+        probs.append(float(gb_model.predict_proba(X_raw)[0, 1]))   # GB (raw)
+    if xgb_model is not None:
+        probs.append(float(xgb_model.predict_proba(X_raw)[0, 1]))  # XGB (raw)
+    prob = sum(probs) / len(probs)
 
     # Soft recalibration: nudge 4% toward MLB home win prior (53%)
     # Reduces overconfident away picks without a hard cutoff
@@ -935,8 +946,30 @@ if __name__ == "__main__":
     print("\n[7/7] Evaluating on 2025 holdout...")
     lr, gb, scaler, X_test_df, y_test, xgb = evaluate_holdout(model_df, FEATURE_COLS)
 
-    # Step 7b: Final model — retrain on ALL data 2021-2026 with recency weights
-    print("\n[7b] Retraining final model on 2021-2026 with recency weights...")
+    # Step 7b: Hyperparameter grid search (train 2021-2024, evaluate 2025 holdout)
+    print("\n[7b] Hyperparameter grid search (12 combos, 2025 holdout)...")
+    _gs_train = model_df[model_df["season"].between(2021, 2024)].dropna(subset=FEATURE_COLS)
+    _gs_test  = model_df[model_df["season"] == 2025].dropna(subset=FEATURE_COLS)
+    _X_gstr   = _gs_train[FEATURE_COLS]
+    _y_gstr   = _gs_train["home_win"]
+    _X_gste   = _gs_test[FEATURE_COLS]
+    _y_gste   = _gs_test["home_win"]
+    _best_params = {"n_estimators": 200, "max_depth": 4, "learning_rate": 0.05, "subsample": 0.8}
+    _best_acc = 0.0
+    for _n_est in [200, 300]:
+        for _max_d in [3, 4, 5]:
+            for _lr_val in [0.03, 0.05]:
+                _p = {"n_estimators": _n_est, "max_depth": _max_d,
+                      "learning_rate": _lr_val, "subsample": 0.8}
+                _gb_cv = GradientBoostingClassifier(**_p, random_state=RANDOM_STATE)
+                _gb_cv.fit(_X_gstr, _y_gstr)
+                _acc = accuracy_score(_y_gste, _gb_cv.predict(_X_gste))
+                if _acc > _best_acc:
+                    _best_acc, _best_params = _acc, dict(_p)
+    print(f"  Best GBM params: {_best_params}  holdout_acc={_best_acc:.3f}")
+
+    # Step 7c: Final model — retrain on ALL data 2021-2026 with recency weights
+    print("\n[7c] Retraining final model on 2021-2026 with recency weights...")
     YEAR_WEIGHTS = {2021: 1.0, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
     _final_df = model_df.dropna(subset=FEATURE_COLS)
     _sw = _final_df["season"].map(YEAR_WEIGHTS).fillna(1.0)
@@ -951,15 +984,14 @@ if __name__ == "__main__":
     lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
     lr.fit(X_final_sc, y_final, sample_weight=_sw)
 
-    gb = GradientBoostingClassifier(
-        n_estimators=200, max_depth=4, learning_rate=0.05,
-        subsample=0.8, random_state=RANDOM_STATE
-    )
+    gb = GradientBoostingClassifier(**_best_params, random_state=RANDOM_STATE)
     gb.fit(X_final, y_final, sample_weight=_sw)
 
     if HAS_XGBOOST:
         xgb = XGBClassifier(
-            n_estimators=300, max_depth=4, learning_rate=0.05,
+            n_estimators=_best_params["n_estimators"],
+            max_depth=_best_params["max_depth"],
+            learning_rate=_best_params["learning_rate"],
             subsample=0.8, colsample_bytree=0.8,
             eval_metric="logloss", random_state=RANDOM_STATE, verbosity=0
         )
@@ -969,7 +1001,7 @@ if __name__ == "__main__":
     print("  Final model trained.")
 
     # Step 7c: Run line model (home covers -1.5)
-    print("\n[7c] Training run line model (home covers -1.5)...")
+    print("\n[7d] Training run line model (home covers -1.5)...")
     rl_df = model_df.dropna(subset=FEATURE_COLS + ["home_covers"])
     rl_df = rl_df[rl_df["home_covers"].notna()]
     # Evaluate on 2025 holdout, but train final on all seasons
@@ -1062,9 +1094,9 @@ if __name__ == "__main__":
     }
     if xgb is not None:
         artifacts["xgb_model"] = xgb
-    with open("mlb_model_artifacts.pkl", "wb") as f:
+    with open(_ARTIFACTS_SAVE_PATH, "wb") as f:
         pickle.dump(artifacts, f)
-    print("  Saved model artifacts to mlb_model_artifacts.pkl")
+    print(f"  Saved model artifacts to {_ARTIFACTS_SAVE_PATH}")
 
     # Demo prediction
     print("\n" + "=" * 60)

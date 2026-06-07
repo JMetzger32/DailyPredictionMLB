@@ -11,14 +11,20 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import pickle
 from datetime import date, timedelta
+
+_UPDATES_DIR = os.path.dirname(os.path.abspath(__file__))  # updates/
+_ROOT = os.path.dirname(_UPDATES_DIR)                      # JackProject/
+sys.path.insert(0, os.path.join(_ROOT, "Main"))
+sys.path.insert(0, _UPDATES_DIR)
 
 from MLBModel import _default_sp_stats, predict_game
 from schedule_fetcher import find_pitcher_by_name, get_game_results, get_todays_schedule
 
-ARTIFACTS_PATH  = os.environ.get("ARTIFACTS_PATH", "mlb_model_artifacts.pkl")
-PREDICTIONS_LOG = os.environ.get("PREDICTIONS_LOG", "predictions_log.json")
+ARTIFACTS_PATH  = os.environ.get("ARTIFACTS_PATH",  os.path.join(_UPDATES_DIR, "mlb_model_artifacts.pkl"))
+PREDICTIONS_LOG = os.environ.get("PREDICTIONS_LOG", os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
 
 
 def _load_artifacts():

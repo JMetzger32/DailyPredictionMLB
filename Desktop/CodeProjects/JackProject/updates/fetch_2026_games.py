@@ -9,12 +9,14 @@ Usage:
 """
 
 import argparse
+import os
 import sqlite3
 import requests
 import time
 from datetime import date, timedelta
 
-DB_PATH      = "mlb_allseasons.db"
+_UPDATES_DIR = os.path.dirname(os.path.abspath(__file__))  # updates/
+DB_PATH = os.path.join(_UPDATES_DIR, "..", "Databases_and_logs", "mlb_allseasons.db")
 SEASON       = 2026
 RS_START     = date(2026, 3, 27)
 STATS_BASE   = "https://statsapi.mlb.com/api/v1"
