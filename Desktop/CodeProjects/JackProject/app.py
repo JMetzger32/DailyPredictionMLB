@@ -133,7 +133,11 @@ def _get_odds_cached():
     cached = _odds_cache.get(today)
     if cached and (time.monotonic() - cached["ts"]) < _ODDS_CACHE_TTL:
         return cached["odds"]
+    if not ODDS_API_KEY:
+        print("[odds] ODDS_API_KEY not set — skipping odds fetch", flush=True)
+        return {}
     odds = get_mlb_odds(ODDS_API_KEY)
+    print(f"[odds] Fetched {len(odds)} games from The Odds API for {today}", flush=True)
     _odds_cache[today] = {"ts": time.monotonic(), "odds": odds}
     return odds
 
@@ -1782,6 +1786,39 @@ def calibration():
         for b in bins
     ]
     return jsonify(result)
+
+
+@app.route("/api/debug/odds")
+def debug_odds():
+    """Diagnostic: shows odds API status, key presence, and live game count."""
+    key_set = bool(ODDS_API_KEY)
+    games_returned = 0
+    error = None
+    sample = []
+    if key_set:
+        try:
+            odds = get_mlb_odds(ODDS_API_KEY)
+            games_returned = len(odds)
+            sample = [f"{a}@{h}: away={v['away_ml']}, home={v['home_ml']}"
+                      for (a, h), v in list(odds.items())[:3]]
+        except Exception as e:
+            error = str(e)
+    blog = _load_betting_log()
+    blog_entries = sum(len(v) for v in blog.values())
+    log = _load_log()
+    entries_with_odds = sum(
+        1 for day in log.values() for e in day
+        if e.get("bet_rating") is not None
+    )
+    return jsonify({
+        "odds_api_key_set":       key_set,
+        "games_from_api_now":     games_returned,
+        "api_error":              error,
+        "sample_games":           sample,
+        "betting_log_entries":    blog_entries,
+        "predictions_with_odds":  entries_with_odds,
+        "today_et":               _today_et().isoformat(),
+    })
 
 
 @app.route("/api/trigger-daily")
