@@ -1927,7 +1927,6 @@ def predict_custom():
     Returns: {"results": [{"game_pk": ..., "home_win_prob": ..., "away_win_prob": ...}, ...]}
     Only the LR portion is adjusted; GBM is not affected.
     """
-    import numpy as np
     body = request.get_json(force=True, silent=True) or {}
     multipliers = body.get("multipliers", {})
 
@@ -1939,29 +1938,53 @@ def predict_custom():
     if lr is None:
         return jsonify({"error": "Model not loaded"}), 500
 
-    # Clamp multipliers to [0, 3]
-    mults = {f: max(0.0, min(3.0, float(multipliers.get(f, 1.0)))) for f in feat_cols}
-    coef_adjusted = np.array([lr.coef_[0][i] * mults[f] for i, f in enumerate(feat_cols)])
+    # Ensure lr.coef_ is structured correctly. 
+    # Binary LogisticRegression in sklearn has shape (1, n_features)
+    raw_coef = lr.coef_[0] if lr.coef_.ndim > 1 else lr.coef_
+
+    if len(raw_coef) != len(feat_cols):
+        return jsonify({
+            "error": f"Model feature count mismatch. Model expected {len(raw_coef)}, but got {len(feat_cols)} features."
+        }), 500
+
+    # Clamp multipliers to [0, 3] and map to the exact index order of feat_cols
+    mults = {}
+    coef_adjusted = np.zeros_like(raw_coef, dtype=float)
+    
+    for i, f in enumerate(feat_cols):
+        # Default to 1.0 if feature not provided in the payload
+        m_val = max(0.0, min(3.0, float(multipliers.get(f, 1.0))))
+        mults[f] = m_val
+        coef_adjusted[i] = raw_coef[i] * m_val
 
     today = _today_et().isoformat()
     log   = _load_log()
     results = []
+    
+    intercept = float(lr.intercept_[0]) if hasattr(lr.intercept_, "__len__") else float(lr.intercept_)
+
     for entry in log.get(today, []):
         x_scaled = entry.get("x_scaled_features")
         if x_scaled is None:
             continue
-        x = np.array(x_scaled)
-        log_odds = float(np.dot(coef_adjusted, x)) + float(lr.intercept_[0])
+        
+        # Convert to numpy array and flatten to handle 1D or 2D (1, N) inputs safely
+        x = np.array(x_scaled).flatten()
+        
+        if len(x) != len(coef_adjusted):
+            # Guard against logged feature shape mismatches
+            continue
+
+        log_odds = float(np.dot(coef_adjusted, x)) + intercept
         prob = 1.0 / (1.0 + np.exp(-log_odds))
+        
         results.append({
             "game_pk":       entry["game_pk"],
             "home_win_prob": round(prob, 3),
-            "away_win_prob": round(1 - prob, 3),
+            "away_win_prob": round(1.0 - prob, 3),
         })
 
     return jsonify({"results": results, "multipliers_applied": mults})
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
