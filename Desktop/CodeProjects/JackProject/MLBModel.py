@@ -812,6 +812,13 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     X_scaled = scaler.transform(X_raw) if scaler is not None else X_raw
 
     prob = float(model.predict_proba(X_scaled)[0, 1])
+
+    # Soft recalibration: nudge 4% toward MLB home win prior (53%)
+    # Reduces overconfident away picks without a hard cutoff
+    _HOME_PRIOR  = 0.53
+    _RECAL_BLEND = 0.04
+    prob = (1 - _RECAL_BLEND) * prob + _RECAL_BLEND * _HOME_PRIOR
+
     result = {
         "home_win_prob": round(prob, 3),
         "away_win_prob": round(1 - prob, 3),
@@ -892,7 +899,7 @@ if __name__ == "__main__":
     # Step 1: Load
     print("\n[1/7] Loading data...")
     df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
-    print(f"  Loaded {len(df)} games (2021-2025)")
+    print(f"  Loaded {len(df)} games (2021-2026)")
     print(f"  Loaded {len(pitcher_stats)} pitcher-season records")
     has_xfip = "xfip" in pitcher_stats.columns
     has_siera = "siera" in pitcher_stats.columns
@@ -924,14 +931,48 @@ if __name__ == "__main__":
     print("\n[6/7] Cross-validation (Leave-One-Season-Out)...")
     cv_results = cross_validate_loso(model_df, FEATURE_COLS)
 
-    # Step 7: 2025 holdout
+    # Step 7: 2025 holdout (reference evaluation — train 2021-2024, test 2025)
     print("\n[7/7] Evaluating on 2025 holdout...")
     lr, gb, scaler, X_test_df, y_test, xgb = evaluate_holdout(model_df, FEATURE_COLS)
 
-    # Step 7b: Run line model (home covers -1.5)
-    print("\n[7b] Training run line model (home covers -1.5)...")
+    # Step 7b: Final model — retrain on ALL data 2021-2026 with recency weights
+    print("\n[7b] Retraining final model on 2021-2026 with recency weights...")
+    YEAR_WEIGHTS = {2021: 1.0, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
+    _final_df = model_df.dropna(subset=FEATURE_COLS)
+    _sw = _final_df["season"].map(YEAR_WEIGHTS).fillna(1.0)
+    X_final = _final_df[FEATURE_COLS]
+    y_final = _final_df["home_win"]
+    seasons_in = sorted(_final_df["season"].unique())
+    print(f"  Training on seasons: {seasons_in}  ({len(_final_df)} games)")
+
+    final_scaler = StandardScaler()
+    X_final_sc = final_scaler.fit_transform(X_final)
+
+    lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    lr.fit(X_final_sc, y_final, sample_weight=_sw)
+
+    gb = GradientBoostingClassifier(
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, random_state=RANDOM_STATE
+    )
+    gb.fit(X_final, y_final, sample_weight=_sw)
+
+    if HAS_XGBOOST:
+        xgb = XGBClassifier(
+            n_estimators=300, max_depth=4, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8,
+            eval_metric="logloss", random_state=RANDOM_STATE, verbosity=0
+        )
+        xgb.fit(X_final, y_final, sample_weight=_sw)
+
+    scaler = final_scaler
+    print("  Final model trained.")
+
+    # Step 7c: Run line model (home covers -1.5)
+    print("\n[7c] Training run line model (home covers -1.5)...")
     rl_df = model_df.dropna(subset=FEATURE_COLS + ["home_covers"])
     rl_df = rl_df[rl_df["home_covers"].notna()]
+    # Evaluate on 2025 holdout, but train final on all seasons
     rl_train = rl_df[rl_df["season"].between(2021, 2024)]
     rl_test  = rl_df[rl_df["season"] == 2025]
     X_rl_train = rl_train[FEATURE_COLS]
@@ -960,6 +1001,21 @@ if __name__ == "__main__":
     print(f"  Run line covers rate (home): {y_rl_test.mean():.3f}")
     print(f"  Baseline: {rl_base:.3f}  |  Ensemble accuracy: {rl_acc:.3f}")
 
+    # Retrain run-line models on all seasons 2021-2026 with recency weights
+    _rl_all = rl_df.copy()
+    _rl_sw  = _rl_all["season"].map(YEAR_WEIGHTS).fillna(1.0)
+    X_rl_all = _rl_all[FEATURE_COLS]
+    y_rl_all = _rl_all["home_covers"].astype(int)
+    rl_scaler = StandardScaler()
+    X_rl_all_sc = rl_scaler.fit_transform(X_rl_all)
+    rl_lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    rl_lr.fit(X_rl_all_sc, y_rl_all, sample_weight=_rl_sw)
+    rl_gb = GradientBoostingClassifier(
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, random_state=RANDOM_STATE
+    )
+    rl_gb.fit(X_rl_all, y_rl_all, sample_weight=_rl_sw)
+
     # Plots
     print("\n  Generating plots...")
     plot_feature_importance(gb, FEATURE_COLS)
@@ -978,6 +1034,14 @@ if __name__ == "__main__":
     coefs = pd.Series(lr.coef_[0], index=FEATURE_COLS).sort_values(ascending=False)
     for feat, c in coefs.items():
         print(f"    {feat:<40s}  {c:+.4f}")
+
+    # Post-hoc SP ERA weight boost: multiply LR coefficient by 1.4
+    # StandardScaler absorbs any training-time scaling, so this is the only
+    # effective way to increase SP ERA's influence in the LR model.
+    _era_idx = list(FEATURE_COLS).index("diff_sp_era")
+    _old_era_coef = lr.coef_[0][_era_idx]
+    lr.coef_[0][_era_idx] *= 1.4
+    print(f"\n  SP ERA coefficient: {_old_era_coef:+.4f} → {lr.coef_[0][_era_idx]:+.4f}  (1.4× boost)")
 
     # Build 2025 baselines for 2026 predictions
     print("\n  Building 2025 baselines for 2026 predictions...")
