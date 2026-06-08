@@ -837,8 +837,22 @@ try:
     elif _missing_odds:
         print(f"[startup] Today has predictions but no odds — patching odds now...", flush=True)
         _refresh_today_odds()
-    # Always sync betting log from today's entries (catches newly added odds fields)
-    _upsert_betting_entries(_startup_log.get(_startup_today, []))
+    # Rebuild betting_log from ALL predictions_log entries that have odds data.
+    # This guarantees betting_log is never stale regardless of previous failures.
+    try:
+        _full_log = _load_log()
+        _blog = {}
+        for _d, _entries in _full_log.items():
+            _odds_entries = [e for e in _entries if e.get("bet_rating") is not None]
+            if _odds_entries:
+                _blog[_d] = _odds_entries
+        _save_betting_log(_blog)
+        _blog_total = sum(len(v) for v in _blog.values())
+        print(f"[startup] Rebuilt betting_log: {_blog_total} entries across {len(_blog)} dates", flush=True)
+        if _blog_total > 0:
+            _push_betting_log_to_github()
+    except Exception as _be:
+        print(f"[startup] betting_log rebuild failed: {_be}", flush=True)
 except Exception as _e:
     print(f"[startup] Today-seeding failed: {_e}", flush=True)
 
