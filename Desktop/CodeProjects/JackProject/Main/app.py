@@ -759,6 +759,40 @@ def _restore_file_from_github(filepath):
         print(f"[github] restore error for {filepath}: {e}")
 
 
+def _refresh_today_odds():
+    """Patch live odds into today's predictions_log entries that are missing them.
+    Called at startup and in run_daily_update so betting_log is never missing a day."""
+    if not ODDS_API_KEY:
+        return
+    today_str = _today_et().isoformat()
+    log = _load_log()
+    entries = [e for e in log.get(today_str, []) if e.get("game_type") != "S"]
+    if not entries:
+        return
+    needs_odds = [e for e in entries if e.get("away_ml") is None]
+    if not needs_odds:
+        return
+    _odds_cache.pop(today_str, None)  # force fresh fetch, bypass cache
+    odds_map = _get_odds_cached()
+    if not odds_map:
+        print("[app] _refresh_today_odds: no odds returned from API", flush=True)
+        return
+    changed = 0
+    for entry in log.get(today_str, []):
+        if entry.get("game_type") == "S" or entry.get("away_ml") is not None:
+            continue
+        fields = _compute_odds_fields(entry["away_team"], entry["home_team"], entry, odds_map)
+        if fields.get("away_ml") is not None:
+            entry.update(fields)
+            changed += 1
+    if changed:
+        _save_log(log)
+        _upsert_betting_entries(log.get(today_str, []))
+        _push_log_to_github()
+        _push_betting_log_to_github()
+        print(f"[app] _refresh_today_odds: patched odds into {changed} entries for {today_str}", flush=True)
+
+
 # Restore persisted data files from GitHub on startup (recovers data after Render redeploy)
 _restore_file_from_github(PICKS_LOG_PATH)
 _restore_file_from_github(PREDICTIONS_LOG)
@@ -789,7 +823,9 @@ try:
     _startup_today = _today_et().isoformat()
     _startup_log   = _load_log()
     _today_entries = _startup_log.get(_startup_today, [])
-    _missing_features = _today_entries and all(e.get("x_scaled_features") is None for e in _today_entries)
+    _rs_entries = [e for e in _today_entries if e.get("game_type") != "S"]
+    _missing_features = _rs_entries and all(e.get("x_scaled_features") is None for e in _rs_entries)
+    _missing_odds = bool(ODDS_API_KEY) and _rs_entries and all(e.get("away_ml") is None for e in _rs_entries)
     if _startup_today not in _startup_log or _missing_features:
         reason = "missing features" if _missing_features else "not in log"
         print(f"[startup] Today {reason} — re-seeding predictions now...", flush=True)
@@ -798,6 +834,9 @@ try:
         _save_log(_startup_log)
         _push_log_to_github()
         print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
+    elif _missing_odds:
+        print(f"[startup] Today has predictions but no odds — patching odds now...", flush=True)
+        _refresh_today_odds()
     # Always sync betting log from today's entries (catches newly added odds fields)
     _upsert_betting_entries(_startup_log.get(_startup_today, []))
 except Exception as _e:
@@ -821,6 +860,7 @@ def run_daily_update():
         _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup model artifacts {_today_et().isoformat()}")
         update_yesterday_results()
         log_todays_predictions()
+        _refresh_today_odds()
         send_daily_email()
         _push_log_to_github()
         print("[app] Daily update complete.")
