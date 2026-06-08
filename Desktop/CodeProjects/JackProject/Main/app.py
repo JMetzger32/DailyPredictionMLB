@@ -859,6 +859,7 @@ def run_daily_update():
         load_artifacts()
         _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup model artifacts {_today_et().isoformat()}")
         update_yesterday_results()
+        _auto_heal_log(days=7)
         log_todays_predictions()
         _refresh_today_odds()
         send_daily_email()
@@ -923,6 +924,40 @@ def _store_closing_odds():
             print(f"[app] Closing odds stored for {today}", flush=True)
     except Exception as e:
         print(f"[app] _store_closing_odds failed: {e}", flush=True)
+
+
+def _refresh_today_odds():
+    """Patch live odds into today's predictions_log entries that are missing them.
+    Called at startup and in run_daily_update so betting_log is never missing a day."""
+    if not ODDS_API_KEY:
+        return
+    today_str = _today_et().isoformat()
+    log = _load_log()
+    entries = [e for e in log.get(today_str, []) if e.get("game_type") != "S"]
+    if not entries:
+        return
+    needs_odds = [e for e in entries if e.get("away_ml") is None]
+    if not needs_odds:
+        return
+    _odds_cache.pop(today_str, None)  # force fresh fetch, bypass cache
+    odds_map = _get_odds_cached()
+    if not odds_map:
+        print("[app] _refresh_today_odds: no odds returned from API", flush=True)
+        return
+    changed = 0
+    for entry in log.get(today_str, []):
+        if entry.get("game_type") == "S" or entry.get("away_ml") is not None:
+            continue
+        fields = _compute_odds_fields(entry["away_team"], entry["home_team"], entry, odds_map)
+        if fields.get("away_ml") is not None:
+            entry.update(fields)
+            changed += 1
+    if changed:
+        _save_log(log)
+        _upsert_betting_entries(log.get(today_str, []))
+        _push_log_to_github()
+        _push_betting_log_to_github()
+        print(f"[app] _refresh_today_odds: patched odds into {changed} entries for {today_str}", flush=True)
 
 
 try:
