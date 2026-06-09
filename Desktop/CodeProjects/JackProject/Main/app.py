@@ -773,23 +773,35 @@ def _restore_file_from_github(filepath):
 
 
 def _refresh_today_odds():
-    """Patch live odds into today's predictions_log entries that are missing them.
-    Called at startup and in run_daily_update so betting_log is never missing a day."""
+    """Ensure today's predictions exist in the log with odds.
+    Seeds today if missing, then patches any entries still lacking odds.
+    Safe to call repeatedly — exits early if everything is already set."""
     if not ODDS_API_KEY:
         return
     today_str = _today_et().isoformat()
     log = _load_log()
+
+    # Seed today if not in log yet (e.g. server was alive at midnight, missed startup)
+    if today_str not in log:
+        print(f"[app] _refresh_today_odds: today not in log — seeding now...", flush=True)
+        log = _log_predictions_for_date(_today_et(), log)
+        _save_log(log)
+        _push_log_to_github()
+
     entries = [e for e in log.get(today_str, []) if e.get("game_type") != "S"]
     if not entries:
         return
+
     needs_odds = [e for e in entries if e.get("away_ml") is None]
     if not needs_odds:
         return
+
     _odds_cache.pop(today_str, None)  # force fresh fetch, bypass cache
     odds_map = _get_odds_cached()
     if not odds_map:
         print("[app] _refresh_today_odds: no odds returned from API", flush=True)
         return
+
     changed = 0
     for entry in log.get(today_str, []):
         if entry.get("game_type") == "S" or entry.get("away_ml") is not None:
@@ -798,12 +810,15 @@ def _refresh_today_odds():
         if fields.get("away_ml") is not None:
             entry.update(fields)
             changed += 1
+
     if changed:
         _save_log(log)
         _upsert_betting_entries(log.get(today_str, []))
         _push_log_to_github()
         _push_betting_log_to_github()
         print(f"[app] _refresh_today_odds: patched odds into {changed} entries for {today_str}", flush=True)
+    else:
+        print(f"[app] _refresh_today_odds: {len(needs_odds)} entries need odds but none matched API — check team codes", flush=True)
 
 
 # Restore persisted data files from GitHub on startup (recovers data after Render redeploy)
