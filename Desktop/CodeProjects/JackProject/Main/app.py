@@ -219,6 +219,10 @@ def _resolve_betting_log_results(date_str, results):
                 actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                 entry["actual_winner"] = actual
                 entry["correct"] = (entry["predicted_winner"] == actual)
+                home_covers = (r["home_score"] - r["away_score"]) > 1.5
+                hcp = entry.get("home_cover_prob")
+                if hcp is not None:
+                    entry["correct_rl"] = ((hcp > 0.5) == home_covers)
             changed = True
     if changed:
         _save_betting_log(blog)
@@ -352,6 +356,11 @@ def update_yesterday_results():
                     actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                     entry["actual_winner"] = actual
                     entry["correct"] = (entry["predicted_winner"] == actual)
+                    # Run-line: did predicted team cover ±1.5?
+                    home_covers = (r["home_score"] - r["away_score"]) > 1.5
+                    hcp = entry.get("home_cover_prob")
+                    if hcp is not None:
+                        entry["correct_rl"] = ((hcp > 0.5) == home_covers)
             if not ou_done and entry.get("predicted_total") is not None:
                 actual_total = r["home_score"] + r["away_score"]
                 entry["actual_total"] = actual_total
@@ -483,6 +492,10 @@ def _resolve_unresolved_for_date(log, target_date):
                 actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                 entry["actual_winner"] = actual
                 entry["correct"] = (entry["predicted_winner"] == actual)
+                home_covers = (r["home_score"] - r["away_score"]) > 1.5
+                hcp = entry.get("home_cover_prob")
+                if hcp is not None:
+                    entry["correct_rl"] = ((hcp > 0.5) == home_covers)
             changed = True
     return changed
 
@@ -825,7 +838,6 @@ try:
     _today_entries = _startup_log.get(_startup_today, [])
     _rs_entries = [e for e in _today_entries if e.get("game_type") != "S"]
     _missing_features = _rs_entries and all(e.get("x_scaled_features") is None for e in _rs_entries)
-    _missing_odds = bool(ODDS_API_KEY) and _rs_entries and all(e.get("away_ml") is None for e in _rs_entries)
     if _startup_today not in _startup_log or _missing_features:
         reason = "missing features" if _missing_features else "not in log"
         print(f"[startup] Today {reason} — re-seeding predictions now...", flush=True)
@@ -834,16 +846,17 @@ try:
         _save_log(_startup_log)
         _push_log_to_github()
         print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
-    elif _missing_odds:
-        print(f"[startup] Today has predictions but no odds — patching odds now...", flush=True)
-        _refresh_today_odds()
-    # Rebuild betting_log from ALL predictions_log entries that have odds data.
-    # This guarantees betting_log is never stale regardless of previous failures.
+    # Always patch odds — no-op if already set. Runs before betting_log rebuild.
+    _refresh_today_odds()
+    # Rebuild betting_log from ALL predictions_log entries that have real odds data.
     try:
         _full_log = _load_log()
         _blog = {}
         for _d, _entries in _full_log.items():
-            _odds_entries = [e for e in _entries if e.get("bet_rating") is not None]
+            _odds_entries = [
+                e for e in _entries
+                if e.get("bet_rating") is not None and e.get("away_ml") is not None
+            ]
             if _odds_entries:
                 _blog[_d] = _odds_entries
         _save_betting_log(_blog)
@@ -940,48 +953,15 @@ def _store_closing_odds():
         print(f"[app] _store_closing_odds failed: {e}", flush=True)
 
 
-def _refresh_today_odds():
-    """Patch live odds into today's predictions_log entries that are missing them.
-    Called at startup and in run_daily_update so betting_log is never missing a day."""
-    if not ODDS_API_KEY:
-        return
-    today_str = _today_et().isoformat()
-    log = _load_log()
-    entries = [e for e in log.get(today_str, []) if e.get("game_type") != "S"]
-    if not entries:
-        return
-    needs_odds = [e for e in entries if e.get("away_ml") is None]
-    if not needs_odds:
-        return
-    _odds_cache.pop(today_str, None)  # force fresh fetch, bypass cache
-    odds_map = _get_odds_cached()
-    if not odds_map:
-        print("[app] _refresh_today_odds: no odds returned from API", flush=True)
-        return
-    changed = 0
-    for entry in log.get(today_str, []):
-        if entry.get("game_type") == "S" or entry.get("away_ml") is not None:
-            continue
-        fields = _compute_odds_fields(entry["away_team"], entry["home_team"], entry, odds_map)
-        if fields.get("away_ml") is not None:
-            entry.update(fields)
-            changed += 1
-    if changed:
-        _save_log(log)
-        _upsert_betting_entries(log.get(today_str, []))
-        _push_log_to_github()
-        _push_betting_log_to_github()
-        print(f"[app] _refresh_today_odds: patched odds into {changed} entries for {today_str}", flush=True)
-
-
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_daily_update, "cron", hour=8, minute=0, timezone="America/New_York")
     scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
     scheduler.add_job(_store_closing_odds, "cron", hour=18, minute=45, timezone="America/New_York")
+    scheduler.add_job(_refresh_today_odds, "interval", hours=3)
     scheduler.start()
-    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM")
+    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh every 3h")
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
@@ -1500,6 +1480,7 @@ def predictions():
     if log_changed:
         log[date_str] = list(log_by_pk.values())
         _save_log(log)
+        _push_log_to_github()
         _upsert_betting_entries(log.get(date_str, []))
 
     return jsonify({
@@ -1845,6 +1826,16 @@ def betting_stats():
         "avg_clv":  round(sum(clv_values) / len(clv_values), 4) if clv_values else None,
     }
 
+    # Run-line accuracy (uses home_cover_prob from existing RL model)
+    rl_entries = [e for e in all_entries if e.get("correct_rl") is not None]
+    rl_correct  = sum(1 for e in rl_entries if e["correct_rl"])
+    rl_stats = {
+        "games":    len(rl_entries),
+        "correct":  rl_correct,
+        "losses":   len(rl_entries) - rl_correct,
+        "accuracy": round(rl_correct / len(rl_entries), 3) if rl_entries else None,
+    }
+
     return jsonify({
         "value_bets":      cat_stats(categories["good"]),
         "toss_ups":        cat_stats(categories["unsure"]),
@@ -1854,6 +1845,7 @@ def betting_stats():
         "team_stats":      team_stats,
         "tracking_start":  tracking_start,
         "clv_stats":       clv_stats,
+        "rl_stats":        rl_stats,
         "last_updated":    datetime.now().isoformat(),
     })
 
