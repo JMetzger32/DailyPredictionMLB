@@ -1482,10 +1482,25 @@ def predictions():
             **_compute_odds_fields(away, home, result, odds_map),
         })
 
-    # Persist any live results we just resolved back to the log
+    # Write odds fields back into log entries for today (they're computed live above
+    # but never stored — this ensures betting_log stays populated going forward).
+    if target_date >= _today_et() and odds_map:
+        for entry in log.get(date_str, []):
+            if entry.get("away_ml") is not None:
+                continue
+            pk = entry.get("game_pk")
+            fields = _compute_odds_fields(entry["away_team"], entry["home_team"], entry, odds_map)
+            if fields.get("away_ml") is not None:
+                entry.update(fields)
+                if pk:
+                    log_by_pk[pk] = entry
+                log_changed = True
+
+    # Persist any live results or newly added odds back to the log
     if log_changed:
         log[date_str] = list(log_by_pk.values())
         _save_log(log)
+        _upsert_betting_entries(log.get(date_str, []))
 
     return jsonify({
         "date":         target_date.isoformat(),
