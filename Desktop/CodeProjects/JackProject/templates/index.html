@@ -138,7 +138,7 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="K/BB ratio — strikeouts per walk. Measures SP command and dominance. Higher = better. 3rd most important feature in the model (7.1% GBM importance).">
+                  title="K/BB ratio — strikeouts per walk. Measures SP command and dominance. Higher = better.">
                 SP K/BB
               </td>
               <td class="text-center small away-sp-kbb"></td>
@@ -156,7 +156,7 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Isolated Power (SLG − AVG) — measures pure extra-base hit ability, strips out singles. 5th most important feature (6.6% GBM importance). 30-game rolling average.">
+                  title="Isolated Power (SLG − AVG) — measures pure extra-base hit ability, strips out singles. 30-game rolling average.">
                 ISO / Power (30g)
               </td>
               <td class="text-center small away-iso"></td>
@@ -165,7 +165,7 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Opponent WHIP allowed — (walks + hits) per inning pitched. Normalized defensive quality metric. Lower = better pitching + defense. 7th most important feature (6.0% GBM importance). 30-game rolling average.">
+                  title="Opponent WHIP allowed — (walks + hits) per inning pitched. Lower = better pitching + defense. 30-game rolling average.">
                 Opp WHIP (30g)
               </td>
               <td class="text-center small away-opp-whip"></td>
@@ -183,7 +183,7 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Relief pitchers' ERA — excludes the starting pitcher. 2nd most important feature (9.5% GBM importance).">
+                  title="Relief pitchers' ERA — excludes the starting pitcher.">
                 Bullpen ERA
               </td>
               <td class="text-center small away-bp"></td>
@@ -791,15 +791,13 @@
     }
     document.getElementById("modal-away-stats").innerHTML = `
       <strong>${awayName}</strong><br>
-      OBP: ${game.away_obp} &nbsp;·&nbsp; ISO: ${game.away_iso != null ? fmt3(game.away_iso) : "—"}<br>
-      Opp WHIP: ${game.away_opp_whip != null ? fmt2(game.away_opp_whip) : "—"} &nbsp;·&nbsp; Bullpen ERA: ${game.away_bp_era}<br>
-      SP K/BB: ${game.away_sp_k_bb != null ? fmt2(game.away_sp_k_bb) : "—"} &nbsp;·&nbsp; Runs/G (10g): ${game.away_runs_pg}<br>
+      OBP: ${game.away_obp} · ISO: ${game.away_iso != null ? fmt3(game.away_iso) : "—"}<br>
+      Runs/G: ${game.away_runs_pg} · Bullpen ERA: ${game.away_bp_era}<br>
       ${spModalLine(game.away_sp_name, game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw, game.away_sp_gs, game.away_sp_is_blended, game.away_sp_is_league_avg, game.away_sp_is_prior_year)}`;
     document.getElementById("modal-home-stats").innerHTML = `
       <strong>${homeName}</strong><br>
-      OBP: ${game.home_obp} &nbsp;·&nbsp; ISO: ${game.home_iso != null ? fmt3(game.home_iso) : "—"}<br>
-      Opp WHIP: ${game.home_opp_whip != null ? fmt2(game.home_opp_whip) : "—"} &nbsp;·&nbsp; Bullpen ERA: ${game.home_bp_era}<br>
-      SP K/BB: ${game.home_sp_k_bb != null ? fmt2(game.home_sp_k_bb) : "—"} &nbsp;·&nbsp; Runs/G (10g): ${game.home_runs_pg}<br>
+      OBP: ${game.home_obp} · ISO: ${game.home_iso != null ? fmt3(game.home_iso) : "—"}<br>
+      Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
       ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended, game.home_sp_is_league_avg, game.home_sp_is_prior_year)}`;
 
     // Estimated Total Breakdown
