@@ -95,28 +95,30 @@ RETRO_TO_BR = {
 
 # League-average fallbacks used when pybaseball data is unavailable
 FALLBACK_TEAM = {
-    "pyth_win_pct":          0.500,
-    "win_pct":               0.500,
-    "hits_per_game":         8.5,
-    "opp_hits_per_game":     8.5,
-    "walks_per_game":        3.3,
-    "opp_walks_per_game":    3.3,
-    "errors_per_game":       0.6,
-    "hr_per_game":           1.1,
-    "opp_hr_per_game":       1.1,
-    "recent_win_pct":        0.500,
-    "recent_hr_per_game":    1.1,
-    "bullpen_used":          4.0,
-    # New rate stats
-    "obp":                   0.318,
-    "slg":                   0.400,
-    "iso":                   0.150,   # league-average ISO (SLG - AVG)
-    "runs_per_game":          4.5,
-    "runs_allowed_per_game":  4.5,
-    "recent_runs_per_game":  4.5,
-    "opp_k_per_game":        8.5,
-    "roll7_bullpen_ip":      15.0,  # ≈ 2.1 IP/game × 7 games bullpen usage
-    "rest_days":             1,
+    "pyth_win_pct":            0.500,
+    "win_pct":                 0.500,
+    "hits_per_game":           8.5,
+    "opp_hits_per_game":       8.5,   # display only
+    "walks_per_game":          3.3,
+    "opp_walks_per_game":      3.3,
+    "hr_per_game":             1.1,
+    "opp_hr_per_game":         1.1,   # display only
+    "recent_win_pct":          0.500,
+    "recent_hr_per_game":      1.1,
+    # Normalized defensive rate stats (model features)
+    "opp_whip":                1.30,
+    "opp_hr_per9":             1.10,
+    # Offensive rate stats
+    "obp":                     0.318,
+    "slg":                     0.400,  # display only (dropped from model — VIF with ISO)
+    "iso":                     0.150,
+    "runs_per_game":           4.5,
+    "runs_allowed_per_game":   4.5,
+    "recent_runs_per_game":    4.5,
+    "opp_k_per_game":          8.5,
+    # Bullpen (exp-decayed fatigue replaces raw IP + pitchers-used)
+    "roll7_bullpen_fatigue":   8.0,
+    "rest_days":               1,
 }
 
 
@@ -400,6 +402,47 @@ def _compute_roll7_bullpen_ip(games):
     return round(bullpen, 2)
 
 
+# ---------------------------------------------------------------------------
+# Helper: exponentially decayed bullpen fatigue (mirrors MLBModel._exp_decay_bullpen)
+# ---------------------------------------------------------------------------
+def _compute_exp_bullpen_fatigue(games, half_life_days=3.0):
+    """
+    Exponentially decayed bullpen IP over the last 7 days for the most recent game.
+    Half-life = 3 days: IP from yesterday weighs 1.0×, 3 days ago weighs 0.5×, 7 days ago weighs 0.2×.
+    Falls back to 8.0 (league average) if no IP data available.
+    """
+    STARTER_IP_EST = 5.8
+    lam = np.log(2) / half_life_days
+
+    if "total_ip" not in games.columns or len(games) == 0:
+        return 8.0
+
+    games = games.sort_values("date").copy()
+    games["bullpen_ip"] = (games["total_ip"].fillna(9.0) - STARTER_IP_EST).clip(lower=0.0)
+
+    # Use the date column (could be datetime or YYYYMMDD int)
+    if "date_dt" in games.columns:
+        dates = pd.to_datetime(games["date_dt"]).values
+    else:
+        try:
+            dates = pd.to_datetime(games["date"].astype(str), format="%Y%m%d").values
+        except Exception:
+            dates = pd.to_datetime(games["date"]).values
+
+    ips = games["bullpen_ip"].values
+    if len(ips) == 0:
+        return 8.0
+
+    # Compute fatigue for the last row (most recent game)
+    total = 0.0
+    ref_date = dates[-1]
+    for j in range(len(dates) - 1):
+        days_ago = (ref_date - dates[j]) / np.timedelta64(1, "D")
+        if 0 < days_ago <= 7:
+            total += np.exp(-lam * days_ago) * ips[j]
+    return round(float(total), 2)
+
+
 # Compute rolling baselines from a team's game log
 # ---------------------------------------------------------------------------
 def compute_team_baseline(games, old_baseline=None):
@@ -444,7 +487,7 @@ def compute_team_baseline(games, old_baseline=None):
     pyth    = rs ** PYTH_EXP / (rs ** PYTH_EXP + ra ** PYTH_EXP)
     win_pct = float(games["win"].sum()) / n
 
-    # Compute per-game OBP, SLG, ISO (only used if use_batting_live)
+    # Compute per-game offensive rate stats
     ab  = games.get("at_bats",     pd.Series(30, index=games.index)).fillna(30).clip(lower=1)
     hbp = games.get("hit_by_pitch",pd.Series(0,  index=games.index)).fillna(0)
     sf  = games.get("sac_flies",   pd.Series(0,  index=games.index)).fillna(0)
@@ -458,28 +501,37 @@ def compute_team_baseline(games, old_baseline=None):
     games["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
     games["iso_game"] = (d + 2 * t + 3 * hr) / ab
 
+    # Compute per-game normalized defensive rate stats (matches MLBModel.py pipeline)
+    safe_ip = games.get("total_ip", pd.Series(9.0, index=games.index)).fillna(9.0).clip(lower=1.0)
+    games["opp_whip_game"] = (games.get("opp_walks", pd.Series(3.0, index=games.index)).fillna(0)
+                              + games.get("opp_hits", pd.Series(8.5, index=games.index)).fillna(0)) / safe_ip
+    games["opp_hr9_game"]  = (games.get("opp_homeruns", pd.Series(1.1, index=games.index)).fillna(0) / safe_ip) * 9.0
+
     return {
         # All stats blended: at 0 games = 100% prior-year, at 30+ games = 100% live
-        "pyth_win_pct":          blend(round(pyth, 4),    "pyth_win_pct"),
-        "win_pct":               blend(round(win_pct, 4), "win_pct"),
-        "recent_win_pct":        blend(roll_last("win",       10), "recent_win_pct"),
-        "recent_hr_per_game":    blend(roll_last("homeruns",  10), "recent_hr_per_game"),
-        "hits_per_game":         blend(roll_last("hits",      30), "hits_per_game"),
-        "opp_hits_per_game":     blend(roll_last("opp_hits",  30), "opp_hits_per_game"),
-        "walks_per_game":        blend(roll_last("walks",     30), "walks_per_game"),
-        "opp_walks_per_game":    blend(roll_last("opp_walks", 30), "opp_walks_per_game"),
-        "errors_per_game":       blend(roll_last("errors",    30), "errors_per_game"),
-        "hr_per_game":           blend(roll_last("homeruns",  30), "hr_per_game"),
-        "opp_hr_per_game":       blend(roll_last("opp_homeruns",   30), "opp_hr_per_game"),
-        "bullpen_used":          roll_last("pitchers_used", 3),   # always use recency as-is
-        "roll7_bullpen_ip":      _compute_roll7_bullpen_ip(games),
-        "obp":                   blend(roll_last("obp_game", 30), "obp"),
-        "slg":                   blend(roll_last("slg_game", 30), "slg"),
-        "iso":                   blend(roll_last("iso_game", 30), "iso"),
-        "runs_per_game":         blend(roll_last("runs_scored",  30), "runs_per_game"),
-        "runs_allowed_per_game": blend(roll_last("runs_allowed", 30), "runs_allowed_per_game"),
-        "recent_runs_per_game":  blend(roll_last("runs_scored",  10), "recent_runs_per_game"),
-        "opp_k_per_game":        blend(roll_last("opp_strikeouts", 30), "opp_k_per_game"),
+        "pyth_win_pct":            blend(round(pyth, 4),    "pyth_win_pct"),
+        "win_pct":                 blend(round(win_pct, 4), "win_pct"),
+        "recent_win_pct":          blend(roll_last("win",          10), "recent_win_pct"),
+        "recent_hr_per_game":      blend(roll_last("homeruns",     10), "recent_hr_per_game"),
+        "hits_per_game":           blend(roll_last("hits",         30), "hits_per_game"),
+        "opp_hits_per_game":       blend(roll_last("opp_hits",     30), "opp_hits_per_game"),  # display only
+        "walks_per_game":          blend(roll_last("walks",        30), "walks_per_game"),
+        "opp_walks_per_game":      blend(roll_last("opp_walks",    30), "opp_walks_per_game"),
+        "hr_per_game":             blend(roll_last("homeruns",     30), "hr_per_game"),
+        "opp_hr_per_game":         blend(roll_last("opp_homeruns", 30), "opp_hr_per_game"),    # display only
+        # Normalized defensive rate stats (model features — replace raw opp_hits/opp_homeruns/errors)
+        "opp_whip":                blend(roll_last("opp_whip_game", 30), "opp_whip"),
+        "opp_hr_per9":             blend(roll_last("opp_hr9_game",  30), "opp_hr_per9"),
+        # Exponentially decayed bullpen fatigue (model feature — replaces raw IP + pitchers-used)
+        "roll7_bullpen_fatigue":   _compute_exp_bullpen_fatigue(games),
+        # Offensive rate stats
+        "obp":                     blend(roll_last("obp_game", 30), "obp"),
+        "slg":                     blend(roll_last("slg_game", 30), "slg"),   # display only (VIF with ISO)
+        "iso":                     blend(roll_last("iso_game", 30), "iso"),
+        "runs_per_game":           blend(roll_last("runs_scored",    30), "runs_per_game"),
+        "runs_allowed_per_game":   blend(roll_last("runs_allowed",   30), "runs_allowed_per_game"),
+        "recent_runs_per_game":    blend(roll_last("runs_scored",    10), "recent_runs_per_game"),
+        "opp_k_per_game":          blend(roll_last("opp_strikeouts", 30), "opp_k_per_game"),
     }
 
 
@@ -777,22 +829,23 @@ def compute_rolling_baselines_from_db():
                 "runs_allowed_per_game": _s(row, "roll30_runs_allowed",   4.50),
                 "recent_runs_per_game":  _s(row, "roll10_runs_scored",    4.50),
                 "hits_per_game":         _s(row, "roll30_hits",           8.50),
-                "opp_hits_per_game":     _s(row, "roll30_opp_hits",       8.50),
+                "opp_hits_per_game":     _s(row, "roll30_opp_hits",       8.50),  # kept for display; not a model feature
                 "walks_per_game":        _s(row, "roll30_walks",          3.20),
                 "opp_walks_per_game":    _s(row, "roll30_opp_walks",      3.20),
-                "errors_per_game":       _s(row, "roll30_errors",         0.60),
                 "hr_per_game":           _s(row, "roll30_homeruns",       1.10),
-                "opp_hr_per_game":       _s(row, "roll30_opp_homeruns",   1.10),
+                "opp_hr_per_game":       _s(row, "roll30_opp_homeruns",   1.10),  # kept for display; not a model feature
                 "recent_win_pct":        _s(row, "roll10_win_pct",        0.500),
                 "recent_hr_per_game":    _s(row, "roll10_homeruns",       1.10),
                 "opp_k_per_game":        _s(row, "roll30_opp_strikeouts", 8.50),
-                # Rate stats (OBP/SLG/ISO)
+                # Normalized defensive rate stats (model features replacing raw opp_hits/opp_homeruns/errors)
+                "opp_whip":              _s(row, "roll30_opp_whip",       1.30),
+                "opp_hr_per9":           _s(row, "roll30_opp_hr_per9",    1.10),
+                # Rate stats (OBP/ISO — SLG excluded from model but kept here for display)
                 "obp":                   _s(row, "roll30_obp",            0.318),
                 "slg":                   _s(row, "roll30_slg",            0.400),
                 "iso":                   _s(row, "roll30_iso",            0.155),
-                # Bullpen
-                "bullpen_used":          _s(row, "roll3_bullpen_used",    4.00),
-                "roll7_bullpen_ip":      _s(row, "roll7_bullpen_ip",      15.0),
+                # Bullpen — exp-decayed fatigue (model feature); raw IP kept for display
+                "roll7_bullpen_fatigue": _s(row, "roll7_bullpen_fatigue", 8.00),
                 "bullpen_era":           _s(row, "bullpen_era",           4.20),
                 # Park factor (static per venue)
                 "park_factor":           PARK_FACTORS.get(team, 1.0),

@@ -39,28 +39,25 @@ FEATURE_COLS = [
     # Team quality
     "diff_pyth_win_pct",
     "diff_season_win_pct",
-    # Offensive stats (hits/walks removed — captured by OBP)
+    # Offensive stats — OBP captures contact+walks; ISO captures pure extra-base power (SLG dropped: ISO = SLG-AVG → collinear)
     "diff_roll30_obp",            # on-base percentage (30-game rolling avg) — most important batting stat
-    "diff_roll30_slg",            # slugging — total bases per AB
-    "diff_roll30_iso",            # isolated power (SLG - AVG) — pure extra-base hit ability
+    "diff_roll30_iso",            # isolated power (SLG - AVG) — pure extra-base hit ability; SLG excluded (VIF)
     "diff_roll10_runs_scored",    # recent offensive form (10-game)
     "diff_roll10_homeruns",       # recent power surge (10-game)
-    # Defensive stats — what a team's pitching+defense ALLOWS
-    "diff_roll30_opp_hits",
-    "diff_roll30_opp_homeruns",
-    "diff_roll30_opp_strikeouts", # full-staff pitching K rate
-    "diff_roll30_errors",
+    # Defensive stats — normalized rate stats replace raw counts (PA-volume distortion removed)
+    "diff_roll30_opp_whip",       # (opp_walks + opp_hits) / IP allowed — normalized contact+walk rate
+    "diff_roll30_opp_hr_per9",    # (opp_homeruns / IP) * 9 — normalized HR rate allowed
+    "diff_roll30_opp_strikeouts", # full-staff pitching K rate (kept: already a counting stat per game, stable)
     # Short-window recent form
     "diff_roll10_win_pct",
-    # Bullpen
-    "diff_roll3_bullpen_used",
+    # Bullpen — exponential decay replaces raw IP sum and pitchers-used count
     "diff_bullpen_era",
-    "diff_roll7_bullpen_ip",       # 7-day cumulative bullpen IP (fatigue signal; higher = more tired bullpen)
+    "diff_roll7_bullpen_fatigue", # exp-decayed bullpen IP over 7 days (half-life=3d); recent work penalized more
     # Schedule / context
-    "diff_rest_days",              # home rest - away rest (days since last game; 3+ days is measurable advantage)
+    "diff_rest_days",             # home rest - away rest (days since last game; 3+ days is measurable advantage)
     # SP handedness — separate features (not differenced) so model learns home/away LHP effects independently
-    "home_sp_is_lhp",              # 1 if home starter is LHP, 0 if RHP
-    "away_sp_is_lhp",              # 1 if away starter is LHP, 0 if RHP
+    "home_sp_is_lhp",             # 1 if home starter is LHP, 0 if RHP
+    "away_sp_is_lhp",             # 1 if away starter is LHP, 0 if RHP
     # Starting pitcher stats — 5 features selected by EDA (2021-2025, 9,510 games)
     # Ranked by GBM importance: ERA 25.3%, IP/GS 8.0%, WHIP 7.7%, K/BB 6.7%, xFIP 5.4%
     "diff_sp_era",     # season ERA — strongest single signal; r=-0.186 vs home win
@@ -195,7 +192,27 @@ def build_team_game_log(df):
 # ===========================================================================
 # Section 3: Rolling Team Features
 # ===========================================================================
+def _exp_decay_bullpen(group, half_life_days=3.0):
+    """Exponentially decayed bullpen IP sum for each game row (pre-game signal).
+    Games within 7 days of the current game are included, weighted by recency.
+    Lambda = ln(2) / half_life so IP 3 days ago weighs half as much as yesterday."""
+    lam   = np.log(2) / half_life_days
+    dates = group["date_dt"].values
+    ips   = group["bullpen_ip_game"].fillna(0.0).values
+    result = np.zeros(len(dates))
+    for i in range(1, len(dates)):
+        for j in range(i - 1, -1, -1):
+            days_ago = (dates[i] - dates[j]) / np.timedelta64(1, "D")
+            if days_ago > 7:
+                break
+            result[i] += np.exp(-lam * days_ago) * ips[j]
+    return pd.Series(result, index=group.index)
+
+
 def compute_rolling_team_features(tgl):
+    # ---- Date column needed early for rest days and bullpen decay ----
+    tgl["date_dt"] = pd.to_datetime(tgl["date"], format="%Y%m%d")
+
     # ---- Season-to-date cumulative (shifted so pre-game) ----
     cum_cols = ["runs_scored", "runs_allowed", "win", "hits", "opp_hits",
                 "walks", "opp_walks", "errors", "homeruns", "opp_homeruns"]
@@ -220,7 +237,7 @@ def compute_rolling_team_features(tgl):
     tgl["pyth_win_pct"] = tgl["pyth_win_pct"].fillna(0.500)
     tgl["season_win_pct"] = tgl["season_win_pct"].fillna(0.500)
 
-    # ---- Per-game OBP and SLG (rate stats, need at_bats) ----
+    # ---- Per-game offensive rate stats (OBP, SLG, ISO) ----
     ab  = tgl["at_bats"].fillna(0).clip(lower=1)
     hbp = tgl["hit_by_pitch"].fillna(0)
     sf  = tgl["sac_flies"].fillna(0)
@@ -231,66 +248,73 @@ def compute_rolling_team_features(tgl):
     hr  = tgl["homeruns"]
     # OBP = (H + BB + HBP) / (AB + BB + HBP + SF)
     tgl["obp_game"] = (h + bb + hbp) / (ab + bb + hbp + sf).clip(lower=1)
-    # SLG = (1B + 2*2B + 3*3B + 4*HR) / AB  →  (H + D + 2T + 3HR) / AB
+    # SLG retained for completeness but diff_roll30_slg excluded from FEATURE_COLS (VIF with ISO)
     tgl["slg_game"] = (h + d + 2 * t + 3 * hr) / ab
-    # ISO = SLG - AVG = (D + 2T + 3HR) / AB  — captures pure extra-base ability, not singles
+    # ISO = (D + 2T + 3HR) / AB — pure extra-base ability excluding singles
     tgl["iso_game"] = (d + 2 * t + 3 * hr) / ab
+
+    # ---- Per-game defensive rate stats (normalized by IP to remove PA-volume distortion) ----
+    safe_ip = tgl["total_ip"].fillna(9.0).clip(lower=1.0)
+    # Opponent WHIP proxy: (opp_walks + opp_hits) / IP — lower is better pitching
+    tgl["opp_whip_game"] = (tgl["opp_walks"].fillna(0) + tgl["opp_hits"].fillna(0)) / safe_ip
+    # Opponent HR/9: normalized HR rate allowed
+    tgl["opp_hr9_game"]  = (tgl["opp_homeruns"].fillna(0) / safe_ip) * 9.0
 
     # ---- 30-game rolling (crosses season boundaries) ----
     roll_cols = ["win", "runs_scored", "runs_allowed", "hits", "opp_hits",
                  "walks", "opp_walks", "errors", "homeruns", "opp_homeruns",
-                 "opp_strikeouts", "obp_game", "slg_game", "iso_game"]
+                 "opp_strikeouts", "obp_game", "slg_game", "iso_game",
+                 "opp_whip_game", "opp_hr9_game"]
     for col in roll_cols:
         tgl[f"roll30_{col}"] = tgl.groupby("team")[col].transform(
             lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean().shift(1)
         )
-    # Rename OBP/SLG/ISO rolling columns to clean names
-    tgl.rename(columns={"roll30_obp_game": "roll30_obp",
-                         "roll30_slg_game": "roll30_slg",
-                         "roll30_iso_game": "roll30_iso"}, inplace=True)
+    # Rename rolling columns to clean names
+    tgl.rename(columns={
+        "roll30_obp_game":      "roll30_obp",
+        "roll30_slg_game":      "roll30_slg",
+        "roll30_iso_game":      "roll30_iso",
+        "roll30_opp_whip_game": "roll30_opp_whip",
+        "roll30_opp_hr9_game":  "roll30_opp_hr_per9",
+    }, inplace=True)
 
     # ---- 10-game rolling for recent form ----
     tgl["roll10_win_pct"] = tgl.groupby("team")["win"].transform(
         lambda x: x.rolling(ROLLING_WINDOW_SHORT, min_periods=5).mean().shift(1)
     )
-
-    # ---- 10-game rolling homeruns (short-window HR signal) ----
     tgl["roll10_homeruns"] = tgl.groupby("team")["homeruns"].transform(
         lambda x: x.rolling(ROLLING_WINDOW_SHORT, min_periods=5).mean().shift(1)
     )
-
-    # ---- 10-game rolling runs scored (recent offensive form) ----
     tgl["roll10_runs_scored"] = tgl.groupby("team")["runs_scored"].transform(
         lambda x: x.rolling(ROLLING_WINDOW_SHORT, min_periods=5).mean().shift(1)
     )
 
-    # ---- Bullpen workload (rolling 3-game average of pitchers used) ----
-    tgl["roll3_bullpen_used"] = tgl.groupby("team")["pitchers_used"].transform(
-        lambda x: x.rolling(3, min_periods=1).mean().shift(1)
+    # ---- Exponentially decayed bullpen fatigue (replaces raw IP sum + pitchers-used) ----
+    # Bullpen IP per game = total IP minus estimated starter IP (~5.8 innings)
+    STARTER_IP_EST = 5.8
+    tgl["bullpen_ip_game"] = (tgl["total_ip"].fillna(9.0) - STARTER_IP_EST).clip(lower=0.0)
+    # Apply exponential decay per team (sorted chronologically)
+    tgl = tgl.sort_values(["team", "date_dt"]).copy()
+    tgl["roll7_bullpen_fatigue"] = (
+        tgl.groupby("team", group_keys=False)
+           .apply(_exp_decay_bullpen)
     )
 
-    # ---- 7-day bullpen IP (fatigue: total_ip - estimated starter IP, 7-game window) ----
-    STARTER_IP_EST = 5.8
-    if "total_ip" in tgl.columns:
-        tgl["roll7_bullpen_ip"] = tgl.groupby("team")["total_ip"].transform(
-            lambda x: x.rolling(7, min_periods=1).sum().shift(1)
-            - STARTER_IP_EST * x.rolling(7, min_periods=1).count().shift(1)
-        ).clip(lower=0)
-    else:
-        tgl["roll7_bullpen_ip"] = 15.0
-
     # ---- Rest days (days since last game, pre-game) ----
-    tgl["date_dt"] = pd.to_datetime(tgl["date"], format="%Y%m%d")
     tgl["prev_game_date"] = tgl.groupby("team")["date_dt"].shift(1)
     tgl["rest_days"] = (tgl["date_dt"] - tgl["prev_game_date"]).dt.days.fillna(1).clip(lower=1, upper=7)
 
     # Fill any remaining NaNs in rolling features with league averages
-    for col in [c for c in tgl.columns if c.startswith("roll30_") or c.startswith("roll10_") or c.startswith("roll3_")]:
-        tgl[col] = tgl[col].fillna(tgl[col].mean())
+    roll_feature_prefixes = ("roll30_", "roll10_", "roll7_")
+    for col in tgl.columns:
+        if any(col.startswith(p) for p in roll_feature_prefixes):
+            tgl[col] = tgl[col].fillna(tgl[col].mean())
 
-    # Sanity-clip OBP/SLG to realistic ranges (guard against bad data)
-    tgl["roll30_obp"] = tgl["roll30_obp"].clip(0.200, 0.450)
-    tgl["roll30_slg"] = tgl["roll30_slg"].clip(0.200, 0.700)
+    # Sanity-clip rate stats to realistic ranges
+    tgl["roll30_obp"]       = tgl["roll30_obp"].clip(0.200, 0.450)
+    tgl["roll30_slg"]       = tgl["roll30_slg"].clip(0.200, 0.700)
+    tgl["roll30_opp_whip"]  = tgl["roll30_opp_whip"].clip(0.50, 2.50)
+    tgl["roll30_opp_hr_per9"] = tgl["roll30_opp_hr_per9"].clip(0.0, 3.0)
 
     return tgl
 
@@ -392,39 +416,32 @@ def merge_bullpen_era(tgl, bullpen_stats):
 # ===========================================================================
 def assemble_features(df, tgl):
     feature_map = {
-        "pyth_win_pct":          "pyth_win_pct",
-        "season_win_pct":        "season_win_pct",
-        # Rate stats
-        "roll30_runs_scored":    "roll30_runs_scored",
-        "roll30_runs_allowed":   "roll30_runs_allowed",
-        "roll10_runs_scored":    "roll10_runs_scored",
-        "roll30_obp":            "roll30_obp",
-        "roll30_slg":            "roll30_slg",
-        "roll30_iso":            "roll30_iso",
-        # Volume rolling
-        "roll30_hits":           "roll30_hits",
-        "roll30_opp_hits":       "roll30_opp_hits",
-        "roll30_walks":          "roll30_walks",
-        "roll30_opp_walks":      "roll30_opp_walks",
-        "roll30_errors":         "roll30_errors",
-        "roll30_homeruns":       "roll30_homeruns",
-        "roll30_opp_homeruns":   "roll30_opp_homeruns",
-        "roll10_win_pct":        "roll10_win_pct",
-        "roll10_homeruns":       "roll10_homeruns",
-        "roll30_opp_strikeouts": "roll30_opp_strikeouts",
-        "roll3_bullpen_used":    "roll3_bullpen_used",
-        "bullpen_era":           "bullpen_era",
-        "roll7_bullpen_ip":      "roll7_bullpen_ip",
-        "rest_days":             "rest_days",
-        "sp_era":                "sp_era",
-        "sp_whip":               "sp_whip",
-        "sp_xfip":               "sp_xfip",
-        "sp_siera":              "sp_siera",
-        "sp_so9":                "sp_so9",
-        "sp_bb9":                "sp_bb9",
-        "sp_hr9":                "sp_hr9",
-        "sp_ip_gs":              "sp_ip_gs",
-        "sp_k_bb":               "sp_k_bb",
+        "pyth_win_pct":            "pyth_win_pct",
+        "season_win_pct":          "season_win_pct",
+        # Offensive rate stats (SLG excluded — collinear with ISO; VIF verified)
+        "roll30_obp":              "roll30_obp",
+        "roll30_iso":              "roll30_iso",
+        "roll10_runs_scored":      "roll10_runs_scored",
+        "roll10_homeruns":         "roll10_homeruns",
+        # Defensive rate stats — normalized by IP (replaces raw opp_hits/opp_homeruns/errors)
+        "roll30_opp_whip":         "roll30_opp_whip",
+        "roll30_opp_hr_per9":      "roll30_opp_hr_per9",
+        "roll30_opp_strikeouts":   "roll30_opp_strikeouts",
+        # Recent form
+        "roll10_win_pct":          "roll10_win_pct",
+        # Bullpen — exp-decayed fatigue replaces raw IP sum and pitchers-used count
+        "bullpen_era":             "bullpen_era",
+        "roll7_bullpen_fatigue":   "roll7_bullpen_fatigue",
+        "rest_days":               "rest_days",
+        "sp_era":                  "sp_era",
+        "sp_whip":                 "sp_whip",
+        "sp_xfip":                 "sp_xfip",
+        "sp_siera":                "sp_siera",
+        "sp_so9":                  "sp_so9",
+        "sp_bb9":                  "sp_bb9",
+        "sp_hr9":                  "sp_hr9",
+        "sp_ip_gs":                "sp_ip_gs",
+        "sp_k_bb":                 "sp_k_bb",
     }
 
     tgl_cols = ["game_id", "is_home"] + list(feature_map.values())
@@ -681,20 +698,23 @@ def build_2025_baselines(df, tgl):
             "runs_allowed_per_game": float(team_data["roll30_runs_allowed"]),
             "recent_runs_per_game":  float(team_data["roll10_runs_scored"]),
             "obp":                   float(team_data["roll30_obp"]),
-            "slg":                   float(team_data["roll30_slg"]),
+            "slg":                   float(team_data.get("roll30_slg", 0.400)),
             "iso":                   float(team_data["roll30_iso"]),
-            # Volume rolling
+            # Volume rolling (kept for display / O/U formula; not all are model features)
             "hits_per_game":         float(team_data["roll30_hits"]),
-            "opp_hits_per_game":     float(team_data["roll30_opp_hits"]),
+            "opp_hits_per_game":     float(team_data.get("roll30_opp_hits", 8.5)),
             "walks_per_game":        float(team_data["roll30_walks"]),
             "opp_walks_per_game":    float(team_data["roll30_opp_walks"]),
-            "errors_per_game":       float(team_data["roll30_errors"]),
             "hr_per_game":           float(team_data["roll30_homeruns"]),
-            "opp_hr_per_game":       float(team_data["roll30_opp_homeruns"]),
+            "opp_hr_per_game":       float(team_data.get("roll30_opp_homeruns", 1.1)),
             "recent_win_pct":        float(team_data["roll10_win_pct"]),
             "recent_hr_per_game":    float(team_data["roll10_homeruns"]),
             "opp_k_per_game":        float(team_data["roll30_opp_strikeouts"]),
-            "bullpen_used":          float(team_data["roll3_bullpen_used"]),
+            # Normalized defensive rate stats (model features)
+            "opp_whip":              float(team_data.get("roll30_opp_whip", 1.30)),
+            "opp_hr_per9":           float(team_data.get("roll30_opp_hr_per9", 1.10)),
+            # Bullpen fatigue (model feature)
+            "roll7_bullpen_fatigue": float(team_data.get("roll7_bullpen_fatigue", 8.0)),
         }
 
     # SP baselines: real pitcher stats from Baseball Reference
@@ -762,10 +782,10 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
 
     home_team_stats / away_team_stats: dict with keys
         pyth_win_pct, win_pct, runs_per_game, runs_allowed_per_game,
-        recent_runs_per_game, obp, slg, hits_per_game, opp_hits_per_game,
-        walks_per_game, opp_walks_per_game, errors_per_game,
-        hr_per_game, opp_hr_per_game, recent_win_pct, recent_hr_per_game,
-        opp_k_per_game, bullpen_used, bullpen_era, park_factor
+        recent_runs_per_game, obp, iso, hits_per_game,
+        walks_per_game, hr_per_game, recent_win_pct, recent_hr_per_game,
+        opp_k_per_game, opp_whip, opp_hr_per9,
+        roll7_bullpen_fatigue, bullpen_era, park_factor
 
     home_sp_stats / away_sp_stats: dict with keys
         era, whip, xfip, siera, so9, bb9, hr9
@@ -778,23 +798,21 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         "diff_roll30_runs_scored":     home_team_stats["runs_per_game"]          - away_team_stats["runs_per_game"],
         "diff_roll30_runs_allowed":    home_team_stats["runs_allowed_per_game"]  - away_team_stats["runs_allowed_per_game"],
         "diff_roll10_runs_scored":     home_team_stats["recent_runs_per_game"]   - away_team_stats["recent_runs_per_game"],
-        "diff_roll30_obp":             home_team_stats["obp"]                    - away_team_stats["obp"],
-        "diff_roll30_slg":             home_team_stats["slg"]                    - away_team_stats["slg"],
-        "diff_roll30_iso":             home_team_stats.get("iso", 0.150)         - away_team_stats.get("iso", 0.150),
-        # Volume rolling
-        "diff_roll30_hits":            home_team_stats["hits_per_game"]          - away_team_stats["hits_per_game"],
-        "diff_roll30_opp_hits":        home_team_stats["opp_hits_per_game"]      - away_team_stats["opp_hits_per_game"],
-        "diff_roll30_walks":           home_team_stats["walks_per_game"]         - away_team_stats["walks_per_game"],
-        "diff_roll30_opp_walks":       home_team_stats["opp_walks_per_game"]     - away_team_stats["opp_walks_per_game"],
-        "diff_roll30_errors":          home_team_stats["errors_per_game"]        - away_team_stats["errors_per_game"],
-        "diff_roll30_homeruns":        home_team_stats["hr_per_game"]            - away_team_stats["hr_per_game"],
-        "diff_roll30_opp_homeruns":    home_team_stats["opp_hr_per_game"]        - away_team_stats["opp_hr_per_game"],
-        "diff_roll10_win_pct":         home_team_stats["recent_win_pct"]         - away_team_stats["recent_win_pct"],
-        "diff_roll10_homeruns":        home_team_stats["recent_hr_per_game"]     - away_team_stats["recent_hr_per_game"],
-        "diff_roll30_opp_strikeouts":  home_team_stats["opp_k_per_game"]         - away_team_stats["opp_k_per_game"],
-        "diff_roll3_bullpen_used":     home_team_stats["bullpen_used"]           - away_team_stats["bullpen_used"],
-        "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)  - away_team_stats.get("bullpen_era", 4.20),
-        "diff_roll7_bullpen_ip":       home_team_stats.get("roll7_bullpen_ip", 15.0) - away_team_stats.get("roll7_bullpen_ip", 15.0),
+        "diff_roll30_obp":             home_team_stats["obp"]                         - away_team_stats["obp"],
+        "diff_roll30_iso":             home_team_stats.get("iso", 0.150)              - away_team_stats.get("iso", 0.150),
+        # Normalized defensive rate stats (replace raw opp_hits / opp_homeruns / errors)
+        "diff_roll30_opp_whip":        home_team_stats.get("opp_whip", 1.30)          - away_team_stats.get("opp_whip", 1.30),
+        "diff_roll30_opp_hr_per9":     home_team_stats.get("opp_hr_per9", 1.10)       - away_team_stats.get("opp_hr_per9", 1.10),
+        "diff_roll30_opp_strikeouts":  home_team_stats["opp_k_per_game"]              - away_team_stats["opp_k_per_game"],
+        "diff_roll10_win_pct":         home_team_stats["recent_win_pct"]              - away_team_stats["recent_win_pct"],
+        "diff_roll10_runs_scored":     home_team_stats["recent_runs_per_game"]        - away_team_stats["recent_runs_per_game"],
+        "diff_roll10_homeruns":        home_team_stats["recent_hr_per_game"]          - away_team_stats["recent_hr_per_game"],
+        # Bullpen — exp-decayed fatigue replaces raw IP sum and pitchers-used count
+        "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)       - away_team_stats.get("bullpen_era", 4.20),
+        "diff_roll7_bullpen_fatigue":  home_team_stats.get("roll7_bullpen_fatigue", 8.0) - away_team_stats.get("roll7_bullpen_fatigue", 8.0),
+        # Extra display stats (not in FEATURE_COLS — kept for logging/UI)
+        "diff_roll30_hits":            home_team_stats.get("hits_per_game", 8.5)      - away_team_stats.get("hits_per_game", 8.5),
+        "diff_roll30_homeruns":        home_team_stats.get("hr_per_game", 1.1)        - away_team_stats.get("hr_per_game", 1.1),
         "diff_rest_days":              max(-1, min(1, home_team_stats.get("rest_days", 1) - away_team_stats.get("rest_days", 1))),
         "home_sp_is_lhp":              1 if home_sp_stats.get("pitch_hand", "R") == "L" else 0,
         "away_sp_is_lhp":              1 if away_sp_stats.get("pitch_hand", "R") == "L" else 0,
@@ -900,7 +918,92 @@ def _default_sp_stats():
 
 
 # ===========================================================================
-# Section 10: Main
+# Section 10: VIF helper
+# ===========================================================================
+def compute_vif(model_df, feature_cols):
+    """Compute Variance Inflation Factor for each feature.
+    VIF > 10 indicates severe multicollinearity; > 5 is moderate."""
+    try:
+        from statsmodels.stats.outliers_influence import variance_inflation_factor
+    except ImportError:
+        print("  [VIF] statsmodels not installed — skipping VIF calculation")
+        return None
+    X = model_df[feature_cols].dropna()
+    vif_df = pd.DataFrame({
+        "feature": feature_cols,
+        "VIF":     [variance_inflation_factor(X.values, i) for i in range(len(feature_cols))],
+    }).sort_values("VIF", ascending=False).reset_index(drop=True)
+    return vif_df
+
+
+# ===========================================================================
+# Section 11: Pitcher Handedness Lookup (for future platoon splits)
+# ===========================================================================
+def build_handedness_lookup(db_path):
+    """Fetch pitch_hand (L/R) for all pitchers via MLB Stats API.
+    Creates pitcher_handedness table in DB: (player_name TEXT, pitch_hand TEXT).
+    Safe to re-run — uses INSERT OR REPLACE."""
+    import requests as _req
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pitcher_handedness (
+            player_name TEXT PRIMARY KEY,
+            pitch_hand  TEXT,
+            updated     TEXT
+        )
+    """)
+    conn.commit()
+
+    print("  [handedness] Fetching pitcher list from MLB Stats API...", flush=True)
+    try:
+        resp = _req.get(
+            "https://statsapi.mlb.com/api/v1/stats",
+            params={"stats": "career", "group": "pitching", "sportId": 1,
+                    "playerPool": "All", "limit": 5000},
+            timeout=30,
+        )
+        splits = resp.json().get("stats", [{}])[0].get("splits", [])
+    except Exception as e:
+        print(f"  [handedness] MLB API failed: {e}")
+        conn.close()
+        return
+
+    player_ids = [s["player"]["id"] for s in splits if s.get("player")]
+    print(f"  [handedness] {len(player_ids)} pitcher IDs found — fetching handedness...", flush=True)
+
+    handedness_map = {}
+    chunk_size = 100
+    for i in range(0, len(player_ids), chunk_size):
+        chunk = player_ids[i : i + chunk_size]
+        try:
+            pr = _req.get(
+                "https://statsapi.mlb.com/api/v1/people",
+                params={"personIds": ",".join(str(x) for x in chunk),
+                        "fields":    "people,id,fullName,pitchHand,code"},
+                timeout=15,
+            )
+            for person in pr.json().get("people", []):
+                name = person.get("fullName", "")
+                hand = person.get("pitchHand", {}).get("code", "R")
+                if name:
+                    handedness_map[name] = hand
+        except Exception:
+            pass
+
+    now = pd.Timestamp.now().isoformat()
+    for name, hand in handedness_map.items():
+        conn.execute(
+            "INSERT OR REPLACE INTO pitcher_handedness (player_name, pitch_hand, updated) VALUES (?, ?, ?)",
+            (name, hand, now),
+        )
+    conn.commit()
+    conn.close()
+    lhp = sum(1 for h in handedness_map.values() if h == "L")
+    print(f"  [handedness] Stored {len(handedness_map)} pitchers ({lhp} LHP, {len(handedness_map)-lhp} RHP)")
+
+
+# ===========================================================================
+# Section 12: Main
 # ===========================================================================
 if __name__ == "__main__":
     print("=" * 60)
@@ -937,6 +1040,17 @@ if __name__ == "__main__":
     model_df = assemble_features(df, tgl)
     valid = model_df.dropna(subset=FEATURE_COLS)
     print(f"  Feature matrix: {model_df.shape[0]} games ({valid.shape[0]} with complete features)")
+
+    # Step 5b: VIF analysis — verify multicollinearity reduction after SLG drop
+    print("\n[5b] VIF analysis on current feature set...")
+    vif_result = compute_vif(valid, FEATURE_COLS)
+    if vif_result is not None:
+        print(vif_result.to_string(index=False))
+        high_vif = vif_result[vif_result["VIF"] > 5]
+        if len(high_vif) > 0:
+            print(f"  ⚠ {len(high_vif)} features with VIF > 5: {high_vif['feature'].tolist()}")
+        else:
+            print("  ✓ No features with VIF > 5 — multicollinearity is acceptable")
 
     # Step 6: Cross-validate
     print("\n[6/7] Cross-validation (Leave-One-Season-Out)...")

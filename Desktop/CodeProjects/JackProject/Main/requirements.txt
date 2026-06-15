@@ -8,4 +8,5 @@ scikit-learn==1.9.0
 numpy
 seaborn
 xgboost
+statsmodels
 resend

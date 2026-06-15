@@ -138,6 +138,15 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="K/BB ratio — strikeouts per walk. Measures SP command and dominance. Higher = better. 3rd most important feature in the model (7.1% GBM importance).">
+                SP K/BB
+              </td>
+              <td class="text-center small away-sp-kbb"></td>
+              <td class="text-center small home-sp-kbb"></td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
                   title="On-Base Percentage — how often batters reach base, 30-game rolling average">
                 Team OBP (30g)
               </td>
@@ -147,20 +156,20 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Slugging Percentage — total bases per at-bat, 30-game rolling average">
-                Team SLG (30g)
+                  title="Isolated Power (SLG − AVG) — measures pure extra-base hit ability, strips out singles. 5th most important feature (6.6% GBM importance). 30-game rolling average.">
+                ISO / Power (30g)
               </td>
-              <td class="text-center small away-slg"></td>
-              <td class="text-center small home-slg"></td>
+              <td class="text-center small away-iso"></td>
+              <td class="text-center small home-iso"></td>
             </tr>
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Hits per game, 30-game rolling average">
-                Hits/G (30g)
+                  title="Opponent WHIP allowed — (walks + hits) per inning pitched. Normalized defensive quality metric. Lower = better pitching + defense. 7th most important feature (6.0% GBM importance). 30-game rolling average.">
+                Opp WHIP (30g)
               </td>
-              <td class="text-center small away-hits"></td>
-              <td class="text-center small home-hits"></td>
+              <td class="text-center small away-opp-whip"></td>
+              <td class="text-center small home-opp-whip"></td>
             </tr>
             <tr>
               <td class="ps-3 text-muted small"
@@ -174,7 +183,7 @@
             <tr>
               <td class="ps-3 text-muted small"
                   data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Relief pitchers' ERA — excludes the starting pitcher">
+                  title="Relief pitchers' ERA — excludes the starting pitcher. 2nd most important feature (9.5% GBM importance).">
                 Bullpen ERA
               </td>
               <td class="text-center small away-bp"></td>
@@ -405,11 +414,12 @@
       }
     }
 
-    setCells(q(".away-obp"),  q(".home-obp"),  fmt3(game.away_obp),  fmt3(game.home_obp),  false);
-    setCells(q(".away-slg"),  q(".home-slg"),  fmt3(game.away_slg),  fmt3(game.home_slg),  false);
-    setCells(q(".away-hits"), q(".home-hits"), fmt1(game.away_hits_pg), fmt1(game.home_hits_pg), false);
-    setCells(q(".away-runs"), q(".home-runs"), fmt1(game.away_runs_pg), fmt1(game.home_runs_pg), false);
-    setCells(q(".away-bp"),   q(".home-bp"),   fmt2(game.away_bp_era),  fmt2(game.home_bp_era),  true);
+    setCells(q(".away-sp-kbb"),    q(".home-sp-kbb"),    fmt2(game.away_sp_k_bb),  fmt2(game.home_sp_k_bb),  false);
+    setCells(q(".away-obp"),       q(".home-obp"),       fmt3(game.away_obp),       fmt3(game.home_obp),       false);
+    setCells(q(".away-iso"),       q(".home-iso"),       fmt3(game.away_iso),       fmt3(game.home_iso),       false);
+    setCells(q(".away-opp-whip"),  q(".home-opp-whip"),  fmt2(game.away_opp_whip),  fmt2(game.home_opp_whip),  true);
+    setCells(q(".away-runs"),      q(".home-runs"),      fmt1(game.away_runs_pg),   fmt1(game.home_runs_pg),   false);
+    setCells(q(".away-bp"),        q(".home-bp"),        fmt2(game.away_bp_era),    fmt2(game.home_bp_era),    true);
 
     // Run line
     if (game.home_cover_prob != null) {
@@ -781,13 +791,15 @@
     }
     document.getElementById("modal-away-stats").innerHTML = `
       <strong>${awayName}</strong><br>
-      OBP: ${game.away_obp} · SLG: ${game.away_slg}<br>
-      Runs/G: ${game.away_runs_pg} · Bullpen ERA: ${game.away_bp_era}<br>
+      OBP: ${game.away_obp} &nbsp;·&nbsp; ISO: ${game.away_iso != null ? fmt3(game.away_iso) : "—"}<br>
+      Opp WHIP: ${game.away_opp_whip != null ? fmt2(game.away_opp_whip) : "—"} &nbsp;·&nbsp; Bullpen ERA: ${game.away_bp_era}<br>
+      SP K/BB: ${game.away_sp_k_bb != null ? fmt2(game.away_sp_k_bb) : "—"} &nbsp;·&nbsp; Runs/G (10g): ${game.away_runs_pg}<br>
       ${spModalLine(game.away_sp_name, game.away_sp_era_raw, game.away_sp_whip_raw, game.away_sp_fip_raw, game.away_sp_gs, game.away_sp_is_blended, game.away_sp_is_league_avg, game.away_sp_is_prior_year)}`;
     document.getElementById("modal-home-stats").innerHTML = `
       <strong>${homeName}</strong><br>
-      OBP: ${game.home_obp} · SLG: ${game.home_slg}<br>
-      Runs/G: ${game.home_runs_pg} · Bullpen ERA: ${game.home_bp_era}<br>
+      OBP: ${game.home_obp} &nbsp;·&nbsp; ISO: ${game.home_iso != null ? fmt3(game.home_iso) : "—"}<br>
+      Opp WHIP: ${game.home_opp_whip != null ? fmt2(game.home_opp_whip) : "—"} &nbsp;·&nbsp; Bullpen ERA: ${game.home_bp_era}<br>
+      SP K/BB: ${game.home_sp_k_bb != null ? fmt2(game.home_sp_k_bb) : "—"} &nbsp;·&nbsp; Runs/G (10g): ${game.home_runs_pg}<br>
       ${spModalLine(game.home_sp_name, game.home_sp_era_raw, game.home_sp_whip_raw, game.home_sp_fip_raw, game.home_sp_gs, game.home_sp_is_blended, game.home_sp_is_league_avg, game.home_sp_is_prior_year)}`;
 
     // Estimated Total Breakdown

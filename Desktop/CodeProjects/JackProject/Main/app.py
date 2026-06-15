@@ -23,6 +23,7 @@ import sys
 import pickle
 import time
 import traceback
+import numpy as np
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -859,7 +860,7 @@ try:
         _startup_log.pop(_startup_today, None)  # clear stale entry so it gets re-logged
         _startup_log = _log_predictions_for_date(_today_et(), _startup_log)
         _save_log(_startup_log)
-        _push_log_to_github()
+        # Don't push here — _refresh_today_odds() will push after patching odds in
         print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
     # Always patch odds — no-op if already set. Runs before betting_log rebuild.
     _refresh_today_odds()
@@ -877,8 +878,7 @@ try:
         _save_betting_log(_blog)
         _blog_total = sum(len(v) for v in _blog.values())
         print(f"[startup] Rebuilt betting_log: {_blog_total} entries across {len(_blog)} dates", flush=True)
-        if _blog_total > 0:
-            _push_betting_log_to_github()
+        _push_betting_log_to_github()  # always push — even {} is better than 404 on next restart
     except Exception as _be:
         print(f"[startup] betting_log rebuild failed: {_be}", flush=True)
 except Exception as _e:
@@ -986,38 +986,34 @@ except ImportError:
 # Feature contribution helpers
 # ---------------------------------------------------------------------------
 FEATURE_LABELS = {
-    "home_park_factor":           "Park Factor",
-    "diff_pyth_win_pct":          "Pythagorean Win %",
-    "diff_season_win_pct":        "Season Win %",
-    "diff_roll30_hits":           "Hits/G (30g)",
-    "diff_roll30_walks":          "Walks/G (30g)",
-    "diff_roll30_obp":            "Team OBP (30g)",
-    "diff_roll30_slg":            "Team SLG (30g)",
-    "diff_roll30_iso":            "Isolated Power (30g)",
-    "diff_roll10_runs_scored":    "Runs/G (recent 10g)",
-    "diff_roll10_homeruns":       "HR/G (recent 10g)",
-    "diff_roll30_opp_hits":       "Opp Hits/G (30g)",
-    "diff_roll30_opp_walks":      "Opp Walks/G (30g)",
-    "diff_roll30_opp_homeruns":   "Opp HR/G (30g)",
-    "diff_roll30_opp_strikeouts": "Opp K Rate (30g)",
-    "diff_roll30_errors":         "Errors/G (30g)",
-    "diff_roll10_win_pct":        "Win % (recent 10g)",
-    "diff_roll3_bullpen_used":    "Bullpen Usage (3g)",
-    "diff_bullpen_era":           "Bullpen ERA",
-    "diff_roll7_bullpen_ip":      "Bullpen IP (7g)",
-    "diff_rest_days":             "Rest Days",
-    "home_sp_is_lhp":             "Home SP is LHP",
-    "away_sp_is_lhp":             "Away SP is LHP",
-    "diff_sp_era":                "Starter ERA",
-    "diff_sp_whip":               "Starter WHIP",
-    "diff_sp_xfip":               "Starter xFIP",
-    "diff_sp_ip_gs":              "Starter IP/Start",
-    "diff_sp_k_bb":               "Starter K/BB",
-    # Extra display-only labels (not active features)
-    "diff_sp_siera":              "Starter SIERA",
-    "diff_sp_so9":                "Starter K/9",
-    "diff_sp_bb9":                "Starter BB/9",
-    "diff_sp_hr9":                "Starter HR/9",
+    "home_park_factor":              "Park Factor",
+    "diff_pyth_win_pct":             "Pythagorean Win %",
+    "diff_season_win_pct":           "Season Win %",
+    "diff_roll30_obp":               "Team OBP (30g)",
+    "diff_roll30_iso":               "Isolated Power / ISO (30g)",
+    "diff_roll10_runs_scored":       "Runs/G (recent 10g)",
+    "diff_roll10_homeruns":          "HR/G (recent 10g)",
+    "diff_roll30_opp_whip":          "Opp WHIP Allowed (30g)",
+    "diff_roll30_opp_hr_per9":       "Opp HR/9 Allowed (30g)",
+    "diff_roll30_opp_strikeouts":    "Opp K Rate (30g)",
+    "diff_roll10_win_pct":           "Win % (recent 10g)",
+    "diff_bullpen_era":              "Bullpen ERA",
+    "diff_roll7_bullpen_fatigue":    "Bullpen Fatigue (7d exp-decay)",
+    "diff_rest_days":                "Rest Days",
+    "home_sp_is_lhp":                "Home SP is LHP",
+    "away_sp_is_lhp":                "Away SP is LHP",
+    "diff_sp_era":                   "Starter ERA",
+    "diff_sp_whip":                  "Starter WHIP",
+    "diff_sp_xfip":                  "Starter xFIP",
+    "diff_sp_ip_gs":                 "Starter IP/Start",
+    "diff_sp_k_bb":                  "Starter K/BB",
+    # Extra display-only labels (not in FEATURE_COLS — shown in modal for context)
+    "diff_sp_siera":                 "Starter SIERA",
+    "diff_sp_so9":                   "Starter K/9",
+    "diff_sp_bb9":                   "Starter BB/9",
+    "diff_sp_hr9":                   "Starter HR/9",
+    "diff_roll30_hits":              "Hits/G (30g)",
+    "diff_roll30_homeruns":          "HR/G (30g)",
 }
 
 
@@ -1041,22 +1037,18 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_roll30_runs_scored":    home_ts.get("runs_per_game", 4.5)         - away_ts.get("runs_per_game", 4.5),
         "diff_roll30_runs_allowed":   home_ts.get("runs_allowed_per_game", 4.5) - away_ts.get("runs_allowed_per_game", 4.5),
         "diff_roll10_runs_scored":    home_ts.get("recent_runs_per_game", 4.5)  - away_ts.get("recent_runs_per_game", 4.5),
-        "diff_roll30_obp":            home_ts.get("obp", 0.318)                 - away_ts.get("obp", 0.318),
-        "diff_roll30_slg":            home_ts.get("slg", 0.400)                 - away_ts.get("slg", 0.400),
-        "diff_roll30_iso":            home_ts.get("iso", 0.150)                 - away_ts.get("iso", 0.150),
-        "diff_roll30_hits":           home_ts.get("hits_per_game", 8.5)         - away_ts.get("hits_per_game", 8.5),
-        "diff_roll30_opp_hits":       home_ts.get("opp_hits_per_game", 8.5)     - away_ts.get("opp_hits_per_game", 8.5),
-        "diff_roll30_walks":          home_ts.get("walks_per_game", 3.0)        - away_ts.get("walks_per_game", 3.0),
-        "diff_roll30_opp_walks":      home_ts.get("opp_walks_per_game", 3.0)    - away_ts.get("opp_walks_per_game", 3.0),
-        "diff_roll30_errors":         home_ts.get("errors_per_game", 0.7)       - away_ts.get("errors_per_game", 0.7),
-        "diff_roll30_homeruns":       home_ts.get("hr_per_game", 1.1)           - away_ts.get("hr_per_game", 1.1),
-        "diff_roll30_opp_homeruns":   home_ts.get("opp_hr_per_game", 1.1)       - away_ts.get("opp_hr_per_game", 1.1),
-        "diff_roll10_win_pct":        home_ts.get("recent_win_pct", 0.5)        - away_ts.get("recent_win_pct", 0.5),
-        "diff_roll10_homeruns":       home_ts.get("recent_hr_per_game", 1.1)    - away_ts.get("recent_hr_per_game", 1.1),
-        "diff_roll30_opp_strikeouts": home_ts.get("opp_k_per_game", 8.5)        - away_ts.get("opp_k_per_game", 8.5),
-        "diff_roll3_bullpen_used":    home_ts.get("bullpen_used", 3.0)          - away_ts.get("bullpen_used", 3.0),
-        "diff_bullpen_era":           home_ts.get("bullpen_era", 4.20)          - away_ts.get("bullpen_era", 4.20),
-        "diff_roll7_bullpen_ip":      home_ts.get("roll7_bullpen_ip", 15.0)    - away_ts.get("roll7_bullpen_ip", 15.0),
+        "diff_roll30_obp":               home_ts.get("obp", 0.318)                  - away_ts.get("obp", 0.318),
+        "diff_roll30_iso":               home_ts.get("iso", 0.150)                  - away_ts.get("iso", 0.150),
+        "diff_roll10_win_pct":           home_ts.get("recent_win_pct", 0.5)         - away_ts.get("recent_win_pct", 0.5),
+        "diff_roll10_homeruns":          home_ts.get("recent_hr_per_game", 1.1)     - away_ts.get("recent_hr_per_game", 1.1),
+        "diff_roll30_opp_whip":          home_ts.get("opp_whip", 1.30)              - away_ts.get("opp_whip", 1.30),
+        "diff_roll30_opp_hr_per9":       home_ts.get("opp_hr_per9", 1.10)           - away_ts.get("opp_hr_per9", 1.10),
+        "diff_roll30_opp_strikeouts":    home_ts.get("opp_k_per_game", 8.5)         - away_ts.get("opp_k_per_game", 8.5),
+        "diff_bullpen_era":              home_ts.get("bullpen_era", 4.20)            - away_ts.get("bullpen_era", 4.20),
+        "diff_roll7_bullpen_fatigue":    home_ts.get("roll7_bullpen_fatigue", 8.0)  - away_ts.get("roll7_bullpen_fatigue", 8.0),
+        # Display-only (not in FEATURE_COLS, shown in modal for context)
+        "diff_roll30_hits":              home_ts.get("hits_per_game", 8.5)          - away_ts.get("hits_per_game", 8.5),
+        "diff_roll30_homeruns":          home_ts.get("hr_per_game", 1.1)            - away_ts.get("hr_per_game", 1.1),
         "diff_rest_days":             home_ts.get("rest_days", 1)               - away_ts.get("rest_days", 1),
         "home_sp_is_lhp":             1 if home_sp.get("pitch_hand", "R") == "L" else 0,
         "away_sp_is_lhp":             1 if away_sp.get("pitch_hand", "R") == "L" else 0,
@@ -1455,16 +1447,18 @@ def predictions():
             "away_sp_is_league_avg": away_sp.get("is_league_avg", False),
             "away_sp_is_prior_year": away_sp.get("is_prior_year", False),
             "away_sp_hand":          away_sp.get("pitch_hand", "R"),
-            "home_obp":         round(home_ts.get("obp",            0.318), 3),
-            "home_slg":         round(home_ts.get("slg",            0.400), 3),
-            "home_hits_pg":     round(home_ts.get("hits_per_game",  8.5),   1),
+            "home_obp":         round(home_ts.get("obp",                0.318), 3),
+            "home_iso":         round(home_ts.get("iso",                0.150), 3),
+            "home_opp_whip":    round(home_ts.get("opp_whip",           1.30),  2),
             "home_runs_pg":     round(home_ts.get("recent_runs_per_game", 4.5), 1),
-            "home_bp_era":      round(home_ts.get("bullpen_era",    4.20),  2),
-            "away_obp":         round(away_ts.get("obp",            0.318), 3),
-            "away_slg":         round(away_ts.get("slg",            0.400), 3),
-            "away_hits_pg":     round(away_ts.get("hits_per_game",  8.5),   1),
+            "home_bp_era":      round(home_ts.get("bullpen_era",        4.20),  2),
+            "away_obp":         round(away_ts.get("obp",                0.318), 3),
+            "away_iso":         round(away_ts.get("iso",                0.150), 3),
+            "away_opp_whip":    round(away_ts.get("opp_whip",           1.30),  2),
             "away_runs_pg":     round(away_ts.get("recent_runs_per_game", 4.5), 1),
-            "away_bp_era":      round(away_ts.get("bullpen_era",    4.20),  2),
+            "away_bp_era":      round(away_ts.get("bullpen_era",        4.20),  2),
+            "home_sp_k_bb":     round(home_sp.get("k_bb",               2.5),   2),
+            "away_sp_k_bb":     round(away_sp.get("k_bb",               2.5),   2),
             "home_cover_prob":  result.get("home_cover_prob"),
             "away_cover_prob":  result.get("away_cover_prob"),
             "predicted_total":  result.get("predicted_total"),
@@ -2070,32 +2064,41 @@ def predict_custom():
 
     today = _today_et().isoformat()
     log   = _load_log()
-    results = []
-    
+    results  = []
+    skipped  = 0
+    mismatched = 0
+
     intercept = float(lr.intercept_[0]) if hasattr(lr.intercept_, "__len__") else float(lr.intercept_)
 
     for entry in log.get(today, []):
+        if entry.get("game_type") == "S":
+            continue
         x_scaled = entry.get("x_scaled_features")
         if x_scaled is None:
+            skipped += 1
             continue
-        
-        # Convert to numpy array and flatten to handle 1D or 2D (1, N) inputs safely
+
         x = np.array(x_scaled).flatten()
-        
+
         if len(x) != len(coef_adjusted):
-            # Guard against logged feature shape mismatches
+            mismatched += 1
             continue
 
         log_odds = float(np.dot(coef_adjusted, x)) + intercept
-        prob = 1.0 / (1.0 + np.exp(-log_odds))
-        
+        prob     = 1.0 / (1.0 + np.exp(-log_odds))
         results.append({
             "game_pk":       entry["game_pk"],
             "home_win_prob": round(prob, 3),
             "away_win_prob": round(1.0 - prob, 3),
         })
 
-    return jsonify({"results": results, "multipliers_applied": mults})
+    if skipped:
+        print(f"[custom weights] {skipped} entries skipped (missing x_scaled_features — re-seed today)", flush=True)
+    if mismatched:
+        print(f"[custom weights] {mismatched} entries skipped (feature count mismatch — model needs retrain)", flush=True)
+
+    return jsonify({"results": results, "multipliers_applied": mults,
+                    "skipped": skipped, "mismatched": mismatched})
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
