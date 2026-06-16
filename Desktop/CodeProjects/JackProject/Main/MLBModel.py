@@ -742,6 +742,16 @@ def build_2025_baselines(df, tgl):
             "hr9":   float(sp_data.get("sp_hr9",   1.2)),
             "ip_gs": float(sp_data.get("sp_ip_gs", 5.8)),
             "k_bb":  float(sp_data.get("sp_k_bb",  2.5)),
+            # Display fields for game card ERA / WHIP / FIP row — mirrors what
+            # update_daily.py's fetch_sp_baselines_from_mlb_api() produces, so a
+            # committed retrain never strips them (see git regression 8666eeb).
+            "era_raw":       float(sp_data.get("sp_era",  4.20)),
+            "whip_raw":      float(sp_data.get("sp_whip", 1.30)),
+            "fip_raw":       float(sp_data.get("sp_xfip", 4.00)),  # xFIP proxy (real FIP not merged)
+            "gs":            0,
+            "is_blended":    False,
+            "is_league_avg": False,
+            "is_prior_year": True,   # 2025 end-of-season stats serving as 2026 prior baseline
         }
 
     return team_baselines, sp_baselines
