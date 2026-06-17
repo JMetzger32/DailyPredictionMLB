@@ -93,6 +93,22 @@ def load_artifacts():
 
 load_artifacts()
 
+# Refresh SP baselines from the live MLB Stats API immediately after loading artifacts.
+# This ensures pitcher ERA/WHIP/FIP display always reflects the current 2026 season,
+# even when a locally-retrained pkl is restored from GitHub on Render startup.
+try:
+    import update_daily as _ud
+    _prior_sp = _artifacts.get("sp_baselines", {})
+    print("[startup] Refreshing SP baselines from MLB Stats API...", flush=True)
+    _fresh_sp = _ud.fetch_sp_baselines_from_mlb_api(_ud.SEASON, games_played=70, prior_sp=_prior_sp)
+    if _fresh_sp and len(_fresh_sp) >= 5:
+        _artifacts["sp_baselines"] = {**_prior_sp, **_fresh_sp}
+        print(f"[startup] SP baselines refreshed: {len(_fresh_sp)} pitchers with live {_ud.SEASON} data", flush=True)
+    else:
+        print("[startup] SP refresh returned no data — using pkl baselines", flush=True)
+except Exception as _sp_err:
+    print(f"[startup] SP refresh failed: {_sp_err} — using pkl baselines", flush=True)
+
 # ---------------------------------------------------------------------------
 # Schedule cache  (avoids hitting the MLB API on every page load)
 # ---------------------------------------------------------------------------

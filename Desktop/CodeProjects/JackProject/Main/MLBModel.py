@@ -751,7 +751,7 @@ def build_2025_baselines(df, tgl):
             "gs":            0,
             "is_blended":    False,
             "is_league_avg": False,
-            "is_prior_year": True,   # 2025 end-of-season stats serving as 2026 prior baseline
+            "is_prior_year": False,  # startup refresh will set True only for pitchers with no 2026 data
         }
 
     return team_baselines, sp_baselines
