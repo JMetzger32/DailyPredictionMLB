@@ -880,23 +880,27 @@ try:
         print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
     # Always patch odds — no-op if already set. Runs before betting_log rebuild.
     _refresh_today_odds()
-    # Rebuild betting_log from ALL predictions_log entries that have real odds data.
+    # Merge betting_log: start from the GitHub-restored version (has all historical
+    # data), then supplement with anything newly available in predictions_log.
+    # IMPORTANT: do NOT rebuild from scratch — that would erase historical entries
+    # that only live in the betting_log backup (predictions_log only has odds for
+    # the current day; past days' odds are not retroactively available).
     try:
+        _blog = _load_betting_log()          # restored from GitHub — keeps history
         _full_log = _load_log()
-        _blog = {}
         for _d, _entries in _full_log.items():
             _odds_entries = [
                 e for e in _entries
                 if e.get("bet_rating") is not None and e.get("away_ml") is not None
             ]
             if _odds_entries:
-                _blog[_d] = _odds_entries
+                _blog[_d] = _odds_entries    # update this day (may add or overwrite)
         _save_betting_log(_blog)
         _blog_total = sum(len(v) for v in _blog.values())
-        print(f"[startup] Rebuilt betting_log: {_blog_total} entries across {len(_blog)} dates", flush=True)
-        _push_betting_log_to_github()  # always push — even {} is better than 404 on next restart
+        print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
+        _push_betting_log_to_github()
     except Exception as _be:
-        print(f"[startup] betting_log rebuild failed: {_be}", flush=True)
+        print(f"[startup] betting_log merge failed: {_be}", flush=True)
 except Exception as _e:
     print(f"[startup] Today-seeding failed: {_e}", flush=True)
 
@@ -1527,20 +1531,24 @@ def accuracy():
     _season_start = _date(2026, 3, 27)
     _days_since_start = (_today_et() - _season_start).days
 
-    # Always heal in the background so this request returns immediately.
-    # The log is read after a brief delay to catch any already-cached results,
-    # but we never block on API calls inside the request path.
     import threading as _threading
     _existing = _load_log()
     _missing = sum(
         1 for i in range(1, _days_since_start + 1)
         if (_today_et() - timedelta(days=i)).isoformat() not in _existing
     )
-    _heal_target = _days_since_start if _missing > 3 else 7
-    _threading.Thread(
-        target=_auto_heal_log, kwargs={"days": _heal_target}, daemon=True
-    ).start()
-    log = _existing  # serve current log immediately; background thread updates it
+    if _missing > 3:
+        # Large backfill: run in background so the page doesn't time out
+        _heal_target = _days_since_start
+        _threading.Thread(
+            target=_auto_heal_log, kwargs={"days": _heal_target}, daemon=True
+        ).start()
+        log = _existing
+    else:
+        # Small gap (≤3 days): heal synchronously so the accuracy % is stable
+        # across reloads and doesn't flip between values
+        _auto_heal_log(days=7)
+        log = _load_log()
 
     def compute_stats(entries):
         team_stats = {}
@@ -1701,11 +1709,17 @@ def accuracy():
         "mae":      round(sum(ou_errors) / len(ou_errors), 2) if ou_errors else None,
     }
 
+    # Home team win rate — actual baseline (how often home team wins regardless of model)
+    _home_wins    = sum(1 for e in regular if e.get("correct") is not None and e.get("actual_winner") == "Home")
+    _total_resolved = rs_stats["overall"]["games"]
+    home_win_rate = round(_home_wins / _total_resolved, 3) if _total_resolved else None
+
     return jsonify({
         "regular_season":  rs_stats,
         "spring_training": st_stats,
         "by_week":         by_week,
         "ou_stats":        ou_stats,
+        "home_win_rate":   home_win_rate,
         "last_updated":    datetime.now().isoformat(),
     })
 
