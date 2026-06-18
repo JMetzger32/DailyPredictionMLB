@@ -1519,6 +1519,10 @@ def predictions():
     })
 
 
+_accuracy_cache: dict = {"ts": 0.0, "payload": None}
+_ACCURACY_CACHE_TTL = 300  # 5 minutes
+
+
 @app.route("/api/accuracy")
 def accuracy():
     """
@@ -1526,7 +1530,11 @@ def accuracy():
     Splits regular season (game_type=R) and spring training (game_type=S).
     Auto-heals the log before computing: resolves unresolved entries and
     backfills missing days for the last 7 days.
+    Result is cached for 5 minutes so rapid reloads always show the same number.
     """
+    if time.time() - _accuracy_cache["ts"] < _ACCURACY_CACHE_TTL and _accuracy_cache["payload"]:
+        return _accuracy_cache["payload"]
+
     from datetime import date as _date
     _season_start = _date(2026, 3, 27)
     _days_since_start = (_today_et() - _season_start).days
@@ -1714,7 +1722,7 @@ def accuracy():
     _total_resolved = rs_stats["overall"]["games"]
     home_win_rate = round(_home_wins / _total_resolved, 3) if _total_resolved else None
 
-    return jsonify({
+    response = jsonify({
         "regular_season":  rs_stats,
         "spring_training": st_stats,
         "by_week":         by_week,
@@ -1722,6 +1730,9 @@ def accuracy():
         "home_win_rate":   home_win_rate,
         "last_updated":    datetime.now().isoformat(),
     })
+    _accuracy_cache["payload"] = response
+    _accuracy_cache["ts"]      = time.time()
+    return response
 
 
 @app.route("/api/betting")
