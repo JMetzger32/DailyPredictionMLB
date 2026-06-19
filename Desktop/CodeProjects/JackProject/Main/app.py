@@ -886,7 +886,8 @@ try:
     # that only live in the betting_log backup (predictions_log only has odds for
     # the current day; past days' odds are not retroactively available).
     try:
-        _blog = _load_betting_log()          # restored from GitHub — keeps history
+        _blog = _load_betting_log()           # what was restored from GitHub
+        _restored_total = sum(len(v) for v in _blog.values())
         _full_log = _load_log()
         for _d, _entries in _full_log.items():
             _odds_entries = [
@@ -894,11 +895,17 @@ try:
                 if e.get("bet_rating") is not None and e.get("away_ml") is not None
             ]
             if _odds_entries:
-                _blog[_d] = _odds_entries    # update this day (may add or overwrite)
+                _blog[_d] = _odds_entries    # update this day
         _save_betting_log(_blog)
         _blog_total = sum(len(v) for v in _blog.values())
         print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
-        _push_betting_log_to_github()
+        # Only push if we have at least as many entries as what was restored.
+        # Prevents a failed restore (empty backup) from overwriting a larger
+        # GitHub backup with a smaller merged result on the next deploy.
+        if _blog_total >= _restored_total:
+            _push_betting_log_to_github()
+        else:
+            print(f"[startup] Skipping push — merged ({_blog_total}) < restored ({_restored_total}); keeping larger GitHub backup", flush=True)
     except Exception as _be:
         print(f"[startup] betting_log merge failed: {_be}", flush=True)
 except Exception as _e:
