@@ -434,6 +434,27 @@ def _resolve_picks_for_date(target_date):
         _save_picks(picks)
 
 
+def _calibration_bucket(prob):
+    """Return the probability bucket string for a given win probability (50-100%)."""
+    p = round(prob * 100)
+    if p < 55:   return "50-55%"
+    if p < 60:   return "55-60%"
+    if p < 65:   return "60-65%"
+    if p < 70:   return "65-70%"
+    if p < 80:   return "70-80%"
+    return "80%+"
+
+
+def _compute_error_metrics(home_win_prob, actual_winner):
+    """Compute Brier score and log loss once a game result is known."""
+    import math
+    actual = 1 if actual_winner == "Home" else 0
+    p = max(min(home_win_prob, 0.9999), 0.0001)  # clip to avoid log(0)
+    brier = round((p - actual) ** 2, 4)
+    ll    = round(-(actual * math.log(p) + (1 - actual) * math.log(1 - p)), 4)
+    return brier, ll
+
+
 def _build_prediction_entry(game, result, odds_data=None):
     """Build a log entry dict from a schedule game + predict_game result."""
     odds_data = odds_data or {}
@@ -454,6 +475,8 @@ def _build_prediction_entry(game, result, odds_data=None):
         "predicted_winner":  result["predicted_winner"],
         "away_win_prob":     round(result["away_win_prob"], 4),
         "home_win_prob":     round(result["home_win_prob"], 4),
+        "confidence":        round(max(result["home_win_prob"], result["away_win_prob"]) - 0.5, 4),
+        "calibration_bucket": _calibration_bucket(max(result["home_win_prob"], result["away_win_prob"])),
         "away_ml":           odds_data.get("away_ml"),
         "home_ml":           odds_data.get("home_ml"),
         "bet_rating":        odds_data.get("bet_rating"),
@@ -463,6 +486,9 @@ def _build_prediction_entry(game, result, odds_data=None):
         "away_score":        None,
         "home_score":        None,
         "correct":           None,
+        "brier_score":       None,
+        "log_loss":          None,
+        "clv":               None,
         "predicted_total":   result.get("predicted_total"),
         "home_est_score":    result.get("home_est_score"),
         "away_est_score":    result.get("away_est_score"),
@@ -503,6 +529,11 @@ def update_yesterday_results():
                     actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                     entry["actual_winner"] = actual
                     entry["correct"] = (entry["predicted_winner"] == actual)
+                    # Error bounds: Brier score + log loss
+                    if entry.get("home_win_prob") is not None:
+                        bs, ll = _compute_error_metrics(entry["home_win_prob"], actual)
+                        entry["brier_score"] = bs
+                        entry["log_loss"]    = ll
                     # Run-line: did predicted team cover ±1.5?
                     home_covers = (r["home_score"] - r["away_score"]) > 1.5
                     hcp = entry.get("home_cover_prob")
@@ -605,6 +636,10 @@ def _log_predictions_for_date(target_date, log=None):
                         actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                         entry["actual_winner"] = actual
                         entry["correct"] = (entry["predicted_winner"] == actual)
+                        if entry.get("home_win_prob") is not None:
+                            bs, ll = _compute_error_metrics(entry["home_win_prob"], actual)
+                            entry["brier_score"] = bs
+                            entry["log_loss"]    = ll
         except Exception as e:
             print(f"[app] Could not resolve results for {date_str}: {e}")
 
@@ -658,6 +693,10 @@ def _resolve_unresolved_for_date(log, target_date):
                 actual = "Home" if r["home_score"] > r["away_score"] else "Away"
                 entry["actual_winner"] = actual
                 entry["correct"] = (entry["predicted_winner"] == actual)
+                if entry.get("home_win_prob") is not None:
+                    bs, ll = _compute_error_metrics(entry["home_win_prob"], actual)
+                    entry["brier_score"] = bs
+                    entry["log_loss"]    = ll
                 home_covers = (r["home_score"] - r["away_score"]) > 1.5
                 hcp = entry.get("home_cover_prob")
                 if hcp is not None:
@@ -1609,12 +1648,17 @@ def predictions():
                 actual_winner = actual
                 correct       = (result["predicted_winner"] == actual)
             # Persist back to log so accuracy tracker stays current
+            _brier, _ll = (None, None)
+            if actual_winner not in (None, "Tie") and result.get("home_win_prob") is not None:
+                _brier, _ll = _compute_error_metrics(result["home_win_prob"], actual_winner)
             if pk in log_by_pk:
                 log_by_pk[pk].update({
                     "away_score":    away_score,
                     "home_score":    home_score,
                     "actual_winner": actual_winner,
                     "correct":       correct,
+                    "brier_score":   _brier,
+                    "log_loss":      _ll,
                 })
             else:
                 # Game wasn't logged yet (8 AM job missed) — create full entry now
@@ -1931,14 +1975,32 @@ def accuracy():
     return response
 
 
+def _load_betting_log_from_db():
+    """Load all betting_log entries from SQLite as a list of dicts."""
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM betting_log ORDER BY date DESC")
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception as e:
+        print(f"[betting] Failed to load from DB: {e}", flush=True)
+        # Fallback to JSON
+        log = _load_betting_log()
+        return [e for day in log.values() for e in day]
+
+
 @app.route("/api/betting")
 def betting_stats():
     """Return betting accuracy stats broken down by bet_rating category."""
-    log = _load_betting_log()
+    all_entries_raw = _load_betting_log_from_db()
 
     # Only include RS entries with odds data that are resolved
     all_entries = [
-        e for day in log.values() for e in day
+        e for e in all_entries_raw
         if e.get("game_type") != "S"
         and e.get("bet_rating") is not None
         and e.get("correct") is not None
@@ -2143,8 +2205,7 @@ def debug_odds():
                       for (a, h), v in list(odds.items())[:3]]
         except Exception as e:
             error = str(e)
-    blog = _load_betting_log()
-    blog_entries = sum(len(v) for v in blog.values())
+    blog_entries = len(_load_betting_log_from_db())
     log = _load_log()
     entries_with_odds = sum(
         1 for day in log.values() for e in day
