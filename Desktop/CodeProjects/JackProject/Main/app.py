@@ -55,11 +55,12 @@ app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
             static_folder=os.path.join(_ROOT, "static"))
 
-ARTIFACTS_PATH    = os.environ.get("ARTIFACTS_PATH",   os.path.join(_ROOT, "updates",            "mlb_model_artifacts.pkl"))
-PREDICTIONS_LOG   = os.environ.get("PREDICTIONS_LOG",  os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
-BETTING_LOG_PATH  = os.environ.get("BETTING_LOG_PATH", os.path.join(_ROOT, "Databases_and_logs", "betting_log.json"))
-SUBSCRIBERS_PATH  = os.environ.get("SUBSCRIBERS_PATH", os.path.join(_ROOT, "Databases_and_logs", "subscribers.json"))
-PICKS_LOG_PATH    = os.environ.get("PICKS_LOG_PATH",   os.path.join(_ROOT, "Databases_and_logs", "picks_log.json"))
+ARTIFACTS_PATH      = os.environ.get("ARTIFACTS_PATH",       os.path.join(_ROOT, "updates",            "mlb_model_artifacts.pkl"))
+PREDICTIONS_LOG     = os.environ.get("PREDICTIONS_LOG",      os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
+BETTING_LOG_PATH    = os.environ.get("BETTING_LOG_PATH",     os.path.join(_ROOT, "Databases_and_logs", "betting_log.json"))
+CLOSING_ODDS_LOG    = os.environ.get("CLOSING_ODDS_LOG",     os.path.join(_ROOT, "Databases_and_logs", "closing_odds_log.json"))
+SUBSCRIBERS_PATH    = os.environ.get("SUBSCRIBERS_PATH",     os.path.join(_ROOT, "Databases_and_logs", "subscribers.json"))
+PICKS_LOG_PATH      = os.environ.get("PICKS_LOG_PATH",       os.path.join(_ROOT, "Databases_and_logs", "picks_log.json"))
 RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL        = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
 TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
@@ -92,6 +93,12 @@ def load_artifacts():
 
 
 load_artifacts()
+
+# Log artifact status for debugging accuracy discrepancies
+_team_count = len(_artifacts.get('team_baselines', {}))
+_sp_count = len(_artifacts.get('sp_baselines', {}))
+_lr = _artifacts.get('lr_model')
+print(f"[app] Artifacts loaded — {_team_count} teams, {_sp_count} pitchers, LR model: {_lr is not None}", flush=True)
 
 # Refresh SP baselines from the live MLB Stats API immediately after loading artifacts.
 # This ensures pitcher ERA/WHIP/FIP display always reflects the current 2026 season,
@@ -185,65 +192,188 @@ def _push_betting_log_to_github():
     _push_file_to_github(BETTING_LOG_PATH, f"Auto-backup betting log {_today_et().isoformat()}")
 
 
+def _push_closing_odds_to_github():
+    _push_file_to_github(CLOSING_ODDS_LOG, f"Auto-backup closing odds {_today_et().isoformat()}")
+
+
 def _upsert_betting_entries(entries):
-    """Write entries that have odds data into betting_log.json (keyed by date).
-    Only saves entries with bet_rating set (value/toss-up/no-value).
-    Merges by game_pk so result updates don't create duplicates.
-    Saves and pushes to GitHub if anything changed."""
+    """Write entries that have odds data into betting_log table.
+    Only saves entries with bet_rating set (good/bad/unsure).
+    Upserts by game_pk to avoid duplicates."""
     odds_entries = [e for e in entries if e.get("bet_rating") is not None]
     if not odds_entries:
         return
-    blog = _load_betting_log()
-    changed = False
-    for entry in odds_entries:
-        date_str = entry.get("date")
-        if not date_str:
-            continue
-        if date_str not in blog:
-            blog[date_str] = []
-        # Merge by game_pk
-        existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
-        pk = entry.get("game_pk")
-        if pk and pk in existing:
-            existing[pk].update(entry)
-        else:
-            blog[date_str].append(entry)
-            if pk:
-                existing[pk] = entry
-        changed = True
-    if changed:
-        _save_betting_log(blog)
-        _push_betting_log_to_github()
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        cur = conn.cursor()
+
+        for entry in odds_entries:
+            pk = entry.get("game_pk")
+            if not pk:
+                continue
+
+            # Upsert by game_pk
+            cur.execute("""
+                INSERT OR REPLACE INTO betting_log (
+                    game_pk, date, game_type, away_team, home_team,
+                    predicted_winner, away_win_prob, home_win_prob,
+                    away_ml, home_ml, away_implied, home_implied,
+                    bet_rating, model_edge, predicted_team_ml,
+                    predicted_total, actual_winner, away_score, home_score,
+                    correct, closing_away_ml, closing_home_ml, clv,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (
+                pk,
+                entry.get("date"),
+                entry.get("game_type"),
+                entry.get("away_team"),
+                entry.get("home_team"),
+                entry.get("predicted_winner"),
+                entry.get("away_win_prob"),
+                entry.get("home_win_prob"),
+                entry.get("away_ml"),
+                entry.get("home_ml"),
+                entry.get("away_implied"),
+                entry.get("home_implied"),
+                entry.get("bet_rating"),
+                entry.get("model_edge"),
+                entry.get("predicted_team_ml"),
+                entry.get("predicted_total"),
+                entry.get("actual_winner"),
+                entry.get("away_score"),
+                entry.get("home_score"),
+                entry.get("correct"),
+                entry.get("closing_away_ml"),
+                entry.get("closing_home_ml"),
+                entry.get("clv"),
+            ))
+
+        conn.commit()
+        conn.close()
+        print(f"[betting] Upserted {len(odds_entries)} entries to betting_log table", flush=True)
+    except Exception as e:
+        print(f"[betting] Failed to upsert to betting_log table: {e}", flush=True)
+        # Fallback to JSON for backward compatibility
+        blog = _load_betting_log()
+        changed = False
+        for entry in odds_entries:
+            date_str = entry.get("date")
+            if not date_str:
+                continue
+            if date_str not in blog:
+                blog[date_str] = []
+            existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
+            pk = entry.get("game_pk")
+            if pk and pk in existing:
+                existing[pk].update(entry)
+            else:
+                blog[date_str].append(entry)
+            changed = True
+        if changed:
+            _save_betting_log(blog)
 
 
 def _resolve_betting_log_results(date_str, results):
     """Update correct/scores for betting_log entries on date_str using results dict."""
-    blog = _load_betting_log()
-    if date_str not in blog:
+    if not results:
         return
-    changed = False
-    for entry in blog[date_str]:
-        if entry.get("correct") is not None:
-            continue
-        r = results.get(entry.get("game_pk"))
-        if r and r["final"] and r["away_score"] is not None:
-            entry["away_score"] = r["away_score"]
-            entry["home_score"] = r["home_score"]
-            if r["home_score"] == r["away_score"]:
-                entry["actual_winner"] = "Tie"
-                entry["correct"] = None
-            else:
-                actual = "Home" if r["home_score"] > r["away_score"] else "Away"
-                entry["actual_winner"] = actual
-                entry["correct"] = (entry["predicted_winner"] == actual)
-                home_covers = (r["home_score"] - r["away_score"]) > 1.5
-                hcp = entry.get("home_cover_prob")
-                if hcp is not None:
-                    entry["correct_rl"] = ((hcp > 0.5) == home_covers)
-            changed = True
-    if changed:
-        _save_betting_log(blog)
-        _push_betting_log_to_github()
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        cur = conn.cursor()
+
+        # Get unresolved entries from this date
+        cur.execute("""
+            SELECT game_pk, predicted_winner FROM betting_log
+            WHERE date = ? AND correct IS NULL
+        """, (date_str,))
+
+        updated_count = 0
+        for (game_pk, predicted_winner) in cur.fetchall():
+            r = results.get(game_pk)
+            if r and r["final"] and r["away_score"] is not None:
+                away_score = r["away_score"]
+                home_score = r["home_score"]
+
+                if home_score == away_score:
+                    actual_winner = "Tie"
+                    correct = None
+                else:
+                    actual_winner = "Home" if home_score > away_score else "Away"
+                    correct = 1 if (predicted_winner == actual_winner) else 0
+
+                cur.execute("""
+                    UPDATE betting_log
+                    SET actual_winner = ?, away_score = ?, home_score = ?, correct = ?, updated_at = datetime('now')
+                    WHERE game_pk = ?
+                """, (actual_winner, away_score, home_score, correct, game_pk))
+
+                updated_count += 1
+
+        if updated_count > 0:
+            conn.commit()
+            print(f"[betting] Resolved {updated_count} results in betting_log for {date_str}", flush=True)
+
+        conn.close()
+    except Exception as e:
+        print(f"[betting] Failed to resolve results in betting_log table: {e}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Closing odds archive (for historical odds persistence)
+# ---------------------------------------------------------------------------
+def _load_closing_odds_archive():
+    """Load closing odds archive from JSON."""
+    try:
+        with open(CLOSING_ODDS_LOG) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def _save_closing_odds_archive(archive):
+    """Save closing odds archive to JSON."""
+    with open(CLOSING_ODDS_LOG, "w") as f:
+        json.dump(archive, f, indent=2)
+
+
+def _get_closing_odds_archive():
+    """Return closing odds from archive (for past dates)."""
+    try:
+        archive = _load_closing_odds_archive()
+        return archive
+    except Exception as e:
+        print(f"[odds] Failed to load closing odds archive: {e}", flush=True)
+        return {}
+
+
+def _store_closing_odds_to_archive(date_str, odds_map):
+    """Store odds snapshot for a date in closing_odds_archive."""
+    if not odds_map:
+        return
+    try:
+        archive = _load_closing_odds_archive()
+        if date_str not in archive:
+            archive[date_str] = {}
+
+        # Store keyed by (away_team, home_team) tuple
+        for (away_team, home_team), odds in odds_map.items():
+            key = f"{away_team}|{home_team}"  # Use pipe separator for JSON keys
+            archive[date_str][key] = {
+                "away_ml": odds.get("away_ml"),
+                "home_ml": odds.get("home_ml"),
+                "away_implied": odds.get("away_implied"),
+                "home_implied": odds.get("home_implied"),
+            }
+
+        _save_closing_odds_archive(archive)
+        print(f"[odds] Stored closing odds for {date_str}: {len(odds_map)} games", flush=True)
+    except Exception as e:
+        print(f"[odds] Failed to store closing odds archive: {e}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -412,8 +542,27 @@ def _log_predictions_for_date(target_date, log=None):
         return log
 
     games_raw = get_todays_schedule(target_date)
-    # Fetch odds for today/future dates so we can store bet_rating in the log
-    odds_map = _get_odds_cached() if target_date >= _today_et() else {}
+    # Fetch live odds for today/future; use closing odds archive for past dates
+    if target_date >= _today_et():
+        odds_map = _get_odds_cached()
+    else:
+        # For past dates, try to get from closing odds archive
+        date_str = target_date.isoformat()
+        closing_archive = _get_closing_odds_archive()
+        date_odds = closing_archive.get(date_str, {})
+        # Reconstruct odds dict from archive (keyed by team tuple)
+        odds_map = {}
+        for key_str, odds in date_odds.items():
+            try:
+                away_team, home_team = key_str.split("|")
+                odds_map[(away_team, home_team)] = {
+                    "away_ml": odds.get("away_ml"),
+                    "home_ml": odds.get("home_ml"),
+                    "away_implied": odds.get("away_implied"),
+                    "home_implied": odds.get("home_implied"),
+                }
+            except Exception:
+                pass
     entries = []
     for game in games_raw:
         home = game.get("home_team")
@@ -842,7 +991,24 @@ def _refresh_today_odds():
 _restore_file_from_github(PICKS_LOG_PATH)
 _restore_file_from_github(PREDICTIONS_LOG)
 _restore_file_from_github(BETTING_LOG_PATH)
+_restore_file_from_github(CLOSING_ODDS_LOG)
 _restore_file_from_github(ARTIFACTS_PATH)
+
+# Ensure artifacts are freshly loaded after GitHub restore (fixes accuracy discrepancy between Render/local)
+try:
+    load_artifacts()
+    _team_count = len(_artifacts.get('team_baselines', {}))
+    _sp_count = len(_artifacts.get('sp_baselines', {}))
+    print(f"[startup] Artifacts reloaded after GitHub restore: {_team_count} teams, {_sp_count} pitchers", flush=True)
+except Exception as _e:
+    print(f"[startup] Failed to reload artifacts: {_e}", flush=True)
+
+# Initialize betting_log table on startup (no-op if already exists)
+try:
+    import init_betting_log as _init_betting
+    _init_betting.init_betting_log_table()
+except Exception as _e:
+    print(f"[startup] betting_log table init failed: {_e}", flush=True)
 
 # Bootstrap 2026 game data into DB on startup if missing (DB is gitignored, so Render starts empty)
 try:
@@ -964,6 +1130,11 @@ def _store_closing_odds():
         # Bypass cache: clear the odds cache entry so we get a fresh fetch
         _odds_cache.pop(today, None)
         odds = get_mlb_odds(ODDS_API_KEY)
+
+        # Store odds snapshot in archive for historical lookup
+        _store_closing_odds_to_archive(today, odds)
+        _push_closing_odds_to_github()
+
         log = _load_log()
         changed = False
         for entry in log.get(today, []):
@@ -1354,8 +1525,26 @@ def predictions():
     # One cached API call for both schedule and live scores
     games_raw, live_results = _get_schedule_cached(target_date)
 
-    # Fetch odds for today and future dates (The Odds API returns all upcoming games)
-    odds_map = _get_odds_cached() if target_date >= _today_et() else {}
+    # Fetch live odds for today/future; use closing odds archive for past dates
+    if target_date >= _today_et():
+        odds_map = _get_odds_cached()
+    else:
+        # For past dates, try to get from closing odds archive
+        closing_archive = _get_closing_odds_archive()
+        date_odds = closing_archive.get(date_str, {})
+        # Reconstruct odds dict from archive (keyed by team tuple)
+        odds_map = {}
+        for key_str, odds in date_odds.items():
+            try:
+                away_team, home_team = key_str.split("|")
+                odds_map[(away_team, home_team)] = {
+                    "away_ml": odds.get("away_ml"),
+                    "home_ml": odds.get("home_ml"),
+                    "away_implied": odds.get("away_implied"),
+                    "home_implied": odds.get("home_implied"),
+                }
+            except Exception:
+                pass
 
     predictions_out = []
     log_changed = False
@@ -1527,7 +1716,7 @@ def predictions():
 
 
 _accuracy_cache: dict = {"ts": 0.0, "payload": None}
-_ACCURACY_CACHE_TTL = 300  # 5 minutes
+_ACCURACY_CACHE_TTL = 60  # 1 minute — short TTL to catch stale baselines
 
 
 @app.route("/api/accuracy")
@@ -1998,6 +2187,43 @@ def refresh():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/retrain-model")
+def retrain_model():
+    """
+    Trigger weekly model retraining on 2021-2026 data.
+    Requires ?key=TRIGGER_SECRET query param.
+    Trains ensemble (LR + GB) on 2021-2025, validates on 2026.
+    Takes ~5-10 minutes. Call from cron-job.org every Sunday 10 PM ET.
+    """
+    secret = request.args.get("key", "")
+    if not TRIGGER_SECRET or secret != TRIGGER_SECRET:
+        return jsonify({"error": "forbidden"}), 403
+
+    import threading
+    import update_daily
+
+    def run_retrain():
+        try:
+            print(f"[retrain] Triggered at {datetime.now().isoformat()}")
+            metrics = update_daily.retrain_model()
+            if metrics:
+                load_artifacts()
+                _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup retrained model {_today_et().isoformat()}")
+                print(f"[retrain] Success: {metrics}")
+            else:
+                print(f"[retrain] Failed to retrain model")
+        except Exception as e:
+            print(f"[retrain] Exception: {e}")
+            traceback.print_exc()
+
+    threading.Thread(target=run_retrain, daemon=True).start()
+    return jsonify({
+        "status": "retrain_triggered",
+        "message": "Model retraining started in background (5-10 minutes)",
+        "time": datetime.now().isoformat()
+    })
 
 
 @app.route("/api/teams")

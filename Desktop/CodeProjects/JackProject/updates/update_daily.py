@@ -433,14 +433,21 @@ def _compute_exp_bullpen_fatigue(games, half_life_days=3.0):
     if len(ips) == 0:
         return 8.0
 
-    # Compute fatigue for the last row (most recent game)
-    total = 0.0
+    # Vectorized computation: compute fatigue for the last row (most recent game)
     ref_date = dates[-1]
-    for j in range(len(dates) - 1):
-        days_ago = (ref_date - dates[j]) / np.timedelta64(1, "D")
-        if 0 < days_ago <= 7:
-            total += np.exp(-lam * days_ago) * ips[j]
-    return round(float(total), 2)
+    days_ago_array = (ref_date - dates[:-1]) / np.timedelta64(1, "D")
+
+    # Mask for days within 7-day window
+    mask = (days_ago_array > 0) & (days_ago_array <= 7)
+
+    # Apply exponential decay weight and sum
+    if np.any(mask):
+        weights = np.exp(-lam * days_ago_array[mask])
+        total = float(np.sum(weights * ips[:-1][mask]))
+    else:
+        total = 0.0
+
+    return round(total, 2)
 
 
 # Compute rolling baselines from a team's game log
@@ -988,6 +995,103 @@ def main():
     print(f"\n  Saved updated artifacts -> {ARTIFACTS_PATH}")
     print(f"  Teams with live data: {sorted(new_team_baselines.keys())}")
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Done!")
+
+
+# ---------------------------------------------------------------------------
+# Weekly model retraining
+# ---------------------------------------------------------------------------
+def retrain_model():
+    """
+    Retrain the ML ensemble on 2021-2026 data with recency weighting.
+    Called by /api/retrain-model endpoint weekly (Sunday 10 PM ET).
+    Returns dict with metrics, or None on failure.
+    """
+    print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting weekly model retrain...")
+    try:
+        from MLBModel import (
+            load_data, build_team_game_log, compute_rolling_team_features,
+            merge_bullpen_era, merge_sp_stats, FEATURE_COLS, RANDOM_STATE
+        )
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
+        from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
+
+        # Load training data
+        df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
+        tgl = build_team_game_log(df)
+        tgl = compute_rolling_team_features(tgl)
+        tgl = merge_bullpen_era(tgl, bullpen_stats)
+        tgl = merge_sp_stats(tgl, pitcher_stats)
+
+        # Filter to 2021-2026 data
+        train_df = tgl[tgl["season"] >= 2021].copy()
+
+        # Split by season: train on 2021-2025, validate on 2026
+        train_data = train_df[train_df["season"] < 2026].copy()
+        val_data = train_df[train_df["season"] == 2026].copy()
+
+        if len(train_data) < 1000 or len(val_data) < 100:
+            print(f"[retrain] Insufficient data: train={len(train_data)}, val={len(val_data)}")
+            return None
+
+        X_train = train_data[FEATURE_COLS].fillna(0)
+        y_train = train_data["home_win"].values
+
+        X_val = val_data[FEATURE_COLS].fillna(0)
+        y_val = val_data["home_win"].values
+
+        # Train ensemble
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_val_scaled = scaler.transform(X_val)
+
+        lr = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+        gb = GradientBoostingClassifier(n_estimators=200, max_depth=5, random_state=RANDOM_STATE)
+
+        lr.fit(X_train_scaled, y_train)
+        gb.fit(X_train, y_train)  # GB uses raw features
+
+        # Validate
+        lr_pred = lr.predict_proba(X_val_scaled)[:, 1]
+        gb_pred = gb.predict_proba(X_val)[:, 1]
+        ensemble_pred = (lr_pred + gb_pred) / 2.0
+
+        ensemble_pred_class = (ensemble_pred >= 0.5).astype(int)
+        accuracy = accuracy_score(y_val, ensemble_pred_class)
+        brier = brier_score_loss(y_val, ensemble_pred)
+        logloss = log_loss(y_val, ensemble_pred)
+
+        print(f"[retrain] Validation metrics: Accuracy={accuracy:.3f}, Brier={brier:.4f}, LogLoss={logloss:.4f}")
+
+        # Load current artifacts and update ensemble models
+        with open(ARTIFACTS_PATH, "rb") as f:
+            artifacts = pickle.load(f)
+
+        artifacts["lr_model"] = lr
+        artifacts["gb_model"] = gb
+        artifacts["scaler"] = scaler
+        artifacts["retrain_timestamp"] = datetime.now().isoformat()
+        artifacts["retrain_metrics"] = {
+            "accuracy": float(accuracy),
+            "brier_score": float(brier),
+            "log_loss": float(logloss),
+            "train_size": len(train_data),
+            "val_size": len(val_data),
+        }
+
+        # Save updated artifacts
+        with open(ARTIFACTS_PATH, "wb") as f:
+            pickle.dump(artifacts, f)
+
+        print(f"[retrain] Model retrained and saved. Accuracy: {accuracy:.1%}")
+        return artifacts["retrain_metrics"]
+
+    except Exception as e:
+        print(f"[retrain] Failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 if __name__ == "__main__":
