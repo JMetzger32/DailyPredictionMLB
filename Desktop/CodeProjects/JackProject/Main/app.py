@@ -2092,7 +2092,7 @@ def betting_stats():
         })
 
     # Tracking start date (first entry with odds data, RS only)
-    odds_entries = [e for day in log.values() for e in day
+    odds_entries = [e for e in all_entries_raw
                     if e.get("bet_rating") is not None and e.get("game_type") != "S"]
     tracking_start = min((e["date"] for e in odds_entries), default=None)
 
@@ -2125,7 +2125,7 @@ def betting_stats():
     ], key=lambda x: x["net_pl"], reverse=True)
 
     # Closing Line Value stats (entries with clv logged)
-    clv_entries = [e for day in log.values() for e in day
+    clv_entries = [e for e in all_entries_raw
                    if e.get("clv") is not None and e.get("game_type") != "S"]
     clv_values = [e["clv"] for e in clv_entries]
     clv_stats = {
