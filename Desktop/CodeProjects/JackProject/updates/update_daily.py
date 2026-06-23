@@ -1024,6 +1024,53 @@ def retrain_model():
         tgl = compute_rolling_team_features(tgl)
         tgl = merge_bullpen_era(tgl, bullpen_stats)
         tgl = merge_sp_stats(tgl, pitcher_stats)
+
+        # Inject live 2026 SP baselines from pkl — the DB pitcher_stats table only has
+        # data through 2025, so merge_sp_stats falls back to league average for every
+        # 2026 game, zeroing out diff_sp_era (the single most predictive feature).
+        # We use name-based lookup because 2026 DB games store pitcher names (not retro IDs).
+        try:
+            with open(ARTIFACTS_PATH, "rb") as _f:
+                _art = pickle.load(_f)
+            _sp_live = _art.get("sp_baselines", {})
+            if _sp_live:
+                # Build name-based lookup: normalized full name → baseline stats
+                _name_lookup = {}
+                for _pid, _b in _sp_live.items():
+                    _name = _b.get("name", "")
+                    if _name:
+                        _name_lookup[_name.strip().lower()] = _b
+
+                _mask_2026 = tgl["season"] == 2026
+                _col_map = {
+                    "sp_era": "era", "sp_whip": "whip", "sp_xfip": "xfip",
+                    "sp_siera": "siera", "sp_so9": "so9", "sp_bb9": "bb9",
+                    "sp_hr9": "hr9",
+                }
+                _injected = 0
+                _total_2026 = _mask_2026.sum()
+                for idx in tgl[_mask_2026].index:
+                    # Try retro ID first (should be NULL for 2026 but try anyway)
+                    pid = tgl.at[idx, "starting_pitcher_id"]
+                    b = _sp_live.get(pid) if pid else None
+                    # Fall back to name-based lookup
+                    if b is None and "starting_pitcher_name" in tgl.columns:
+                        pname = tgl.at[idx, "starting_pitcher_name"]
+                        if pname and isinstance(pname, str):
+                            b = _name_lookup.get(pname.strip().lower())
+                    if b is not None:
+                        for col, key in _col_map.items():
+                            if key in b and b[key] is not None:
+                                tgl.at[idx, col] = float(b[key])
+                        tgl.at[idx, "sp_ip_gs"] = float(b.get("ip_gs", tgl.at[idx, "sp_ip_gs"]))
+                        bb9 = b.get("bb9", 1)
+                        so9 = b.get("so9", 7)
+                        tgl.at[idx, "sp_k_bb"] = so9 / bb9 if bb9 > 0.5 else so9 / 0.5
+                        _injected += 1
+                print(f"[retrain] Injected live SP baselines for {_injected}/{_total_2026} 2026 tgl rows")
+        except Exception as _sp_err:
+            print(f"[retrain] WARNING: Could not inject live SP baselines: {_sp_err} — 2026 SP features will be league avg")
+
         model_df = assemble_features(df, tgl)  # pivots to game rows with diff features
 
         # Filter to 2021-2026 data

@@ -145,6 +145,7 @@ def build_team_game_log(df):
         "earned_runs_allowed": df["home_team_earned_runs"],
         "pitchers_used": df["home_pitchers_used"],
         "starting_pitcher_id": df["home_starting_pitcher_id"],
+        "starting_pitcher_name": df.get("home_starting_pitcher_name", pd.Series(dtype="object")),
         # Batting detail for rate stats
         "at_bats":     df["home_at_bats"],
         "doubles":     df["home_doubles"],
@@ -175,6 +176,7 @@ def build_team_game_log(df):
         "earned_runs_allowed": df["visitor_team_earned_runs"],
         "pitchers_used": df["visitor_pitchers_used"],
         "starting_pitcher_id": df["visitor_starting_pitcher_id"],
+        "starting_pitcher_name": df.get("visitor_starting_pitcher_name", pd.Series(dtype="object")),
         # Batting detail for rate stats
         "at_bats":     df["visitor_at_bats"],
         "doubles":     df["visitor_doubles"],
