@@ -59,10 +59,7 @@ ARTIFACTS_PATH      = os.environ.get("ARTIFACTS_PATH",       os.path.join(_ROOT,
 PREDICTIONS_LOG     = os.environ.get("PREDICTIONS_LOG",      os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
 BETTING_LOG_PATH    = os.environ.get("BETTING_LOG_PATH",     os.path.join(_ROOT, "Databases_and_logs", "betting_log.json"))
 CLOSING_ODDS_LOG    = os.environ.get("CLOSING_ODDS_LOG",     os.path.join(_ROOT, "Databases_and_logs", "closing_odds_log.json"))
-SUBSCRIBERS_PATH    = os.environ.get("SUBSCRIBERS_PATH",     os.path.join(_ROOT, "Databases_and_logs", "subscribers.json"))
 PICKS_LOG_PATH      = os.environ.get("PICKS_LOG_PATH",       os.path.join(_ROOT, "Databases_and_logs", "picks_log.json"))
-RESEND_API_KEY    = os.environ.get("RESEND_API_KEY", "")
-FROM_EMAIL        = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
 TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
 GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO       = os.environ.get("GITHUB_REPO", "JMetzger32/DailyPredictionMLB")
@@ -100,21 +97,6 @@ _sp_count = len(_artifacts.get('sp_baselines', {}))
 _lr = _artifacts.get('lr_model')
 print(f"[app] Artifacts loaded — {_team_count} teams, {_sp_count} pitchers, LR model: {_lr is not None}", flush=True)
 
-# Refresh SP baselines from the live MLB Stats API immediately after loading artifacts.
-# This ensures pitcher ERA/WHIP/FIP display always reflects the current 2026 season,
-# even when a locally-retrained pkl is restored from GitHub on Render startup.
-try:
-    import update_daily as _ud
-    _prior_sp = _artifacts.get("sp_baselines", {})
-    print("[startup] Refreshing SP baselines from MLB Stats API...", flush=True)
-    _fresh_sp = _ud.fetch_sp_baselines_from_mlb_api(_ud.SEASON, games_played=70, prior_sp=_prior_sp)
-    if _fresh_sp and len(_fresh_sp) >= 5:
-        _artifacts["sp_baselines"] = {**_prior_sp, **_fresh_sp}
-        print(f"[startup] SP baselines refreshed: {len(_fresh_sp)} pitchers with live {_ud.SEASON} data", flush=True)
-    else:
-        print("[startup] SP refresh returned no data — using pkl baselines", flush=True)
-except Exception as _sp_err:
-    print(f"[startup] SP refresh failed: {_sp_err} — using pkl baselines", flush=True)
 
 # ---------------------------------------------------------------------------
 # Schedule cache  (avoids hitting the MLB API on every page load)
@@ -379,19 +361,6 @@ def _store_closing_odds_to_archive(date_str, odds_map):
 # ---------------------------------------------------------------------------
 # Subscriber helpers
 # ---------------------------------------------------------------------------
-def _load_subscribers():
-    try:
-        with open(SUBSCRIBERS_PATH) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-
-
-def _save_subscribers(subs):
-    with open(SUBSCRIBERS_PATH, "w") as f:
-        json.dump(subs, f, indent=2)
-
-
 # ---------------------------------------------------------------------------
 # Picks log helpers
 # ---------------------------------------------------------------------------
@@ -741,177 +710,6 @@ def log_todays_predictions():
 
 
 # ---------------------------------------------------------------------------
-# Email sender
-# ---------------------------------------------------------------------------
-def _build_email_html(subscriber_email, top_picks, yesterday_entries, yesterday_str, today):
-    """Build the HTML body for the daily email."""
-    picks_data = _load_picks()
-    user_picks_yesterday = picks_data.get(subscriber_email, {}).get(yesterday_str, [])
-
-    # Today's top picks section
-    if top_picks:
-        picks_rows = "".join(
-            f"<tr><td>{p['away_team_name']} @ {p['home_team_name']}</td>"
-            f"<td><strong>{p['pick_team']}</strong></td>"
-            f"<td>{round(p['confidence_pct'])}%</td>"
-            f"<td>{p.get('game_time_et', '')}</td></tr>"
-            for p in top_picks
-        )
-        today_section = f"""
-        <h3 style="color:#1e2329;">⚾ Today's Top Picks — {today.strftime('%B %-d, %Y')}</h3>
-        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:14px;">
-          <thead><tr style="background:#1e2329;color:#fff;">
-            <th align="left">Matchup</th><th>Model Pick</th><th>Confidence</th><th>Time (ET)</th>
-          </tr></thead>
-          <tbody>{picks_rows}</tbody>
-        </table>"""
-    else:
-        today_section = f"<p>No high-confidence games scheduled for {today.strftime('%B %-d')}.</p>"
-
-    # Yesterday's recap section
-    if yesterday_entries:
-        correct = sum(1 for e in yesterday_entries if e.get("correct"))
-        total   = len(yesterday_entries)
-        acc_pct = round(100 * correct / total) if total else 0
-        recap_rows = "".join(
-            f"<tr><td>{e.get('away_team_name','?')} @ {e.get('home_team_name','?')}</td>"
-            f"<td>{e.get('away_score','?')}–{e.get('home_score','?')}</td>"
-            f"<td>{'✅' if e.get('correct') else ('🔘' if e.get('correct') is None else '❌')}</td></tr>"
-            for e in yesterday_entries
-        )
-        yesterday_section = f"""
-        <h3 style="color:#1e2329;margin-top:24px;">📊 Yesterday's Results — {yesterday_str}</h3>
-        <p>Model: <strong>{correct}/{total} ({acc_pct}%)</strong></p>
-        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:13px;">
-          <thead><tr style="background:#1e2329;color:#fff;">
-            <th align="left">Game</th><th>Score</th><th>Result</th>
-          </tr></thead>
-          <tbody>{recap_rows}</tbody>
-        </table>"""
-    else:
-        yesterday_section = ""
-
-    # User picks section
-    if user_picks_yesterday:
-        u_correct = sum(1 for p in user_picks_yesterday if p.get("correct"))
-        u_total   = len(user_picks_yesterday)
-        u_pct     = round(100 * u_correct / u_total) if u_total else 0
-        user_rows = "".join(
-            f"<tr><td>{p.get('away_team_name','?')} @ {p.get('home_team_name','?')}</td>"
-            f"<td>{p['pick']}</td>"
-            f"<td>{'✅' if p.get('correct') else ('🔘' if p.get('correct') is None else '❌')}</td></tr>"
-            for p in user_picks_yesterday
-        )
-        user_section = f"""
-        <h3 style="color:#1e2329;margin-top:24px;">🎯 Your Picks Yesterday</h3>
-        <p>You went <strong>{u_correct}/{u_total} ({u_pct}%)</strong></p>
-        <table width="100%" cellpadding="6" style="border-collapse:collapse;font-size:13px;">
-          <thead><tr style="background:#1e2329;color:#fff;">
-            <th align="left">Game</th><th>Your Pick</th><th>Result</th>
-          </tr></thead>
-          <tbody>{user_rows}</tbody>
-        </table>"""
-    else:
-        user_section = ""
-
-    return f"""
-    <html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#333;">
-      <h2 style="background:#1e2329;color:#fff;padding:12px 16px;border-radius:8px;margin:0 0 16px;">
-        ⚾ DailyPredictionMLB
-      </h2>
-      {today_section}
-      {yesterday_section}
-      {user_section}
-      <hr style="margin-top:24px;border:none;border-top:1px solid #e0e0e0;">
-      <p style="font-size:12px;color:#999;margin-top:8px;">
-        <a href="https://dailypredictionmlb.onrender.com">View full predictions</a> ·
-        <a href="https://dailypredictionmlb.onrender.com/unsubscribe?email={subscriber_email}">Unsubscribe</a>
-      </p>
-    </body></html>"""
-
-
-def send_daily_email():
-    """Send the daily picks email to all subscribers."""
-    if not RESEND_API_KEY:
-        print("[email] RESEND_API_KEY not set — skipping email.")
-        return
-    subs = _load_subscribers()
-    if not subs:
-        return
-
-    today     = _today_et()
-    yesterday = (today - timedelta(days=1)).isoformat()
-    log       = _load_log()
-    yesterday_entries = [e for e in log.get(yesterday, []) if e.get("actual_winner") is not None]
-
-    # Build top picks: run predictions, keep confidence >= 0.55, top 5
-    team_baselines = _artifacts.get("team_baselines", {})
-    sp_baselines   = _artifacts.get("sp_baselines", {})
-    lr_model       = _artifacts.get("lr_model")
-    scaler         = _artifacts.get("scaler")
-    gb_model       = _artifacts.get("gb_model")
-    xgb_model      = _artifacts.get("xgb_model")
-    top_picks = []
-    if lr_model:
-        try:
-            games_raw, _ = _get_schedule_cached(today)
-            for game in games_raw:
-                home, away = game.get("home_team"), game.get("away_team")
-                if not home or not away:
-                    continue
-                home_ts = dict(team_baselines.get(home, {}))
-                away_ts = dict(team_baselines.get(away, {}))
-                if not home_ts or not away_ts:
-                    continue
-                home_sp_id = find_pitcher_by_name(game.get("home_pitcher_name"), sp_baselines)
-                away_sp_id = find_pitcher_by_name(game.get("away_pitcher_name"), sp_baselines)
-                home_sp = dict(sp_baselines[home_sp_id]) if home_sp_id and home_sp_id in sp_baselines else _default_sp_stats()
-                away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
-                result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler,
-                                      gb_model=gb_model, xgb_model=xgb_model)
-                if result["confidence"] >= 0.10:  # confidence=0.10 means 55% win prob
-                    pick_team = game.get("home_team_name") if result["predicted_winner"] == "Home" else game.get("away_team_name")
-                    top_picks.append({**game, "pick_team": pick_team,
-                                      "confidence_pct": max(result["home_win_prob"], result["away_win_prob"]) * 100})
-            top_picks = sorted(top_picks, key=lambda x: -x["confidence_pct"])[:5]
-        except Exception as e:
-            print(f"[email] Failed to build top picks: {e}")
-
-    try:
-        import resend
-        resend.api_key = RESEND_API_KEY
-        sent = 0
-        for sub in subs:
-            body = _build_email_html(sub["email"], top_picks, yesterday_entries, yesterday, today)
-            unsubscribe_url = f"https://dailypredictionmlb.onrender.com/unsubscribe?email={sub['email']}"
-            # Plain-text fallback — helps spam filters recognize legitimate newsletter
-            plain = (
-                f"DailyPredictionMLB — {today.strftime('%B %-d')} Picks\n\n"
-                f"Top picks and yesterday's recap at:\n"
-                f"https://dailypredictionmlb.onrender.com\n\n"
-                f"Unsubscribe: {unsubscribe_url}"
-            )
-            try:
-                resend.Emails.send({
-                    "from":    FROM_EMAIL,
-                    "to":      sub["email"],
-                    "subject": f"DailyPredictionMLB — {today.strftime('%B %-d')} Picks",
-                    "html":    body,
-                    "text":    plain,
-                    "headers": {
-                        "List-Unsubscribe":      f"<{unsubscribe_url}>",
-                        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                    },
-                })
-                sent += 1
-            except Exception as e:
-                print(f"[email] Failed to send to {sub['email']}: {e}")
-        print(f"[email] Sent daily email to {sent}/{len(subs)} subscribers.")
-    except ImportError:
-        print("[email] resend package not installed.")
-
-
-# ---------------------------------------------------------------------------
 # GitHub log backup — commits predictions_log.json to git after each update
 # ---------------------------------------------------------------------------
 def _push_file_to_github(filepath, commit_message):
@@ -1033,7 +831,9 @@ _restore_file_from_github(BETTING_LOG_PATH)
 _restore_file_from_github(CLOSING_ODDS_LOG)
 _restore_file_from_github(ARTIFACTS_PATH)
 
-# Ensure artifacts are freshly loaded after GitHub restore (fixes accuracy discrepancy between Render/local)
+# Reload artifacts from GitHub-restored pkl, then immediately refresh SP baselines
+# from the live MLB Stats API. The refresh MUST run after the reload so it is never
+# overwritten by the GitHub pkl (which may be hours old).
 try:
     load_artifacts()
     _team_count = len(_artifacts.get('team_baselines', {}))
@@ -1041,6 +841,19 @@ try:
     print(f"[startup] Artifacts reloaded after GitHub restore: {_team_count} teams, {_sp_count} pitchers", flush=True)
 except Exception as _e:
     print(f"[startup] Failed to reload artifacts: {_e}", flush=True)
+
+try:
+    import update_daily as _ud
+    _prior_sp = _artifacts.get("sp_baselines", {})
+    print("[startup] Refreshing SP baselines from MLB Stats API...", flush=True)
+    _fresh_sp = _ud.fetch_sp_baselines_from_mlb_api(_ud.SEASON, games_played=70, prior_sp=_prior_sp)
+    if _fresh_sp and len(_fresh_sp) >= 5:
+        _artifacts["sp_baselines"] = {**_prior_sp, **_fresh_sp}
+        print(f"[startup] SP baselines refreshed: {len(_fresh_sp)} pitchers with live {_ud.SEASON} data", flush=True)
+    else:
+        print("[startup] SP refresh returned no data — using pkl baselines", flush=True)
+except Exception as _sp_err:
+    print(f"[startup] SP refresh failed: {_sp_err} — using pkl baselines", flush=True)
 
 # Initialize betting_log table on startup (no-op if already exists)
 try:
@@ -1136,7 +949,6 @@ def run_daily_update():
         _auto_heal_log(days=7)
         log_todays_predictions()
         _refresh_today_odds()
-        send_daily_email()
         _push_log_to_github()
         print("[app] Daily update complete.")
     except Exception as e:
@@ -1400,33 +1212,6 @@ def betting_page():
 @app.route("/picks")
 def picks_page():
     return render_template("picks.html")
-
-
-# ---------------------------------------------------------------------------
-# Subscriber routes
-# ---------------------------------------------------------------------------
-@app.route("/api/subscribe", methods=["POST"])
-def subscribe():
-    email = (request.json or {}).get("email", "").strip().lower()
-    if not email or "@" not in email:
-        return jsonify({"error": "Invalid email"}), 400
-    subs = _load_subscribers()
-    if any(s["email"] == email for s in subs):
-        return jsonify({"error": "Already subscribed"}), 409
-    subs.append({"email": email, "subscribed_at": datetime.now().isoformat()})
-    _save_subscribers(subs)
-    return jsonify({"status": "ok"})
-
-
-@app.route("/unsubscribe")
-def unsubscribe():
-    email = request.args.get("email", "").strip().lower()
-    if not email:
-        return "Invalid unsubscribe link.", 400
-    subs = _load_subscribers()
-    subs = [s for s in subs if s["email"] != email]
-    _save_subscribers(subs)
-    return f"<p style='font-family:sans-serif;padding:2rem;'>✅ <strong>{email}</strong> has been unsubscribed from DailyPredictionMLB.</p>"
 
 
 # ---------------------------------------------------------------------------

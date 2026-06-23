@@ -697,9 +697,9 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
         key   = _key(full_name)
         prior = prior_by_name.get(key, {})
 
-        # Smooth blend: alpha=0 at 0 GS (100% prior), alpha=1 at 7+ GS (100% live).
-        # Prevents a 7.00 ERA after 3 starts from overwhelming a historically 3.00 pitcher.
-        alpha = min(gs / 7.0, 1.0)
+        # Smooth blend: alpha=0 at 0 GS (100% prior), alpha=1 at 10+ GS (100% live).
+        # Prevents a 7.00 ERA after 2-3 starts from overwhelming a historically 3.00 pitcher.
+        alpha = min(gs / 10.0, 1.0)
 
         def blend(live_val, prior_key, default):
             p = prior.get(prior_key, default)
@@ -755,7 +755,7 @@ def fetch_sp_baselines_from_mlb_api(season, games_played, prior_sp=None):
             "whip_raw":  round(whip_live, 3),
             "fip_raw":   fip_raw,
             "gs":        int(gs),
-            "is_blended": int(gs) < 7,
+            "is_blended": int(gs) < 10,
             "pitch_hand": None,  # filled in below by batch handedness fetch
             "mlb_id":    player_id,
         }
@@ -1010,22 +1010,24 @@ def retrain_model():
     try:
         from MLBModel import (
             load_data, build_team_game_log, compute_rolling_team_features,
-            merge_bullpen_era, merge_sp_stats, FEATURE_COLS, RANDOM_STATE
+            merge_bullpen_era, merge_sp_stats, assemble_features,
+            FEATURE_COLS, RANDOM_STATE
         )
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import LogisticRegression
-        from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
+        from sklearn.ensemble import GradientBoostingClassifier
         from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
-        # Load training data
+        # Load and assemble training data (same pipeline as MLBModel training)
         df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
         tgl = build_team_game_log(df)
         tgl = compute_rolling_team_features(tgl)
         tgl = merge_bullpen_era(tgl, bullpen_stats)
         tgl = merge_sp_stats(tgl, pitcher_stats)
+        model_df = assemble_features(df, tgl)  # pivots to game rows with diff features
 
         # Filter to 2021-2026 data
-        train_df = tgl[tgl["season"] >= 2021].copy()
+        train_df = model_df[model_df["season"] >= 2021].copy()
 
         # Split by season: train on 2021-2025, validate on 2026
         train_data = train_df[train_df["season"] < 2026].copy()
@@ -1064,13 +1066,24 @@ def retrain_model():
 
         print(f"[retrain] Validation metrics: Accuracy={accuracy:.3f}, Brier={brier:.4f}, LogLoss={logloss:.4f}")
 
+        # Retrain final model on ALL 2021-2026 data so it benefits from this season's games
+        X_all = train_df[FEATURE_COLS].fillna(0)
+        y_all = train_df["home_win"].values
+        scaler_final = StandardScaler()
+        X_all_scaled = scaler_final.fit_transform(X_all)
+        lr_final = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+        gb_final = GradientBoostingClassifier(n_estimators=200, max_depth=5, random_state=RANDOM_STATE)
+        lr_final.fit(X_all_scaled, y_all)
+        gb_final.fit(X_all, y_all)
+        print(f"[retrain] Final model trained on all {len(X_all)} games (2021-2026)")
+
         # Load current artifacts and update ensemble models
         with open(ARTIFACTS_PATH, "rb") as f:
             artifacts = pickle.load(f)
 
-        artifacts["lr_model"] = lr
-        artifacts["gb_model"] = gb
-        artifacts["scaler"] = scaler
+        artifacts["lr_model"] = lr_final
+        artifacts["gb_model"] = gb_final
+        artifacts["scaler"] = scaler_final
         artifacts["retrain_timestamp"] = datetime.now().isoformat()
         artifacts["retrain_metrics"] = {
             "accuracy": float(accuracy),
