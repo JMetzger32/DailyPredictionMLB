@@ -64,11 +64,29 @@ TRIGGER_SECRET    = os.environ.get("TRIGGER_SECRET", "")
 GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO       = os.environ.get("GITHUB_REPO", "JMetzger32/DailyPredictionMLB")
 
+def _git_root():
+    """Return the actual git repository root (not just _ROOT/project dir).
+    Needed because on Render the repo is cloned to a parent of _ROOT
+    (e.g. git root = /repo/, _ROOT = /repo/Desktop/CodeProjects/JackProject/).
+    Caches result after first call."""
+    if not hasattr(_git_root, "_cache"):
+        try:
+            import subprocess
+            result = subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=_ROOT, text=True, stderr=subprocess.DEVNULL
+            ).strip()
+            _git_root._cache = result
+        except Exception:
+            _git_root._cache = _ROOT
+    return _git_root._cache
+
 def _github_path(filepath):
-    """Return the path to use in GitHub API calls (repo-root-relative).
-    Uses _ROOT as the repo base so absolute paths are normalised correctly."""
+    """Return the repo-root-relative path for GitHub API calls.
+    Uses the actual git root (not _ROOT) so the path matches what's in GitHub
+    even when _ROOT is a subdirectory of the git repository."""
     try:
-        rel = os.path.relpath(os.path.abspath(filepath), _ROOT).replace("\\", "/")
+        rel = os.path.relpath(os.path.abspath(filepath), _git_root()).replace("\\", "/")
         return rel
     except Exception:
         return os.path.basename(filepath)
