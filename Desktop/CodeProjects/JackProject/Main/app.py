@@ -935,6 +935,12 @@ try:
         _save_betting_log(_blog)
         _blog_total = sum(len(v) for v in _blog.values())
         print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
+        # Write merged entries into the SQLite betting_log table so the betting
+        # page (which reads from the DB, not the JSON) has data after a redeploy.
+        _all_blog_entries = [e for day in _blog.values() for e in day]
+        if _all_blog_entries:
+            _upsert_betting_entries(_all_blog_entries)
+            print(f"[startup] betting_log upserted {len(_all_blog_entries)} entries to SQLite", flush=True)
         # Only push if we have at least as many entries as what was restored.
         # Prevents a failed restore (empty backup) from overwriting a larger
         # GitHub backup with a smaller merged result on the next deploy.
