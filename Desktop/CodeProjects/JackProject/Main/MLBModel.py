@@ -34,37 +34,33 @@ SP_MIN_STARTS = 3
 PYTH_EXPONENT = 1.83
 
 FEATURE_COLS = [
-    # Home park environment (not differenced — it's a property of the venue)
-    "home_park_factor",
-    # Team quality
+    # Team quality — Pythagorean strips luck better than actual win% (season_win_pct removed: r≈0.85 with pyth)
     "diff_pyth_win_pct",
-    "diff_season_win_pct",
-    # Offensive stats — OBP captures contact+walks; ISO captures pure extra-base power (SLG dropped: ISO = SLG-AVG → collinear)
-    "diff_roll30_obp",            # on-base percentage (30-game rolling avg) — most important batting stat
-    "diff_roll30_iso",            # isolated power (SLG - AVG) — pure extra-base hit ability; SLG excluded (VIF)
+    # Offensive stats — OBP (contact+walks), ISO (pure power); SLG/HR removed (correlated with ISO)
+    "diff_roll30_obp",            # on-base percentage (30-game rolling) — best single batting signal
+    "diff_roll30_iso",            # isolated power (SLG - AVG) — extra-base ability; roll10_homeruns removed (r≈0.65)
     "diff_roll10_runs_scored",    # recent offensive form (10-game)
-    "diff_roll10_homeruns",       # recent power surge (10-game)
-    # Defensive stats — normalized rate stats replace raw counts (PA-volume distortion removed)
-    "diff_roll30_opp_whip",       # (opp_walks + opp_hits) / IP allowed — normalized contact+walk rate
-    "diff_roll30_opp_hr_per9",    # (opp_homeruns / IP) * 9 — normalized HR rate allowed
-    "diff_roll30_opp_strikeouts", # full-staff pitching K rate (kept: already a counting stat per game, stable)
+    "diff_roll30_k_per_pa",       # batter strikeout rate — contact quality; high-K teams struggle vs good SPs
+    # Defensive stats — normalized rate stats (PA-volume distortion removed)
+    "diff_roll30_opp_whip",       # (opp_walks + opp_hits) / IP — normalized contact+walk rate
+    "diff_roll30_opp_hr_per9",    # (opp_homeruns / IP) × 9 — normalized HR rate allowed
+    "diff_roll30_opp_strikeouts", # full-staff pitching K rate
+    "diff_roll30_runs_allowed",   # direct defensive output — runs allowed per game (30-game)
     # Short-window recent form
     "diff_roll10_win_pct",
-    # Bullpen — exponential decay replaces raw IP sum and pitchers-used count
+    # Bullpen — exponential decay replaces raw IP sum; ERA captures quality
     "diff_bullpen_era",
-    "diff_roll7_bullpen_fatigue", # exp-decayed bullpen IP over 7 days (half-life=3d); recent work penalized more
+    "diff_roll7_bullpen_fatigue", # exp-decayed bullpen IP over 7 days (half-life=3d)
     # Schedule / context
-    "diff_rest_days",             # home rest - away rest (days since last game; 3+ days is measurable advantage)
-    # SP handedness — separate features (not differenced) so model learns home/away LHP effects independently
-    "home_sp_is_lhp",             # 1 if home starter is LHP, 0 if RHP
-    "away_sp_is_lhp",             # 1 if away starter is LHP, 0 if RHP
-    # Starting pitcher stats — 5 features selected by EDA (2021-2025, 9,510 games)
-    # Ranked by GBM importance: ERA 25.3%, IP/GS 8.0%, WHIP 7.7%, K/BB 6.7%, xFIP 5.4%
-    "diff_sp_era",     # season ERA — strongest single signal; r=-0.186 vs home win
-    "diff_sp_ip_gs",   # innings per start — durability/quality; non-linear signal (low Pearson, high GBM)
-    "diff_sp_whip",    # WHIP — contact+walk rate, complements ERA
-    "diff_sp_k_bb",    # K/BB ratio — command signal, independent of ERA/WHIP
-    "diff_sp_xfip",    # xFIP — defense-independent ERA estimator; regresses HR luck
+    "diff_rest_days",
+    # Starting pitcher — ERA (strongest), IP/GS (durability), K/BB (command), xFIP (luck-neutral), SIERA (batted-ball)
+    # Removed: sp_whip (r≈0.70 with ERA, r≈0.65 with xFIP — middle child adds noise)
+    # Removed: sp_is_lhp (always 0 in 2021-2025 training data — pure noise)
+    "diff_sp_era",    # season ERA — strongest single signal
+    "diff_sp_ip_gs",  # innings per start — durability/depth into game
+    "diff_sp_k_bb",   # K/BB ratio — command quality, independent of ERA
+    "diff_sp_xfip",   # defense-independent ERA; regresses HR luck
+    "diff_sp_siera",  # SIERA — accounts for batted-ball types; already computed, was missing from FEATURE_COLS
 ]
 
 # Park run factors per home ballpark (Retrosheet team code -> multi-year average, 1.0 = league avg)
@@ -142,6 +138,7 @@ def build_team_game_log(df):
         "opp_walks": df["visitor_walks"],
         "opp_homeruns": df["visitor_homeruns"],
         "opp_strikeouts": df["visitor_strikeouts"],
+        "strikeouts":  df["home_strikeouts"],    # team's own K as batters (for roll30_k_per_pa)
         "earned_runs_allowed": df["home_team_earned_runs"],
         "pitchers_used": df["home_pitchers_used"],
         "starting_pitcher_id": df["home_starting_pitcher_id"],
@@ -173,6 +170,7 @@ def build_team_game_log(df):
         "opp_walks": df["home_walks"],
         "opp_homeruns": df["home_homeruns"],
         "opp_strikeouts": df["home_strikeouts"],
+        "strikeouts":  df["visitor_strikeouts"],  # team's own K as batters (for roll30_k_per_pa)
         "earned_runs_allowed": df["visitor_team_earned_runs"],
         "pitchers_used": df["visitor_pitchers_used"],
         "starting_pitcher_id": df["visitor_starting_pitcher_id"],
@@ -280,6 +278,16 @@ def compute_rolling_team_features(tgl):
         "roll30_opp_hr9_game":  "roll30_opp_hr_per9",
     }, inplace=True)
 
+    # ---- Batter strikeout rate (K / PA proxy using AB) — 30-game rolling ----
+    # High-K offenses are more vulnerable to dominant SPs; distinct from opp_strikeouts (that's pitching)
+    roll30_k = tgl.groupby("team")["strikeouts"].transform(
+        lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).sum().shift(1)
+    )
+    roll30_ab = tgl.groupby("team")["at_bats"].transform(
+        lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).sum().shift(1)
+    )
+    tgl["roll30_k_per_pa"] = (roll30_k / roll30_ab.clip(lower=1)).clip(0.05, 0.40)
+
     # ---- 10-game rolling for recent form ----
     tgl["roll10_win_pct"] = tgl.groupby("team")["win"].transform(
         lambda x: x.rolling(ROLLING_WINDOW_SHORT, min_periods=5).mean().shift(1)
@@ -313,10 +321,12 @@ def compute_rolling_team_features(tgl):
             tgl[col] = tgl[col].fillna(tgl[col].mean())
 
     # Sanity-clip rate stats to realistic ranges
-    tgl["roll30_obp"]       = tgl["roll30_obp"].clip(0.200, 0.450)
-    tgl["roll30_slg"]       = tgl["roll30_slg"].clip(0.200, 0.700)
-    tgl["roll30_opp_whip"]  = tgl["roll30_opp_whip"].clip(0.50, 2.50)
+    tgl["roll30_obp"]         = tgl["roll30_obp"].clip(0.200, 0.450)
+    tgl["roll30_slg"]         = tgl["roll30_slg"].clip(0.200, 0.700)
+    tgl["roll30_opp_whip"]    = tgl["roll30_opp_whip"].clip(0.50, 2.50)
     tgl["roll30_opp_hr_per9"] = tgl["roll30_opp_hr_per9"].clip(0.0, 3.0)
+    tgl["roll30_k_per_pa"]    = tgl["roll30_k_per_pa"].fillna(tgl["roll30_k_per_pa"].mean()).clip(0.05, 0.40)
+    tgl["roll30_runs_allowed"] = tgl["roll30_runs_allowed"].fillna(tgl["roll30_runs_allowed"].mean())
 
     return tgl
 
@@ -419,31 +429,28 @@ def merge_bullpen_era(tgl, bullpen_stats):
 def assemble_features(df, tgl):
     feature_map = {
         "pyth_win_pct":            "pyth_win_pct",
-        "season_win_pct":          "season_win_pct",
-        # Offensive rate stats (SLG excluded — collinear with ISO; VIF verified)
+        # Offensive rate stats (season_win_pct removed: r≈0.85 with pyth; roll10_homeruns removed: r≈0.65 with ISO)
         "roll30_obp":              "roll30_obp",
         "roll30_iso":              "roll30_iso",
         "roll10_runs_scored":      "roll10_runs_scored",
-        "roll10_homeruns":         "roll10_homeruns",
-        # Defensive rate stats — normalized by IP (replaces raw opp_hits/opp_homeruns/errors)
+        "roll30_k_per_pa":         "roll30_k_per_pa",
+        # Defensive rate stats — normalized by IP
         "roll30_opp_whip":         "roll30_opp_whip",
         "roll30_opp_hr_per9":      "roll30_opp_hr_per9",
         "roll30_opp_strikeouts":   "roll30_opp_strikeouts",
+        "roll30_runs_allowed":     "roll30_runs_allowed",
         # Recent form
         "roll10_win_pct":          "roll10_win_pct",
-        # Bullpen — exp-decayed fatigue replaces raw IP sum and pitchers-used count
+        # Bullpen
         "bullpen_era":             "bullpen_era",
         "roll7_bullpen_fatigue":   "roll7_bullpen_fatigue",
         "rest_days":               "rest_days",
+        # SP (sp_whip removed: r≈0.70 with ERA, r≈0.65 with xFIP — redundant)
         "sp_era":                  "sp_era",
-        "sp_whip":                 "sp_whip",
-        "sp_xfip":                 "sp_xfip",
-        "sp_siera":                "sp_siera",
-        "sp_so9":                  "sp_so9",
-        "sp_bb9":                  "sp_bb9",
-        "sp_hr9":                  "sp_hr9",
         "sp_ip_gs":                "sp_ip_gs",
         "sp_k_bb":                 "sp_k_bb",
+        "sp_xfip":                 "sp_xfip",
+        "sp_siera":                "sp_siera",
     }
 
     tgl_cols = ["game_id", "is_home"] + list(feature_map.values())
@@ -458,7 +465,6 @@ def assemble_features(df, tgl):
 
     model_df = df[["game_id", "season", "date", "home_team", "visiting_team",
                    "home_win", "home_score", "visitor_score"]].copy()
-    # Run line target: did the home team cover -1.5?
     model_df["home_covers"] = ((model_df["home_score"] - model_df["visitor_score"]) > 1.5).astype("Int64")
     model_df = model_df.merge(home_feats, on="game_id", how="left")
     model_df = model_df.merge(vis_feats, on="game_id", how="left")
@@ -466,15 +472,6 @@ def assemble_features(df, tgl):
     # Compute differentials (home - visitor)
     for feat in feature_map.keys():
         model_df[f"diff_{feat}"] = model_df[f"home_{feat}"] - model_df[f"vis_{feat}"]
-
-    # Park factor is NOT differenced — it's a property of the home ballpark
-    model_df["home_park_factor"] = model_df["home_team"].map(PARK_FACTORS).fillna(1.0)
-
-    # SP handedness — not available in historical Retrosheet data; default 0.
-    # Feature is present so model accepts it at prediction time; real L/R values
-    # kick in once live data has handedness populated.
-    model_df["home_sp_is_lhp"] = 0
-    model_df["away_sp_is_lhp"] = 0
 
     return model_df
 
@@ -803,41 +800,34 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         era, whip, xfip, siera, so9, bb9, hr9
     """
     features = {
-        "home_park_factor":            home_team_stats.get("park_factor", 1.0),
         "diff_pyth_win_pct":           home_team_stats["pyth_win_pct"]           - away_team_stats["pyth_win_pct"],
-        "diff_season_win_pct":         home_team_stats["win_pct"]                - away_team_stats["win_pct"],
-        # Rate stats
-        "diff_roll30_runs_scored":     home_team_stats["runs_per_game"]          - away_team_stats["runs_per_game"],
-        "diff_roll30_runs_allowed":    home_team_stats["runs_allowed_per_game"]  - away_team_stats["runs_allowed_per_game"],
+        "diff_roll30_obp":             home_team_stats["obp"]                    - away_team_stats["obp"],
+        "diff_roll30_iso":             home_team_stats.get("iso", 0.150)         - away_team_stats.get("iso", 0.150),
         "diff_roll10_runs_scored":     home_team_stats["recent_runs_per_game"]   - away_team_stats["recent_runs_per_game"],
-        "diff_roll30_obp":             home_team_stats["obp"]                         - away_team_stats["obp"],
-        "diff_roll30_iso":             home_team_stats.get("iso", 0.150)              - away_team_stats.get("iso", 0.150),
-        # Normalized defensive rate stats (replace raw opp_hits / opp_homeruns / errors)
-        "diff_roll30_opp_whip":        home_team_stats.get("opp_whip", 1.30)          - away_team_stats.get("opp_whip", 1.30),
-        "diff_roll30_opp_hr_per9":     home_team_stats.get("opp_hr_per9", 1.10)       - away_team_stats.get("opp_hr_per9", 1.10),
-        "diff_roll30_opp_strikeouts":  home_team_stats["opp_k_per_game"]              - away_team_stats["opp_k_per_game"],
-        "diff_roll10_win_pct":         home_team_stats["recent_win_pct"]              - away_team_stats["recent_win_pct"],
-        "diff_roll10_runs_scored":     home_team_stats["recent_runs_per_game"]        - away_team_stats["recent_runs_per_game"],
-        "diff_roll10_homeruns":        home_team_stats["recent_hr_per_game"]          - away_team_stats["recent_hr_per_game"],
-        # Bullpen — exp-decayed fatigue replaces raw IP sum and pitchers-used count
-        "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)       - away_team_stats.get("bullpen_era", 4.20),
+        "diff_roll30_k_per_pa":        home_team_stats.get("k_per_pa", 0.220)   - away_team_stats.get("k_per_pa", 0.220),
+        "diff_roll30_opp_whip":        home_team_stats.get("opp_whip", 1.30)    - away_team_stats.get("opp_whip", 1.30),
+        "diff_roll30_opp_hr_per9":     home_team_stats.get("opp_hr_per9", 1.10) - away_team_stats.get("opp_hr_per9", 1.10),
+        "diff_roll30_opp_strikeouts":  home_team_stats["opp_k_per_game"]        - away_team_stats["opp_k_per_game"],
+        "diff_roll30_runs_allowed":    home_team_stats["runs_allowed_per_game"]  - away_team_stats["runs_allowed_per_game"],
+        "diff_roll10_win_pct":         home_team_stats["recent_win_pct"]         - away_team_stats["recent_win_pct"],
+        "diff_bullpen_era":            home_team_stats.get("bullpen_era", 4.20)  - away_team_stats.get("bullpen_era", 4.20),
         "diff_roll7_bullpen_fatigue":  home_team_stats.get("roll7_bullpen_fatigue", 8.0) - away_team_stats.get("roll7_bullpen_fatigue", 8.0),
-        # Extra display stats (not in FEATURE_COLS — kept for logging/UI)
-        "diff_roll30_hits":            home_team_stats.get("hits_per_game", 8.5)      - away_team_stats.get("hits_per_game", 8.5),
-        "diff_roll30_homeruns":        home_team_stats.get("hr_per_game", 1.1)        - away_team_stats.get("hr_per_game", 1.1),
         "diff_rest_days":              max(-1, min(1, home_team_stats.get("rest_days", 1) - away_team_stats.get("rest_days", 1))),
+        "diff_sp_era":                 home_sp_stats["era"]                     - away_sp_stats["era"],
+        "diff_sp_ip_gs":               home_sp_stats.get("ip_gs", 5.8)          - away_sp_stats.get("ip_gs", 5.8),
+        "diff_sp_k_bb":                home_sp_stats.get("k_bb", 2.5)           - away_sp_stats.get("k_bb", 2.5),
+        "diff_sp_xfip":                home_sp_stats["xfip"]                    - away_sp_stats["xfip"],
+        "diff_sp_siera":               home_sp_stats.get("siera", 4.0)          - away_sp_stats.get("siera", 4.0),
+        # Extra display/logging stats (not in FEATURE_COLS)
+        "diff_roll30_runs_scored":     home_team_stats["runs_per_game"]          - away_team_stats["runs_per_game"],
+        "diff_roll30_hits":            home_team_stats.get("hits_per_game", 8.5) - away_team_stats.get("hits_per_game", 8.5),
+        "diff_roll30_homeruns":        home_team_stats.get("hr_per_game", 1.1)   - away_team_stats.get("hr_per_game", 1.1),
         "home_sp_is_lhp":              1 if home_sp_stats.get("pitch_hand", "R") == "L" else 0,
         "away_sp_is_lhp":              1 if away_sp_stats.get("pitch_hand", "R") == "L" else 0,
-        "diff_sp_era":                 home_sp_stats["era"]   - away_sp_stats["era"],
-        "diff_sp_whip":                home_sp_stats["whip"]  - away_sp_stats["whip"],
-        "diff_sp_xfip":                home_sp_stats["xfip"]  - away_sp_stats["xfip"],
-        "diff_sp_ip_gs":               home_sp_stats.get("ip_gs", 5.8) - away_sp_stats.get("ip_gs", 5.8),
-        "diff_sp_k_bb":                home_sp_stats.get("k_bb", 2.5)  - away_sp_stats.get("k_bb", 2.5),
-        # Extra stats kept in dict for display/logging, not used as features
-        "diff_sp_siera":               home_sp_stats.get("siera", 4.0) - away_sp_stats.get("siera", 4.0),
-        "diff_sp_so9":                 home_sp_stats.get("so9", 8.0)   - away_sp_stats.get("so9", 8.0),
-        "diff_sp_bb9":                 home_sp_stats.get("bb9", 3.0)   - away_sp_stats.get("bb9", 3.0),
-        "diff_sp_hr9":                 home_sp_stats.get("hr9", 1.2)   - away_sp_stats.get("hr9", 1.2),
+        "diff_sp_whip":                home_sp_stats.get("whip", 1.30)          - away_sp_stats.get("whip", 1.30),
+        "diff_sp_so9":                 home_sp_stats.get("so9", 8.0)            - away_sp_stats.get("so9", 8.0),
+        "diff_sp_bb9":                 home_sp_stats.get("bb9", 3.0)            - away_sp_stats.get("bb9", 3.0),
+        "diff_sp_hr9":                 home_sp_stats.get("hr9", 1.2)            - away_sp_stats.get("hr9", 1.2),
     }
 
     if feature_cols is None:

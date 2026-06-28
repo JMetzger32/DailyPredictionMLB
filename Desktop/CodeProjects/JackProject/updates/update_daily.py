@@ -116,6 +116,7 @@ FALLBACK_TEAM = {
     "runs_allowed_per_game":   4.5,
     "recent_runs_per_game":    4.5,
     "opp_k_per_game":          8.5,
+    "k_per_pa":                0.220,  # league-avg batter K rate (~22% of PA)
     # Bullpen (exp-decayed fatigue replaces raw IP + pitchers-used)
     "roll7_bullpen_fatigue":   8.0,
     "rest_days":               1,
@@ -514,6 +515,12 @@ def compute_team_baseline(games, old_baseline=None):
                               + games.get("opp_hits", pd.Series(8.5, index=games.index)).fillna(0)) / safe_ip
     games["opp_hr9_game"]  = (games.get("opp_homeruns", pd.Series(1.1, index=games.index)).fillna(0) / safe_ip) * 9.0
 
+    # Batter strikeout rate: team's own strikeouts / at_bats (rolling 30-game sum)
+    k_roll  = games.get("strikeouts", pd.Series(dtype=float)).fillna(0).rolling(30, min_periods=5).sum()
+    ab_roll = ab.rolling(30, min_periods=5).sum().clip(lower=1)
+    k_per_pa_live = float((k_roll / ab_roll).iloc[-1]) if not pd.isna((k_roll / ab_roll).iloc[-1]) else 0.220
+    k_per_pa_live = max(0.05, min(k_per_pa_live, 0.40))
+
     return {
         # All stats blended: at 0 games = 100% prior-year, at 30+ games = 100% live
         "pyth_win_pct":            blend(round(pyth, 4),    "pyth_win_pct"),
@@ -526,19 +533,21 @@ def compute_team_baseline(games, old_baseline=None):
         "opp_walks_per_game":      blend(roll_last("opp_walks",    30), "opp_walks_per_game"),
         "hr_per_game":             blend(roll_last("homeruns",     30), "hr_per_game"),
         "opp_hr_per_game":         blend(roll_last("opp_homeruns", 30), "opp_hr_per_game"),    # display only
-        # Normalized defensive rate stats (model features — replace raw opp_hits/opp_homeruns/errors)
+        # Normalized defensive rate stats (model features)
         "opp_whip":                blend(roll_last("opp_whip_game", 30), "opp_whip"),
         "opp_hr_per9":             blend(roll_last("opp_hr9_game",  30), "opp_hr_per9"),
-        # Exponentially decayed bullpen fatigue (model feature — replaces raw IP + pitchers-used)
+        # Exponentially decayed bullpen fatigue
         "roll7_bullpen_fatigue":   _compute_exp_bullpen_fatigue(games),
         # Offensive rate stats
         "obp":                     blend(roll_last("obp_game", 30), "obp"),
-        "slg":                     blend(roll_last("slg_game", 30), "slg"),   # display only (VIF with ISO)
+        "slg":                     blend(roll_last("slg_game", 30), "slg"),   # display only
         "iso":                     blend(roll_last("iso_game", 30), "iso"),
         "runs_per_game":           blend(roll_last("runs_scored",    30), "runs_per_game"),
         "runs_allowed_per_game":   blend(roll_last("runs_allowed",   30), "runs_allowed_per_game"),
         "recent_runs_per_game":    blend(roll_last("runs_scored",    10), "recent_runs_per_game"),
         "opp_k_per_game":          blend(roll_last("opp_strikeouts", 30), "opp_k_per_game"),
+        # New features — batter K rate and direct runs-allowed signal
+        "k_per_pa":                blend(k_per_pa_live, "k_per_pa"),
     }
 
 
