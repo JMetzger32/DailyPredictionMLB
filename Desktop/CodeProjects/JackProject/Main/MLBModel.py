@@ -841,7 +841,10 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     if gb_model is not None:
         probs.append(float(gb_model.predict_proba(X_raw)[0, 1]))   # GB (raw)
     if xgb_model is not None:
-        probs.append(float(xgb_model.predict_proba(X_raw)[0, 1]))  # XGB (raw)
+        try:
+            probs.append(float(xgb_model.predict_proba(X_raw)[0, 1]))  # XGB (raw)
+        except Exception:
+            pass  # stale xgb with mismatched features — skip it
     prob = sum(probs) / len(probs)
 
     # Soft recalibration: nudge 4% toward MLB home win prior (53%)

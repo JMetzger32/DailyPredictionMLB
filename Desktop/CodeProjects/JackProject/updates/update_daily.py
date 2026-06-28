@@ -1140,6 +1140,7 @@ def retrain_model():
         artifacts["lr_model"] = lr_final
         artifacts["gb_model"] = gb_final
         artifacts["scaler"] = scaler_final
+        artifacts.pop("xgb_model", None)  # remove stale xgb — retrain doesn't update it
         artifacts["retrain_timestamp"] = datetime.now().isoformat()
         artifacts["retrain_metrics"] = {
             "accuracy": float(accuracy),
