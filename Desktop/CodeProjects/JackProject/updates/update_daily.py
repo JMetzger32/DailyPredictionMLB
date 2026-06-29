@@ -1099,55 +1099,87 @@ def retrain_model():
         X_val = val_data[FEATURE_COLS].fillna(0)
         y_val = val_data["home_win"].values
 
-        # Train ensemble
+        try:
+            from xgboost import XGBClassifier
+            HAS_XGB = True
+        except ImportError:
+            HAS_XGB = False
+
+        YEAR_WEIGHTS = {2021: 1.0, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
+
+        # Validation: train 2021-2025, validate 2026
+        sw_train = train_data["season"].map(YEAR_WEIGHTS).fillna(1.0).values
+
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_val_scaled = scaler.transform(X_val)
 
-        lr = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
-        gb = GradientBoostingClassifier(n_estimators=200, max_depth=5, random_state=RANDOM_STATE)
+        lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+        gb = GradientBoostingClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
+                                        subsample=0.8, random_state=RANDOM_STATE)
+        lr.fit(X_train_scaled, y_train, sample_weight=sw_train)
+        gb.fit(X_train, y_train, sample_weight=sw_train)
 
-        lr.fit(X_train_scaled, y_train)
-        gb.fit(X_train, y_train)  # GB uses raw features
-
-        # Validate
-        lr_pred = lr.predict_proba(X_val_scaled)[:, 1]
-        gb_pred = gb.predict_proba(X_val)[:, 1]
+        lr_pred  = lr.predict_proba(X_val_scaled)[:, 1]
+        gb_pred  = gb.predict_proba(X_val)[:, 1]
         ensemble_pred = (lr_pred + gb_pred) / 2.0
 
         ensemble_pred_class = (ensemble_pred >= 0.5).astype(int)
         accuracy = accuracy_score(y_val, ensemble_pred_class)
-        brier = brier_score_loss(y_val, ensemble_pred)
-        logloss = log_loss(y_val, ensemble_pred)
+        brier    = brier_score_loss(y_val, ensemble_pred)
+        logloss  = log_loss(y_val, ensemble_pred)
 
         print(f"[retrain] Validation metrics: Accuracy={accuracy:.3f}, Brier={brier:.4f}, LogLoss={logloss:.4f}")
 
-        # Retrain final model on ALL 2021-2026 data so it benefits from this season's games
-        X_all = train_df[FEATURE_COLS].fillna(0)
-        y_all = train_df["home_win"].values
-        scaler_final = StandardScaler()
-        X_all_scaled = scaler_final.fit_transform(X_all)
-        lr_final = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
-        gb_final = GradientBoostingClassifier(n_estimators=200, max_depth=5, random_state=RANDOM_STATE)
-        lr_final.fit(X_all_scaled, y_all)
-        gb_final.fit(X_all, y_all)
-        print(f"[retrain] Final model trained on all {len(X_all)} games (2021-2026)")
+        # Final model: all 2021-2026 with recency weights
+        X_all   = train_df[FEATURE_COLS].fillna(0)
+        y_all   = train_df["home_win"].values
+        sw_all  = train_df["season"].map(YEAR_WEIGHTS).fillna(1.0).values
 
-        # Load current artifacts and update ensemble models
+        scaler_final   = StandardScaler()
+        X_all_scaled   = scaler_final.fit_transform(X_all)
+
+        lr_final = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+        gb_final = GradientBoostingClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
+                                              subsample=0.8, random_state=RANDOM_STATE)
+        lr_final.fit(X_all_scaled, y_all, sample_weight=sw_all)
+        gb_final.fit(X_all, y_all, sample_weight=sw_all)
+        print(f"[retrain] Final LR+GB trained on all {len(X_all)} games (2021-2026)")
+
+        # Bootstrap XGB ensemble — 50 models, same params as MLBModel.py
+        xgb_bootstrap_models = []
+        if HAS_XGB:
+            print("[retrain] Training 50 bootstrap XGB models...")
+            _boot_rng = np.random.default_rng(2025)
+            for _bi in range(50):
+                _bidx = _boot_rng.integers(0, len(X_all), size=len(X_all))
+                _bm = XGBClassifier(
+                    n_estimators=300, max_depth=3, learning_rate=0.05,
+                    subsample=0.8, colsample_bytree=0.8,
+                    min_child_weight=5, reg_lambda=5.0, reg_alpha=0.1,
+                    eval_metric="logloss", random_state=RANDOM_STATE + _bi, verbosity=0
+                )
+                _bm.fit(X_all.iloc[_bidx], y_all[_bidx], sample_weight=sw_all[_bidx])
+                xgb_bootstrap_models.append(_bm)
+            print(f"[retrain] Bootstrap XGB ensemble trained ({len(xgb_bootstrap_models)} models)")
+
+        # Load current artifacts and update
         with open(ARTIFACTS_PATH, "rb") as f:
             artifacts = pickle.load(f)
 
         artifacts["lr_model"] = lr_final
         artifacts["gb_model"] = gb_final
-        artifacts["scaler"] = scaler_final
-        artifacts.pop("xgb_model", None)  # remove stale xgb — retrain doesn't update it
+        artifacts["scaler"]   = scaler_final
+        artifacts.pop("xgb_model", None)  # remove stale single xgb — bootstrap ensemble replaces it
+        if xgb_bootstrap_models:
+            artifacts["xgb_bootstrap_models"] = xgb_bootstrap_models
         artifacts["retrain_timestamp"] = datetime.now().isoformat()
         artifacts["retrain_metrics"] = {
-            "accuracy": float(accuracy),
+            "accuracy":   float(accuracy),
             "brier_score": float(brier),
-            "log_loss": float(logloss),
+            "log_loss":   float(logloss),
             "train_size": len(train_data),
-            "val_size": len(val_data),
+            "val_size":   len(val_data),
         }
 
         # Save updated artifacts

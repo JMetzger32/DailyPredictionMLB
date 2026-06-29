@@ -572,8 +572,9 @@ def evaluate_holdout(model_df, feature_cols):
     xgb = None
     if HAS_XGBOOST:
         xgb = XGBClassifier(
-            n_estimators=300, max_depth=4, learning_rate=0.05,
+            n_estimators=300, max_depth=3, learning_rate=0.05,
             subsample=0.8, colsample_bytree=0.8,
+            min_child_weight=5, reg_lambda=5.0, reg_alpha=0.1,
             eval_metric="logloss", random_state=RANDOM_STATE,
             verbosity=0
         )
@@ -785,7 +786,7 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
 
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
                  model, scaler=None, feature_cols=None, runline_models=None,
-                 gb_model=None, xgb_model=None):
+                 gb_model=None, xgb_model=None, xgb_bootstrap_models=None):
     """
     Predict probability of home team winning.
 
@@ -840,7 +841,13 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     probs = [float(model.predict_proba(X_scaled)[0, 1])]  # LR (scaled)
     if gb_model is not None:
         probs.append(float(gb_model.predict_proba(X_raw)[0, 1]))   # GB (raw)
-    if xgb_model is not None:
+    if xgb_bootstrap_models:
+        try:
+            boot_p = float(np.mean([m.predict_proba(X_raw)[0, 1] for m in xgb_bootstrap_models]))
+            probs.append(boot_p)
+        except Exception:
+            pass
+    elif xgb_model is not None:
         try:
             probs.append(float(xgb_model.predict_proba(X_raw)[0, 1]))  # XGB (raw)
         except Exception:
@@ -1109,12 +1116,35 @@ if __name__ == "__main__":
     if HAS_XGBOOST:
         xgb = XGBClassifier(
             n_estimators=_best_params["n_estimators"],
-            max_depth=_best_params["max_depth"],
+            max_depth=min(_best_params["max_depth"], 3),
             learning_rate=_best_params["learning_rate"],
             subsample=0.8, colsample_bytree=0.8,
+            min_child_weight=5, reg_lambda=5.0, reg_alpha=0.1,
             eval_metric="logloss", random_state=RANDOM_STATE, verbosity=0
         )
         xgb.fit(X_final, y_final, sample_weight=_sw)
+
+    # Bootstrap XGB ensemble (50 models) — reduces variance without hurting AUC
+    N_BOOTSTRAP = 50
+    print(f"  Training {N_BOOTSTRAP} bootstrap XGB models...")
+    xgb_bootstrap_models = []
+    _boot_rng = np.random.default_rng(2025)
+    for _bi in range(N_BOOTSTRAP):
+        _bidx = _boot_rng.integers(0, len(_final_df), size=len(_final_df))
+        _Xb = X_final.iloc[_bidx]
+        _yb = y_final.iloc[_bidx]
+        _swb = _sw.iloc[_bidx]
+        _bm = XGBClassifier(
+            n_estimators=_best_params["n_estimators"],
+            max_depth=min(_best_params["max_depth"], 3),
+            learning_rate=_best_params["learning_rate"],
+            subsample=0.8, colsample_bytree=0.8,
+            min_child_weight=5, reg_lambda=5.0, reg_alpha=0.1,
+            eval_metric="logloss", random_state=RANDOM_STATE + _bi, verbosity=0
+        )
+        _bm.fit(_Xb, _yb, sample_weight=_swb)
+        xgb_bootstrap_models.append(_bm)
+    print(f"  Bootstrap ensemble trained ({N_BOOTSTRAP} models).")
 
     scaler = final_scaler
     print("  Final model trained.")
@@ -1213,6 +1243,8 @@ if __name__ == "__main__":
     }
     if xgb is not None:
         artifacts["xgb_model"] = xgb
+    if xgb_bootstrap_models:
+        artifacts["xgb_bootstrap_models"] = xgb_bootstrap_models
     with open(_ARTIFACTS_SAVE_PATH, "wb") as f:
         pickle.dump(artifacts, f)
     print(f"  Saved model artifacts to {_ARTIFACTS_SAVE_PATH}")

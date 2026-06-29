@@ -552,10 +552,11 @@ def _log_predictions_for_date(target_date, log=None):
 
     team_baselines = _artifacts.get("team_baselines", {})
     sp_baselines   = _artifacts.get("sp_baselines", {})
-    lr_model       = _artifacts.get("lr_model")
-    scaler         = _artifacts.get("scaler")
-    gb_model       = _artifacts.get("gb_model")
-    xgb_model      = _artifacts.get("xgb_model")
+    lr_model             = _artifacts.get("lr_model")
+    scaler               = _artifacts.get("scaler")
+    gb_model             = _artifacts.get("gb_model")
+    xgb_model            = _artifacts.get("xgb_model")
+    xgb_bootstrap_models = _artifacts.get("xgb_bootstrap_models")
     if lr_model is None:
         return log
 
@@ -597,7 +598,8 @@ def _log_predictions_for_date(target_date, log=None):
         away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
         try:
             result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler,
-                                  gb_model=gb_model, xgb_model=xgb_model)
+                                  gb_model=gb_model, xgb_model=xgb_model,
+                                  xgb_bootstrap_models=xgb_bootstrap_models)
             odds_data = _compute_odds_fields(away, home, result, odds_map)
             entries.append(_build_prediction_entry(game, result, odds_data=odds_data))
         except Exception:
@@ -1066,6 +1068,8 @@ FEATURE_LABELS = {
     "diff_roll30_iso":               "Isolated Power / ISO (30g)",
     "diff_roll10_runs_scored":       "Runs/G (recent 10g)",
     "diff_roll10_homeruns":          "HR/G (recent 10g)",
+    "diff_roll30_k_per_pa":          "Batter K Rate (30g)",
+    "diff_roll30_runs_allowed":      "Runs Allowed/G (30g)",
     "diff_roll30_opp_whip":          "Opp WHIP Allowed (30g)",
     "diff_roll30_opp_hr_per9":       "Opp HR/9 Allowed (30g)",
     "diff_roll30_opp_strikeouts":    "Opp K Rate (30g)",
@@ -1114,6 +1118,7 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
         "diff_roll30_iso":               home_ts.get("iso", 0.150)                  - away_ts.get("iso", 0.150),
         "diff_roll10_win_pct":           home_ts.get("recent_win_pct", 0.5)         - away_ts.get("recent_win_pct", 0.5),
         "diff_roll10_homeruns":          home_ts.get("recent_hr_per_game", 1.1)     - away_ts.get("recent_hr_per_game", 1.1),
+        "diff_roll30_k_per_pa":          home_ts.get("k_per_pa", 0.220)             - away_ts.get("k_per_pa", 0.220),
         "diff_roll30_opp_whip":          home_ts.get("opp_whip", 1.30)              - away_ts.get("opp_whip", 1.30),
         "diff_roll30_opp_hr_per9":       home_ts.get("opp_hr_per9", 1.10)           - away_ts.get("opp_hr_per9", 1.10),
         "diff_roll30_opp_strikeouts":    home_ts.get("opp_k_per_game", 8.5)         - away_ts.get("opp_k_per_game", 8.5),
@@ -1355,7 +1360,8 @@ def predictions():
     lr_model       = _artifacts.get("lr_model")
     scaler         = _artifacts.get("scaler")
     gb_model       = _artifacts.get("gb_model")
-    xgb_model      = _artifacts.get("xgb_model")
+    xgb_model            = _artifacts.get("xgb_model")
+    xgb_bootstrap_models = _artifacts.get("xgb_bootstrap_models")
     # Run line models (optional — None if not yet trained)
     _rl_lr  = _artifacts.get("lr_runline")
     _rl_gb  = _artifacts.get("gb_runline")
@@ -1427,7 +1433,8 @@ def predictions():
         try:
             result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model,
                                   scaler=scaler, runline_models=runline_models,
-                                  gb_model=gb_model, xgb_model=xgb_model)
+                                  gb_model=gb_model, xgb_model=xgb_model,
+                                  xgb_bootstrap_models=xgb_bootstrap_models)
         except Exception as e:
             predictions_out.append({**game, "skipped": True, "skip_reason": str(e)})
             continue
