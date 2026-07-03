@@ -427,14 +427,12 @@ def _resolve_picks_for_date(target_date):
 
 
 def _calibration_bucket(prob):
-    """Return the probability bucket string for a given win probability (50-100%)."""
-    p = round(prob * 100)
-    if p < 55:   return "50-55%"
-    if p < 60:   return "55-60%"
-    if p < 65:   return "60-65%"
-    if p < 70:   return "65-70%"
-    if p < 80:   return "70-80%"
-    return "80%+"
+    """Return the probability bucket string for a win probability, using the canonical
+    10-even-bin scheme that /api/calibration uses (idx = min(int(prob*10), 9)).
+    NOTE: historical entries were written with a different 6-band scheme
+    ("50-55%".."80%+") and are intentionally NOT migrated — only new entries use this."""
+    idx = min(int(prob * 10), 9)
+    return f"{idx*10}-{idx*10+10}%"
 
 
 def _compute_error_metrics(home_win_prob, actual_winner):
