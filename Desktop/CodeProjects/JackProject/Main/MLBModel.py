@@ -1229,13 +1229,12 @@ if __name__ == "__main__":
     for feat, c in coefs.items():
         print(f"    {feat:<40s}  {c:+.4f}")
 
-    # Post-hoc SP ERA weight boost: multiply LR coefficient by 1.4
-    # StandardScaler absorbs any training-time scaling, so this is the only
-    # effective way to increase SP ERA's influence in the LR model.
-    _era_idx = list(FEATURE_COLS).index("diff_sp_era")
-    _old_era_coef = lr.coef_[0][_era_idx]
-    lr.coef_[0][_era_idx] *= 1.4
-    print(f"\n  SP ERA coefficient: {_old_era_coef:+.4f} → {lr.coef_[0][_era_idx]:+.4f}  (1.4× boost)")
+    # NOTE: the post-hoc 1.4x SP-ERA coefficient boost was removed here. It only ever
+    # existed in this offline path (update_daily.retrain_model never applied it), so the
+    # two training paths produced divergent models — and the first weekly retrain silently
+    # dropped it. Leak-testing (Phase 2b) showed the SP/bullpen features are predictive
+    # mainly *with* season-long leakage, so entrenching SP ERA via a hand-tuned multiply is
+    # not justified. Both paths now ship the plain fitted LR. See scripts/leak_test_holdout.py.
 
     # Build 2025 baselines for 2026 predictions
     print("\n  Building 2025 baselines for 2026 predictions...")
