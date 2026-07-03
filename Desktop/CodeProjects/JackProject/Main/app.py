@@ -487,6 +487,8 @@ def _build_prediction_entry(game, result, odds_data=None):
         "actual_total":      None,
         "ou_correct":        None,
         "x_scaled_features": result.get("x_scaled_features"),
+        # Set once at creation, never overwritten by any result-resolution path.
+        "prediction_timestamp": datetime.now(_ET).isoformat(),
     }
 
 
@@ -1482,13 +1484,16 @@ def predictions():
                     "log_loss":      _ll,
                 })
             else:
-                # Game wasn't logged yet (8 AM job missed) — create full entry now
+                # Game wasn't logged yet (8 AM job missed) — create full entry now.
+                # This prediction is generated AFTER the game finished, using post-game
+                # baselines, so flag it so clean evaluations can permanently exclude it.
                 entry = _build_prediction_entry(game, result)
                 entry.update({
                     "away_score":    away_score,
                     "home_score":    home_score,
                     "actual_winner": actual_winner,
                     "correct":       correct,
+                    "post_game_created": True,
                 })
                 log_by_pk[pk] = entry
             log_changed = True
