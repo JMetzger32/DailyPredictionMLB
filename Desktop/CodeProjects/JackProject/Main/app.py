@@ -197,11 +197,16 @@ def _push_closing_odds_to_github():
 
 
 def _upsert_betting_entries(entries):
-    """Write entries that have odds data into betting_log table.
-    Only saves entries with bet_rating set (good/bad/unsure).
+    """Write predictions into the betting_log table.
+    Persists any entry that is either bettable (has a bet_rating) OR already resolved
+    (correct is not None). Historically this gated on bet_rating alone, so with no
+    durably-persisted odds the table stayed empty despite thousands of scored predictions
+    (betting_log had 0 rows). Odds columns are written NULL when absent and enriched later.
     Upserts by game_pk to avoid duplicates."""
-    odds_entries = [e for e in entries if e.get("bet_rating") is not None]
-    if not odds_entries:
+    to_write = [e for e in entries
+                if e.get("game_pk") and
+                (e.get("bet_rating") is not None or e.get("correct") is not None)]
+    if not to_write:
         return
 
     try:
@@ -209,7 +214,7 @@ def _upsert_betting_entries(entries):
         conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
         cur = conn.cursor()
 
-        for entry in odds_entries:
+        for entry in to_write:
             pk = entry.get("game_pk")
             if not pk:
                 continue
@@ -253,13 +258,13 @@ def _upsert_betting_entries(entries):
 
         conn.commit()
         conn.close()
-        print(f"[betting] Upserted {len(odds_entries)} entries to betting_log table", flush=True)
+        print(f"[betting] Upserted {len(to_write)} entries to betting_log table", flush=True)
     except Exception as e:
         print(f"[betting] Failed to upsert to betting_log table: {e}", flush=True)
         # Fallback to JSON for backward compatibility
         blog = _load_betting_log()
         changed = False
-        for entry in odds_entries:
+        for entry in to_write:
             date_str = entry.get("date")
             if not date_str:
                 continue
@@ -1547,12 +1552,18 @@ def predictions():
             **_compute_odds_fields(away, home, result, odds_map),
         })
 
-    # Write odds fields back into log entries for today (they're computed live above
-    # but never stored — this ensures betting_log stays populated going forward).
-    if target_date >= _today_et() and odds_map:
+    # Write odds fields back into stored log entries. odds_map is the live API map for
+    # today/future and the closing-odds archive for past dates (reconstructed above), so
+    # this now backfills past dates too — previously it was gated to today-only, which
+    # meant any date whose odds weren't captured during its single live window could never
+    # be backfilled and never reached betting_log.
+    if odds_map:
+        _need_odds = 0
+        _matched = 0
         for entry in log.get(date_str, []):
             if entry.get("away_ml") is not None:
                 continue
+            _need_odds += 1
             pk = entry.get("game_pk")
             fields = _compute_odds_fields(entry["away_team"], entry["home_team"], entry, odds_map)
             if fields.get("away_ml") is not None:
@@ -1560,6 +1571,12 @@ def predictions():
                 if pk:
                     log_by_pk[pk] = entry
                 log_changed = True
+                _matched += 1
+        # Diagnostic: if we had odds but matched nothing, suspect a team-code key mismatch
+        # between get_mlb_odds output (keyed by retro codes) and stored entry team codes.
+        if _need_odds and not _matched:
+            print(f"[odds] {date_str}: {_need_odds} entries need odds and odds_map has "
+                  f"{len(odds_map)} games, but none matched — check team-code keying", flush=True)
 
     # Persist any live results or newly added odds back to the log
     if log_changed:
