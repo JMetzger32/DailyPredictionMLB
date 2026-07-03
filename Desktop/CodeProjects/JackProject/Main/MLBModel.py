@@ -99,6 +99,19 @@ PARK_FACTORS = {
 }
 
 
+def compute_model_version(feature_cols, lr_model, save_ts):
+    """Short auto content-hash identifying a trained model. Derived from the feature
+    columns, the fitted LR coefficients, and the save timestamp, so it changes exactly
+    when the model changes and distinguishes an MLBModel.py artifact from a weekly-retrain
+    one. Returns a 12-char hex string."""
+    import hashlib
+    coefs = getattr(lr_model, "coef_", None)
+    payload = (str(list(feature_cols)) +
+               str(np.round(coefs, 6) if coefs is not None else "none") +
+               str(save_ts))
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
+
+
 # ===========================================================================
 # Section 1: Data Loading
 # ===========================================================================
@@ -1245,9 +1258,12 @@ if __name__ == "__main__":
         artifacts["xgb_model"] = xgb
     if xgb_bootstrap_models:
         artifacts["xgb_bootstrap_models"] = xgb_bootstrap_models
+    _save_ts = pd.Timestamp.now().isoformat()
+    artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr, _save_ts)
+    artifacts["saved_at"] = _save_ts
     with open(_ARTIFACTS_SAVE_PATH, "wb") as f:
         pickle.dump(artifacts, f)
-    print(f"  Saved model artifacts to {_ARTIFACTS_SAVE_PATH}")
+    print(f"  Saved model artifacts to {_ARTIFACTS_SAVE_PATH}  (model_version={artifacts['model_version']})")
 
     # Demo prediction
     print("\n" + "=" * 60)

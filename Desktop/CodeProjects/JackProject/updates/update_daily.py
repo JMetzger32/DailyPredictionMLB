@@ -1020,7 +1020,7 @@ def retrain_model():
         from MLBModel import (
             load_data, build_team_game_log, compute_rolling_team_features,
             merge_bullpen_era, merge_sp_stats, assemble_features,
-            FEATURE_COLS, RANDOM_STATE
+            compute_model_version, FEATURE_COLS, RANDOM_STATE
         )
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import LogisticRegression
@@ -1173,7 +1173,10 @@ def retrain_model():
         artifacts.pop("xgb_model", None)  # remove stale single xgb — bootstrap ensemble replaces it
         if xgb_bootstrap_models:
             artifacts["xgb_bootstrap_models"] = xgb_bootstrap_models
-        artifacts["retrain_timestamp"] = datetime.now().isoformat()
+        _save_ts = datetime.now().isoformat()
+        artifacts["retrain_timestamp"] = _save_ts
+        artifacts["saved_at"] = _save_ts
+        artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr_final, _save_ts)
         artifacts["retrain_metrics"] = {
             "accuracy":   float(accuracy),
             "brier_score": float(brier),
@@ -1186,7 +1189,8 @@ def retrain_model():
         with open(ARTIFACTS_PATH, "wb") as f:
             pickle.dump(artifacts, f)
 
-        print(f"[retrain] Model retrained and saved. Accuracy: {accuracy:.1%}")
+        print(f"[retrain] Model retrained and saved. Accuracy: {accuracy:.1%}  "
+              f"(model_version={artifacts['model_version']})")
         return artifacts["retrain_metrics"]
 
     except Exception as e:

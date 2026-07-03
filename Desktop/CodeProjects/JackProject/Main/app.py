@@ -487,6 +487,8 @@ def _build_prediction_entry(game, result, odds_data=None):
         "x_scaled_features": result.get("x_scaled_features"),
         # Set once at creation, never overwritten by any result-resolution path.
         "prediction_timestamp": datetime.now(_ET).isoformat(),
+        # Which model artifact produced this pick (None until the pkl carries a version).
+        "model_version":     _artifacts.get("model_version"),
     }
 
 
