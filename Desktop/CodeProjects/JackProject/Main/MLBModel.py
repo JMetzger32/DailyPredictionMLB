@@ -855,16 +855,31 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     if gb_model is not None:
         probs.append(float(gb_model.predict_proba(X_raw)[0, 1]))   # GB (raw)
     if xgb_bootstrap_models:
-        try:
-            boot_p = float(np.mean([m.predict_proba(X_raw)[0, 1] for m in xgb_bootstrap_models]))
-            probs.append(boot_p)
-        except Exception:
-            pass
+        # Average only the bootstrap models that predict successfully. Previously a single
+        # model raising inside a np.mean([...]) list comp was caught by a bare except and
+        # dropped the ENTIRE bootstrap contribution silently. Now failures are per-model,
+        # logged by index, and the rest still count.
+        boot_preds = []
+        _n_total = len(xgb_bootstrap_models)
+        for _i, m in enumerate(xgb_bootstrap_models):
+            try:
+                boot_preds.append(float(m.predict_proba(X_raw)[0, 1]))
+            except Exception as _e:
+                print(f"[ensemble] bootstrap model {_i}/{_n_total} failed: {_e}", flush=True)
+        if boot_preds:
+            if len(boot_preds) < 40:
+                print(f"[ensemble] WARNING: only {len(boot_preds)}/{_n_total} bootstrap "
+                      f"models succeeded (<40) — bootstrap signal is degraded", flush=True)
+            probs.append(float(np.mean(boot_preds)))
+        else:
+            print(f"[ensemble] WARNING: all {_n_total} bootstrap models failed — "
+                  f"using LR/GB only", flush=True)
     elif xgb_model is not None:
         try:
             probs.append(float(xgb_model.predict_proba(X_raw)[0, 1]))  # XGB (raw)
-        except Exception:
-            pass  # stale xgb with mismatched features — skip it
+        except Exception as _e:
+            print(f"[ensemble] single xgb_model failed (stale/mismatched features): {_e}",
+                  flush=True)
     prob = sum(probs) / len(probs)
 
     # Soft recalibration: nudge 4% toward MLB home win prior (53%)
