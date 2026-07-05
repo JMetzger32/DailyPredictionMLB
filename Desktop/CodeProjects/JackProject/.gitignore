@@ -6,3 +6,11 @@ Pitching Stats/
 Season Stats/
 *.png
 .DS_Store
+
+# Secrets — never commit API keys / credentials. Load from env vars (e.g. ODDS_API_KEY).
+.env
+.env.*
+*.key
+*.pem
+secrets*.json
+credentials*.json
