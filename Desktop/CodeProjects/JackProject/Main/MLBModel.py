@@ -371,16 +371,20 @@ def merge_sp_stats(tgl, pitcher_stats):
     for _, row in tgl.iterrows():
         pid = row["starting_pitcher_id"]
         season = row["season"]
-        key = (pid, season)
 
-        if key in sp_lookup:
-            stats = sp_lookup[key]
+        # LEAK FIX (Phase 4a): use the pitcher's PRIOR-season (S-1) stats, which are fully
+        # available pre-game, instead of the same-season aggregate (which folds in games
+        # played AFTER this row's game date — look-ahead leakage on the dominant feature).
+        # No same-season fallback: a pitcher with no S-1 row gets the S-1 league average
+        # (e.g. debut seasons, and all of 2021 since the table starts at 2021).
+        # Train/live asymmetry: production 2026 predictions instead use the current
+        # season-to-date snapshot injected by update_daily (also pre-game at predict time),
+        # so training SP = prior full season while live SP = current-season-to-date.
+        prev_key = (pid, season - 1)
+        if prev_key in sp_lookup:
+            stats = sp_lookup[prev_key]
         else:
-            prev_key = (pid, season - 1)
-            if prev_key in sp_lookup:
-                stats = sp_lookup[prev_key]
-            else:
-                stats = league_avg.get(season, overall_avg)
+            stats = league_avg.get(season - 1, league_avg.get(season, overall_avg))
 
         sp_era.append(stats.get("era", overall_avg["era"]))
         sp_whip.append(stats.get("whip", overall_avg["whip"]))
@@ -428,9 +432,11 @@ def merge_bullpen_era(tgl, bullpen_stats):
         return tgl
 
     bp_lookup = bullpen_stats.set_index(["retro_team", "season"])["bullpen_era"].to_dict()
+    # LEAK FIX (Phase 4a): prefer the PRIOR season (S-1) bullpen ERA — pre-game, no
+    # look-ahead — rather than the same-season aggregate. Falls back to 4.20 (league-ish)
+    # when there is no prior-season row (e.g. all of 2021, since the table starts at 2021).
     tgl["bullpen_era"] = tgl.apply(
-        lambda r: bp_lookup.get((r["team"], r["season"]),
-                  bp_lookup.get((r["team"], r["season"] - 1), 4.20)),
+        lambda r: bp_lookup.get((r["team"], r["season"] - 1), 4.20),
         axis=1
     )
     return tgl
