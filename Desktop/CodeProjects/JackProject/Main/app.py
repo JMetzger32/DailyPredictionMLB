@@ -975,10 +975,17 @@ try:
         print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
         # Write merged entries into the SQLite betting_log table so the betting
         # page (which reads from the DB, not the JSON) has data after a redeploy.
+        # Feed BOTH sources: the odds-bearing betting_log entries AND the full
+        # predictions_log — _upsert_betting_entries itself keeps only bettable-or-
+        # resolved entries. Previously only the odds-filtered _blog reached the table,
+        # so resolved-but-odds-less games (all 1200+ historical picks) could never
+        # backfill after a redeploy and the table stayed empty.
         _all_blog_entries = [e for day in _blog.values() for e in day]
-        if _all_blog_entries:
-            _upsert_betting_entries(_all_blog_entries)
-            print(f"[startup] betting_log upserted {len(_all_blog_entries)} entries to SQLite", flush=True)
+        _all_log_entries  = [e for day in _full_log.values() for e in day]
+        if _all_blog_entries or _all_log_entries:
+            _upsert_betting_entries(_all_log_entries + _all_blog_entries)
+            print(f"[startup] betting_log upserted from {len(_all_log_entries)} log + "
+                  f"{len(_all_blog_entries)} odds entries", flush=True)
         # Only push if we have at least as many entries as what was restored.
         # Prevents a failed restore (empty backup) from overwriting a larger
         # GitHub backup with a smaller merged result on the next deploy.
