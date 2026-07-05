@@ -219,17 +219,46 @@ def _upsert_betting_entries(entries):
             if not pk:
                 continue
 
-            # Upsert by game_pk
+            # Upsert by game_pk. ON CONFLICT DO UPDATE (not INSERT OR REPLACE) so:
+            #   - created_at is set once on first insert and preserved thereafter
+            #   - a later write that lacks odds/results (NULL columns) never nulls out
+            #     previously-resolved values — COALESCE(excluded.x, betting_log.x) keeps
+            #     the existing value whenever the incoming one is NULL.
             cur.execute("""
-                INSERT OR REPLACE INTO betting_log (
+                INSERT INTO betting_log (
                     game_pk, date, game_type, away_team, home_team,
                     predicted_winner, away_win_prob, home_win_prob,
                     away_ml, home_ml, away_implied, home_implied,
                     bet_rating, model_edge, predicted_team_ml,
                     predicted_total, actual_winner, away_score, home_score,
                     correct, closing_away_ml, closing_home_ml, clv,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          datetime('now'), datetime('now'))
+                ON CONFLICT(game_pk) DO UPDATE SET
+                    date             = COALESCE(excluded.date, betting_log.date),
+                    game_type        = COALESCE(excluded.game_type, betting_log.game_type),
+                    away_team        = COALESCE(excluded.away_team, betting_log.away_team),
+                    home_team        = COALESCE(excluded.home_team, betting_log.home_team),
+                    predicted_winner = COALESCE(excluded.predicted_winner, betting_log.predicted_winner),
+                    away_win_prob    = COALESCE(excluded.away_win_prob, betting_log.away_win_prob),
+                    home_win_prob    = COALESCE(excluded.home_win_prob, betting_log.home_win_prob),
+                    away_ml          = COALESCE(excluded.away_ml, betting_log.away_ml),
+                    home_ml          = COALESCE(excluded.home_ml, betting_log.home_ml),
+                    away_implied     = COALESCE(excluded.away_implied, betting_log.away_implied),
+                    home_implied     = COALESCE(excluded.home_implied, betting_log.home_implied),
+                    bet_rating       = COALESCE(excluded.bet_rating, betting_log.bet_rating),
+                    model_edge       = COALESCE(excluded.model_edge, betting_log.model_edge),
+                    predicted_team_ml= COALESCE(excluded.predicted_team_ml, betting_log.predicted_team_ml),
+                    predicted_total  = COALESCE(excluded.predicted_total, betting_log.predicted_total),
+                    actual_winner    = COALESCE(excluded.actual_winner, betting_log.actual_winner),
+                    away_score       = COALESCE(excluded.away_score, betting_log.away_score),
+                    home_score       = COALESCE(excluded.home_score, betting_log.home_score),
+                    correct          = COALESCE(excluded.correct, betting_log.correct),
+                    closing_away_ml  = COALESCE(excluded.closing_away_ml, betting_log.closing_away_ml),
+                    closing_home_ml  = COALESCE(excluded.closing_home_ml, betting_log.closing_home_ml),
+                    clv              = COALESCE(excluded.clv, betting_log.clv),
+                    updated_at       = datetime('now')
             """, (
                 pk,
                 entry.get("date"),
