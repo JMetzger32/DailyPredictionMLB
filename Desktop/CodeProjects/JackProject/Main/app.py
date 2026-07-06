@@ -2111,6 +2111,21 @@ def trigger_daily():
     return jsonify({"status": "triggered", "time": datetime.now().isoformat()})
 
 
+@app.route("/api/trigger-closing-odds")
+def trigger_closing_odds():
+    """
+    External cron endpoint — wakes the server and stores the closing odds snapshot
+    (archive + CLV + betting_log). The internal 6:45 PM APScheduler job only fires if
+    the free-tier server happens to be awake; this makes it deterministic.
+    Requires ?key=TRIGGER_SECRET query param. Call from cron-job.org at ~6:45 PM ET.
+    """
+    secret = request.args.get("key", "")
+    if not TRIGGER_SECRET or secret != TRIGGER_SECRET:
+        return jsonify({"error": "forbidden"}), 403
+    _store_closing_odds()
+    return jsonify({"status": "stored", "time": datetime.now().isoformat()})
+
+
 @app.route("/api/refresh", methods=["POST"])
 def refresh():
     """Manually trigger a baseline refresh (calls update_daily.main())."""
