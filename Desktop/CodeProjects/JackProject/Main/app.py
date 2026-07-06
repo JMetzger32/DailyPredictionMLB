@@ -24,6 +24,7 @@ import pickle
 import time
 import traceback
 import numpy as np
+import requests
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
