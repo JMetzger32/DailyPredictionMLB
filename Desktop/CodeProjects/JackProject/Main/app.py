@@ -110,12 +110,6 @@ def load_artifacts():
 
 load_artifacts()
 
-# Log artifact status for debugging accuracy discrepancies
-_team_count = len(_artifacts.get('team_baselines', {}))
-_sp_count = len(_artifacts.get('sp_baselines', {}))
-_lr = _artifacts.get('lr_model')
-print(f"[app] Artifacts loaded — {_team_count} teams, {_sp_count} pitchers, LR model: {_lr is not None}", flush=True)
-
 
 # ---------------------------------------------------------------------------
 # Schedule cache  (avoids hitting the MLB API on every page load)
@@ -1264,7 +1258,9 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
 # ---------------------------------------------------------------------------
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"})
+    from datetime import timezone as _tz
+    return jsonify({"status": "ok",
+                    "timestamp": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z")})
 
 
 @app.route("/")
@@ -1919,12 +1915,11 @@ def betting_stats():
             return {"games": 0, "correct": 0, "accuracy": None,
                     "net_pl": 0, "total_wagered": 0, "roi": None}
         correct = sum(1 for b in bets if b["correct"])
-        pl_values = [_pl_for_bet(b) for b in bets if _pl_for_bet(b) is not None]
+        pl_values = [pl for pl in (_pl_for_bet(b) for b in bets) if pl is not None]
         net_pl = round(sum(pl_values), 2)
         total_wagered = 10 * len(pl_values)
         roi = round(net_pl / total_wagered, 4) if total_wagered else None
-        wins  = sum(1 for b in bets if b["correct"])
-        losses = len(bets) - wins
+        losses = len(bets) - correct
         return {
             "games":         len(bets),
             "correct":       correct,
