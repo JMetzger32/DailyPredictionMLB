@@ -2241,24 +2241,29 @@ def model_info():
     # Human-readable labels from FEATURE_LABELS (already defined in this file)
     labels = {k: v for k, v in FEATURE_LABELS.items() if k in feat_cols}
 
+    # Dynamic training size from the last retrain, falling back to the known total
+    _rm = arts.get("retrain_metrics", {}) or {}
+    _n_games = (_rm.get("train_size") or 0) + (_rm.get("val_size") or 0) or 12233
+
     return jsonify({
         "features":        feat_cols,
         "feature_labels":  labels,
         "lr_coefs":        lr_coefs,
         "gb_importances":  gb_importances,
+        "model_version":   arts.get("model_version"),
+        "retrained_at":    arts.get("retrain_timestamp") or arts.get("saved_at"),
         "training_info": {
-            "games":         12233,
+            "games":         _n_games,
             "seasons":       "2021–2026",
             "models":        "Logistic Regression (C=0.5) + Gradient Boosting + XGBoost ensemble",
             "ensemble_rule": "Final probability = average of LR, GBM, and XGBoost predictions. "
                              "LR uses scaled features; tree models use raw differentials.",
             "rolling_stats": "Team baselines updated daily from 30-game rolling windows "
                              "(10-game for recent form) computed directly from the game database — "
-                             "same pipeline as training, no distribution mismatch.",
-            "hyperparams":   "GBM/XGBoost params tuned via 12-combo grid search on 2025 holdout: "
-                             "best = n_estimators=200, max_depth=3, learning_rate=0.03.",
-            "sp_era_boost":  "SP ERA coefficient boosted 1.4× post-hoc in LR (StandardScaler "
-                             "absorbs training-time scaling; post-hoc is the only effective method).",
+                             "same pipeline as training, no distribution mismatch. Historical SP and "
+                             "bullpen stats use the pitcher's/team's prior-season values (no look-ahead).",
+            "hyperparams":   "GBM/XGBoost: n_estimators=300, max_depth=3, learning_rate=0.05, "
+                             "subsample=0.8 (weekly retrain), selected via grid search on the 2025 holdout.",
             "accuracy_note": "See /api/accuracy for live season accuracy",
         },
     })
