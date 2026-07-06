@@ -645,8 +645,13 @@ def _log_predictions_for_date(target_date, log=None):
     if not entries:
         return log
 
-    # For past dates, immediately attach final results
+    # For past dates, immediately attach final results.
+    # These backfilled entries are generated AFTER the games were played, using
+    # current (post-game) baselines — flag them so clean evaluations can exclude
+    # them, same as the mid-request creation path in /api/predictions.
     if target_date < _today_et():
+        for entry in entries:
+            entry["post_game_created"] = True
         try:
             from schedule_fetcher import get_game_results
             results = get_game_results(target_date)
@@ -1507,19 +1512,32 @@ def predictions():
                 actual        = "Home" if home_score > away_score else "Away"
                 actual_winner = actual
                 correct       = (result["predicted_winner"] == actual)
-            # Persist back to log so accuracy tracker stays current
-            _brier, _ll = (None, None)
-            if actual_winner not in (None, "Tie") and result.get("home_win_prob") is not None:
-                _brier, _ll = _compute_error_metrics(result["home_win_prob"], actual_winner)
+            # Persist back to log so accuracy tracker stays current.
+            # IMPORTANT: score the STORED entry against its own logged pick/probability,
+            # not the fresh view-time prediction — baselines may have shifted since the
+            # entry was logged, and overwriting with the fresh pick's correctness would
+            # silently rewrite history (prediction immutability).
             if pk in log_by_pk:
-                log_by_pk[pk].update({
+                stored_entry = log_by_pk[pk]
+                stored_pick  = stored_entry.get("predicted_winner")
+                stored_prob  = stored_entry.get("home_win_prob")
+                _s_correct = None
+                _brier, _ll = (None, None)
+                if actual_winner not in (None, "Tie"):
+                    if stored_pick is not None:
+                        _s_correct = (stored_pick == actual_winner)
+                    if stored_prob is not None:
+                        _brier, _ll = _compute_error_metrics(stored_prob, actual_winner)
+                stored_entry.update({
                     "away_score":    away_score,
                     "home_score":    home_score,
                     "actual_winner": actual_winner,
-                    "correct":       correct,
+                    "correct":       _s_correct,
                     "brier_score":   _brier,
                     "log_loss":      _ll,
                 })
+                # The response card shows the logged pick's result, not the fresh one
+                correct = _s_correct
             else:
                 # Game wasn't logged yet (8 AM job missed) — create full entry now.
                 # This prediction is generated AFTER the game finished, using post-game
