@@ -719,6 +719,9 @@ def build_2025_baselines(df, tgl):
             "obp":                   float(team_data["roll30_obp"]),
             "slg":                   float(team_data.get("roll30_slg", 0.400)),
             "iso":                   float(team_data["roll30_iso"]),
+            # Batter K rate — model feature (diff_roll30_k_per_pa); must be present in
+            # baselines or predict_game defaults both sides to 0.220 and the diff is 0.
+            "k_per_pa":              float(team_data.get("roll30_k_per_pa", 0.220)),
             # Volume rolling (kept for display / O/U formula; not all are model features)
             "hits_per_game":         float(team_data["roll30_hits"]),
             "opp_hits_per_game":     float(team_data.get("roll30_opp_hits", 8.5)),

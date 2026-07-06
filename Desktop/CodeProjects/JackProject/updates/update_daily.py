@@ -860,6 +860,10 @@ def compute_rolling_baselines_from_db():
                 "obp":                   _s(row, "roll30_obp",            0.318),
                 "slg":                   _s(row, "roll30_slg",            0.400),
                 "iso":                   _s(row, "roll30_iso",            0.155),
+                # Batter K rate — model feature (diff_roll30_k_per_pa). Was missing here,
+                # so predict_game fell back to 0.220 for BOTH teams and the diff was
+                # always exactly 0 in live predictions despite being a trained feature.
+                "k_per_pa":              _s(row, "roll30_k_per_pa",       0.220),
                 # Bullpen — exp-decayed fatigue (model feature); raw IP kept for display
                 "roll7_bullpen_fatigue": _s(row, "roll7_bullpen_fatigue", 8.00),
                 "bullpen_era":           _s(row, "bullpen_era",           4.20),
