@@ -3,10 +3,10 @@ apscheduler
 requests
 gunicorn
 pybaseball
-pandas
+pandas==3.0.0
 scikit-learn==1.9.0
 numpy
 seaborn
-xgboost
+xgboost==3.3.0
 statsmodels
 resend
