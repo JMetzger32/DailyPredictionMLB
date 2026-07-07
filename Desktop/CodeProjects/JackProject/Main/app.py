@@ -1717,9 +1717,10 @@ def predictions():
         _upsert_betting_entries(log.get(date_str, []))
 
     return jsonify({
-        "date":         target_date.isoformat(),
-        "games":        predictions_out,
-        "last_updated": datetime.now().isoformat(),
+        "date":          target_date.isoformat(),
+        "games":         predictions_out,
+        "model_version": _artifacts.get("model_version"),
+        "last_updated":  datetime.now().isoformat(),
     })
 
 
