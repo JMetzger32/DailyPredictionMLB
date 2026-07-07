@@ -211,12 +211,16 @@ def get_team_rest_days(game_date):
                 if tid not in last_played or d > last_played[tid]:
                     last_played[tid] = d
 
-    # Map MLB team IDs → retro codes and compute rest days
+    # Map MLB team IDs → retro codes and compute rest days.
+    # Definition matches TRAINING: days since last game, clipped to [1, 7]
+    # (MLBModel.compute_rolling_team_features: (date - prev_date).days, clip(1, 7)).
+    # The old "- 1" gave played-yesterday teams 0 while training gave them 1 — a
+    # systematic train/live off-by-one on diff_rest_days.
     rest = {}
     for mlb_id, last_d in last_played.items():
         retro = MLB_TEAM_ID_TO_RETRO.get(mlb_id)
         if retro:
-            rest[retro] = (game_date - last_d).days - 1
+            rest[retro] = min(max((game_date - last_d).days, 1), 7)
 
     return rest
 

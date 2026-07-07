@@ -1,8 +1,11 @@
+import os
 import pickle
 from MLBModel import predict_by_name, predict_game
 
-# Load saved model artifacts
-with open("mlb_model_artifacts.pkl", "rb") as f:
+# Load saved model artifacts (__file__-relative so this works from any cwd)
+_ARTIFACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "..", "updates", "mlb_model_artifacts.pkl")
+with open(_ARTIFACTS, "rb") as f:
     artifacts = pickle.load(f)
 
 lr_model = artifacts["lr_model"]
