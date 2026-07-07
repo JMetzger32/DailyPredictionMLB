@@ -314,6 +314,17 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
         era_str    = p.get("era", "4.50") or "4.50"
         bullpen_era = float(era_str)
 
+        # Innings pitched ("812.1" = 812 innings + 1 out) — needed for the normalized
+        # defensive rate stats the model actually consumes (opp_whip, opp_hr_per9).
+        try:
+            _ip_parts = str(p.get("inningsPitched", "0")).split(".")
+            ip_total = float(_ip_parts[0]) + (float(_ip_parts[1]) / 3.0 if len(_ip_parts) > 1 else 0.0)
+        except (TypeError, ValueError):
+            ip_total = 0.0
+
+        # Batter strikeouts (hitting side) for k_per_pa (K/AB proxy, matches training)
+        batter_k = float(h.get("strikeOuts", 0))
+
         g = max(games_played, 1)
 
         # Smooth blend: same logic as compute_team_baseline — gradually trust
@@ -372,8 +383,15 @@ def fetch_team_baseline_from_mlb_api(retro_code, season, old_baseline=None):
             "iso":                   _b(iso,                     "iso"),
             "recent_runs_per_game":  _b(round(runs / g, 3),      "recent_runs_per_game"),
             "opp_k_per_game":        _b(round(opp_k / g, 3),     "opp_k_per_game"),
-            # New features — MLB API fallback uses defaults since we don't have game-level IP
-            "roll7_bullpen_ip":      15.0,  # default (≈ 2.1 IP/game × 7 games)
+            # Model features previously MISSING from this fallback (predict_game silently
+            # defaulted them, zeroing their diffs whenever this path supplied a team):
+            "k_per_pa":              _b(round(batter_k / ab, 4), "k_per_pa"),
+            "opp_whip":              (_b(round((opp_bb + opp_hits) / ip_total, 3), "opp_whip")
+                                      if ip_total > 0 else fallback.get("opp_whip", 1.30)),
+            "opp_hr_per9":           (_b(round(opp_hr / ip_total * 9.0, 3), "opp_hr_per9")
+                                      if ip_total > 0 else fallback.get("opp_hr_per9", 1.10)),
+            # No game-level IP from the season endpoint — carry prior/league fatigue
+            "roll7_bullpen_fatigue": fallback.get("roll7_bullpen_fatigue", 8.0),
             "rest_days":             1,     # injected from get_team_rest_days() after this call
         }
     except Exception as e:
