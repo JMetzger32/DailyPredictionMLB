@@ -1606,7 +1606,7 @@ def predictions():
                 log_by_pk[pk] = entry
             log_changed = True
 
-        predictions_out.append({
+        card = {
             **game,
             "skipped": False,
             "home_win_prob":    result["home_win_prob"],
@@ -1663,7 +1663,25 @@ def predictions():
             "correct":               correct,
             "feature_contributions": _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp),
             **_compute_odds_fields(away, home, result, odds_map),
-        })
+        }
+
+        # For PAST dates, the card must show the prediction that was actually logged
+        # pre-game — not a recompute under current baselines (which can silently differ
+        # from the accuracy page and from what users saw on game day). Display extras
+        # (SP stats, OBP, contributions) stay freshly computed; only the prediction
+        # fields are overlaid from the stored entry.
+        if stored and target_date < _today_et():
+            for k in ("home_win_prob", "away_win_prob", "predicted_winner",
+                      "predicted_total"):
+                if stored.get(k) is not None:
+                    card[k] = stored[k]
+            if stored.get("home_win_prob") is not None:
+                card["confidence"] = round(abs(stored["home_win_prob"] - 0.5) * 2, 3)
+            card["from_log"] = True
+            if stored.get("post_game_created"):
+                card["post_game_created"] = True
+
+        predictions_out.append(card)
 
     # Write odds fields back into stored log entries. odds_map is the live API map for
     # today/future and the closing-odds archive for past dates (reconstructed above), so
