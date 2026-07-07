@@ -2199,7 +2199,13 @@ def trigger_closing_odds():
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh():
-    """Manually trigger a baseline refresh (calls update_daily.main())."""
+    """Manually trigger a baseline refresh (calls update_daily.main()).
+    Requires TRIGGER_SECRET (?key=... or JSON body {"key": ...}) — this is a
+    multi-minute job hitting third-party APIs and must not be publicly triggerable."""
+    body = request.get_json(force=True, silent=True) or {}
+    secret = request.args.get("key", "") or body.get("key", "")
+    if not TRIGGER_SECRET or secret != TRIGGER_SECRET:
+        return jsonify({"error": "forbidden"}), 403
     try:
         import update_daily
         update_daily.main()

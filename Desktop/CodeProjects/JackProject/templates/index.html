@@ -20,7 +20,6 @@
     <a href="/betting"  class="btn btn-outline-light btn-sm">Betting</a>
     <a href="/picks"    class="btn btn-outline-light btn-sm">Picks</a>
     <a href="/explain"  class="btn btn-outline-light btn-sm">Model</a>
-    <button id="refresh-btn" class="btn btn-outline-light btn-sm">Refresh Baselines</button>
   </div>
 </nav>
 
@@ -286,26 +285,8 @@
     window.location.href = "/predictions?date=" + toISODate(d);
   });
 
-  // ── Refresh baselines button ──────────────────────────────────────
-  document.getElementById("refresh-btn").addEventListener("click", async () => {
-    const btn = document.getElementById("refresh-btn");
-    btn.disabled = true;
-    btn.textContent = "Refreshing…";
-    try {
-      const res = await fetch("/api/refresh", { method: "POST" });
-      const data = await res.json();
-      if (data.status === "ok") {
-        btn.textContent = "Done ✓";
-        setTimeout(() => loadPredictions(), 800);
-      } else {
-        btn.textContent = "Error";
-        console.error(data.message);
-      }
-    } catch (e) {
-      btn.textContent = "Error";
-    }
-    setTimeout(() => { btn.disabled = false; btn.textContent = "Refresh Baselines"; }, 3000);
-  });
+  // (Refresh-baselines button removed — /api/refresh is now TRIGGER_SECRET-gated;
+  //  baselines refresh automatically via the 5 AM daily job.)
 
   // ── Confidence filter state ───────────────────────────────────────
   let confidenceOnly = false;
