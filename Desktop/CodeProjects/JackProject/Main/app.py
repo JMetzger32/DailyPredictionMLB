@@ -800,9 +800,66 @@ def _push_log_to_github():
     _push_file_to_github(PREDICTIONS_LOG, f"Auto-backup predictions log {_today_et().isoformat()}")
 
 
+def _latest_date_key(obj):
+    """Best-effort latest YYYY-MM-DD key in a log dict. Handles both shapes:
+    {date: ...} (predictions/betting/closing logs) and {email: {date: ...}} (picks).
+    Returns '' when no date-like keys are found."""
+    import re as _re
+    _date_re = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    if not isinstance(obj, dict):
+        return ""
+    keys = [k for k in obj.keys() if isinstance(k, str) and _date_re.match(k)]
+    if keys:
+        return max(keys)
+    # Nested shape (picks log): {email: {date: [...]}}
+    best = ""
+    for v in obj.values():
+        if isinstance(v, dict):
+            inner = [k for k in v.keys() if isinstance(k, str) and _date_re.match(k)]
+            if inner:
+                best = max(best, max(inner))
+    return best
+
+
+def _should_restore(filepath, remote_bytes):
+    """Decide whether a GitHub-restored blob should overwrite the local file.
+    Returns (bool, reason). Rules, most-specific first:
+      1. Empty remote → never (also covers the GitHub contents-API >1MB case, where
+         'content' comes back empty — e.g. the 13MB artifacts pkl).
+      2. Pickle artifacts (.pkl) → only when the local file is missing/empty. A stale
+         backup pkl must never clobber a freshly retrained local artifact.
+      3. Date-keyed JSON logs → if both sides parse, skip when the LOCAL log has a
+         strictly later max date than the remote (stale-but-larger backup protection).
+      4. Fallback → original size guard: restore only if remote is larger.
+    """
+    local_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+    if not remote_bytes:
+        return False, "remote empty (missing backup or >1MB contents-API limit)"
+    if filepath.endswith(".pkl"):
+        if local_size == 0:
+            return True, "local pkl missing — restoring backup"
+        return False, "local pkl present — never overwrite artifacts with a backup"
+    if filepath.endswith(".json") and local_size > 0:
+        try:
+            with open(filepath) as f:
+                local_obj = json.load(f)
+            remote_obj = json.loads(remote_bytes.decode())
+            local_d, remote_d = _latest_date_key(local_obj), _latest_date_key(remote_obj)
+            if local_d and remote_d:
+                if local_d > remote_d:
+                    return False, f"local newer by date ({local_d} > {remote_d})"
+                if remote_d > local_d:
+                    return True, f"remote newer by date ({remote_d} > {local_d})"
+        except Exception:
+            pass  # unparseable — fall through to size guard
+    if len(remote_bytes) > local_size:
+        return True, f"remote larger ({len(remote_bytes)} > {local_size} bytes)"
+    return False, f"local up-to-date ({local_size} bytes)"
+
+
 def _restore_file_from_github(filepath):
-    """On startup, pull the latest backed-up file from GitHub if the remote copy is
-    larger than the local one. This recovers data that was pushed before a redeploy."""
+    """On startup, pull the latest backed-up file from GitHub when it is safe to do so
+    (see _should_restore). This recovers data that was pushed before a redeploy."""
     if not GITHUB_TOKEN:
         print(f"[github] GITHUB_TOKEN not set — cannot restore {filepath}")
         return
@@ -819,14 +876,14 @@ def _restore_file_from_github(filepath):
         if r.status_code != 200:
             print(f"[github] restore {filepath}: GitHub returned {r.status_code} (path: {_github_path(filepath)})", flush=True)
             return
-        remote_bytes = base64.b64decode(r.json()["content"])
-        local_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
-        if len(remote_bytes) > local_size:
+        remote_bytes = base64.b64decode(r.json().get("content") or "")
+        ok, reason = _should_restore(filepath, remote_bytes)
+        if ok:
             with open(filepath, "wb") as f:
                 f.write(remote_bytes)
-            print(f"[github] Restored {filepath} from GitHub ({len(remote_bytes)} bytes)", flush=True)
+            print(f"[github] Restored {filepath} from GitHub ({len(remote_bytes)} bytes) — {reason}", flush=True)
         else:
-            print(f"[github] {filepath} is up-to-date locally ({local_size} bytes)", flush=True)
+            print(f"[github] Skipping restore of {filepath} — {reason}", flush=True)
     except Exception as e:
         print(f"[github] restore error for {filepath}: {e}")
 
