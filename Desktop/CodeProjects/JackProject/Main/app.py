@@ -24,6 +24,7 @@ import pickle
 import time
 import traceback
 import numpy as np
+import requests
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -108,12 +109,6 @@ def load_artifacts():
 
 
 load_artifacts()
-
-# Log artifact status for debugging accuracy discrepancies
-_team_count = len(_artifacts.get('team_baselines', {}))
-_sp_count = len(_artifacts.get('sp_baselines', {}))
-_lr = _artifacts.get('lr_model')
-print(f"[app] Artifacts loaded — {_team_count} teams, {_sp_count} pitchers, LR model: {_lr is not None}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -644,8 +639,13 @@ def _log_predictions_for_date(target_date, log=None):
     if not entries:
         return log
 
-    # For past dates, immediately attach final results
+    # For past dates, immediately attach final results.
+    # These backfilled entries are generated AFTER the games were played, using
+    # current (post-game) baselines — flag them so clean evaluations can exclude
+    # them, same as the mid-request creation path in /api/predictions.
     if target_date < _today_et():
+        for entry in entries:
+            entry["post_game_created"] = True
         try:
             from schedule_fetcher import get_game_results
             results = get_game_results(target_date)
@@ -1258,7 +1258,9 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
 # ---------------------------------------------------------------------------
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"})
+    from datetime import timezone as _tz
+    return jsonify({"status": "ok",
+                    "timestamp": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z")})
 
 
 @app.route("/")
@@ -1506,19 +1508,32 @@ def predictions():
                 actual        = "Home" if home_score > away_score else "Away"
                 actual_winner = actual
                 correct       = (result["predicted_winner"] == actual)
-            # Persist back to log so accuracy tracker stays current
-            _brier, _ll = (None, None)
-            if actual_winner not in (None, "Tie") and result.get("home_win_prob") is not None:
-                _brier, _ll = _compute_error_metrics(result["home_win_prob"], actual_winner)
+            # Persist back to log so accuracy tracker stays current.
+            # IMPORTANT: score the STORED entry against its own logged pick/probability,
+            # not the fresh view-time prediction — baselines may have shifted since the
+            # entry was logged, and overwriting with the fresh pick's correctness would
+            # silently rewrite history (prediction immutability).
             if pk in log_by_pk:
-                log_by_pk[pk].update({
+                stored_entry = log_by_pk[pk]
+                stored_pick  = stored_entry.get("predicted_winner")
+                stored_prob  = stored_entry.get("home_win_prob")
+                _s_correct = None
+                _brier, _ll = (None, None)
+                if actual_winner not in (None, "Tie"):
+                    if stored_pick is not None:
+                        _s_correct = (stored_pick == actual_winner)
+                    if stored_prob is not None:
+                        _brier, _ll = _compute_error_metrics(stored_prob, actual_winner)
+                stored_entry.update({
                     "away_score":    away_score,
                     "home_score":    home_score,
                     "actual_winner": actual_winner,
-                    "correct":       correct,
+                    "correct":       _s_correct,
                     "brier_score":   _brier,
                     "log_loss":      _ll,
                 })
+                # The response card shows the logged pick's result, not the fresh one
+                correct = _s_correct
             else:
                 # Game wasn't logged yet (8 AM job missed) — create full entry now.
                 # This prediction is generated AFTER the game finished, using post-game
@@ -1900,12 +1915,11 @@ def betting_stats():
             return {"games": 0, "correct": 0, "accuracy": None,
                     "net_pl": 0, "total_wagered": 0, "roi": None}
         correct = sum(1 for b in bets if b["correct"])
-        pl_values = [_pl_for_bet(b) for b in bets if _pl_for_bet(b) is not None]
+        pl_values = [pl for pl in (_pl_for_bet(b) for b in bets) if pl is not None]
         net_pl = round(sum(pl_values), 2)
         total_wagered = 10 * len(pl_values)
         roi = round(net_pl / total_wagered, 4) if total_wagered else None
-        wins  = sum(1 for b in bets if b["correct"])
-        losses = len(bets) - wins
+        losses = len(bets) - correct
         return {
             "games":         len(bets),
             "correct":       correct,
@@ -2111,6 +2125,21 @@ def trigger_daily():
     return jsonify({"status": "triggered", "time": datetime.now().isoformat()})
 
 
+@app.route("/api/trigger-closing-odds")
+def trigger_closing_odds():
+    """
+    External cron endpoint — wakes the server and stores the closing odds snapshot
+    (archive + CLV + betting_log). The internal 6:45 PM APScheduler job only fires if
+    the free-tier server happens to be awake; this makes it deterministic.
+    Requires ?key=TRIGGER_SECRET query param. Call from cron-job.org at ~6:45 PM ET.
+    """
+    secret = request.args.get("key", "")
+    if not TRIGGER_SECRET or secret != TRIGGER_SECRET:
+        return jsonify({"error": "forbidden"}), 403
+    _store_closing_odds()
+    return jsonify({"status": "stored", "time": datetime.now().isoformat()})
+
+
 @app.route("/api/refresh", methods=["POST"])
 def refresh():
     """Manually trigger a baseline refresh (calls update_daily.main())."""
@@ -2207,24 +2236,29 @@ def model_info():
     # Human-readable labels from FEATURE_LABELS (already defined in this file)
     labels = {k: v for k, v in FEATURE_LABELS.items() if k in feat_cols}
 
+    # Dynamic training size from the last retrain, falling back to the known total
+    _rm = arts.get("retrain_metrics", {}) or {}
+    _n_games = (_rm.get("train_size") or 0) + (_rm.get("val_size") or 0) or 12233
+
     return jsonify({
         "features":        feat_cols,
         "feature_labels":  labels,
         "lr_coefs":        lr_coefs,
         "gb_importances":  gb_importances,
+        "model_version":   arts.get("model_version"),
+        "retrained_at":    arts.get("retrain_timestamp") or arts.get("saved_at"),
         "training_info": {
-            "games":         12233,
+            "games":         _n_games,
             "seasons":       "2021–2026",
             "models":        "Logistic Regression (C=0.5) + Gradient Boosting + XGBoost ensemble",
             "ensemble_rule": "Final probability = average of LR, GBM, and XGBoost predictions. "
                              "LR uses scaled features; tree models use raw differentials.",
             "rolling_stats": "Team baselines updated daily from 30-game rolling windows "
                              "(10-game for recent form) computed directly from the game database — "
-                             "same pipeline as training, no distribution mismatch.",
-            "hyperparams":   "GBM/XGBoost params tuned via 12-combo grid search on 2025 holdout: "
-                             "best = n_estimators=200, max_depth=3, learning_rate=0.03.",
-            "sp_era_boost":  "SP ERA coefficient boosted 1.4× post-hoc in LR (StandardScaler "
-                             "absorbs training-time scaling; post-hoc is the only effective method).",
+                             "same pipeline as training, no distribution mismatch. Historical SP and "
+                             "bullpen stats use the pitcher's/team's prior-season values (no look-ahead).",
+            "hyperparams":   "GBM/XGBoost: n_estimators=300, max_depth=3, learning_rate=0.05, "
+                             "subsample=0.8 (weekly retrain), selected via grid search on the 2025 holdout.",
             "accuracy_note": "See /api/accuracy for live season accuracy",
         },
     })
