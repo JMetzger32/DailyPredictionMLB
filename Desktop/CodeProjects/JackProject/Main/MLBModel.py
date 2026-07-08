@@ -935,6 +935,139 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
     return result
 
 
+def predict_games_batch(games_stats, model, scaler=None, feature_cols=None, runline_models=None,
+                        gb_model=None, xgb_model=None, xgb_bootstrap_models=None):
+    """
+    Batched version of predict_game() for multiple games at once. Returns a list of
+    result dicts, one per game, in the same order and with the same schema as
+    predict_game() — but each model is called ONCE across all games instead of once
+    per game.
+
+    This matters specifically because of xgb_bootstrap_models: predict_game() loops
+    over all (typically 50) bootstrap models and calls .predict_proba() with a single
+    row per game. For N games that's N * 50 individual predict calls. Batching feeds
+    each bootstrap model a matrix of all N games at once, cutting that to 50 calls
+    total regardless of N — the fixed per-call overhead (Python/C boundary, XGBoost's
+    internal thread pool spin-up) was previously being paid N times more than needed,
+    which is what pushed /api/predictions past Render's 30s worker timeout under load.
+
+    games_stats: list of (home_team_stats, away_team_stats, home_sp_stats, away_sp_stats)
+    tuples, same shape as predict_game()'s first four positional args.
+    """
+    if feature_cols is None:
+        feature_cols = FEATURE_COLS
+    if not games_stats:
+        return []
+
+    feature_rows = []
+    for home_ts, away_ts, home_sp, away_sp in games_stats:
+        feature_rows.append({
+            "diff_pyth_win_pct":           home_ts["pyth_win_pct"]           - away_ts["pyth_win_pct"],
+            "diff_roll30_obp":             home_ts["obp"]                    - away_ts["obp"],
+            "diff_roll30_iso":             home_ts.get("iso", 0.150)         - away_ts.get("iso", 0.150),
+            "diff_roll10_runs_scored":     home_ts["recent_runs_per_game"]   - away_ts["recent_runs_per_game"],
+            "diff_roll30_k_per_pa":        home_ts.get("k_per_pa", 0.220)   - away_ts.get("k_per_pa", 0.220),
+            "diff_roll30_opp_whip":        home_ts.get("opp_whip", 1.30)    - away_ts.get("opp_whip", 1.30),
+            "diff_roll30_opp_hr_per9":     home_ts.get("opp_hr_per9", 1.10) - away_ts.get("opp_hr_per9", 1.10),
+            "diff_roll30_opp_strikeouts":  home_ts["opp_k_per_game"]        - away_ts["opp_k_per_game"],
+            "diff_roll30_runs_allowed":    home_ts["runs_allowed_per_game"]  - away_ts["runs_allowed_per_game"],
+            "diff_roll10_win_pct":         home_ts["recent_win_pct"]         - away_ts["recent_win_pct"],
+            "diff_bullpen_era":            home_ts.get("bullpen_era", 4.20)  - away_ts.get("bullpen_era", 4.20),
+            "diff_roll7_bullpen_fatigue":  home_ts.get("roll7_bullpen_fatigue", 8.0) - away_ts.get("roll7_bullpen_fatigue", 8.0),
+            "diff_rest_days":              max(-1, min(1, home_ts.get("rest_days", 1) - away_ts.get("rest_days", 1))),
+            "diff_sp_era":                 home_sp["era"]                     - away_sp["era"],
+            "diff_sp_ip_gs":               home_sp.get("ip_gs", 5.8)          - away_sp.get("ip_gs", 5.8),
+            "diff_sp_k_bb":                home_sp.get("k_bb", 2.5)           - away_sp.get("k_bb", 2.5),
+            "diff_sp_xfip":                home_sp["xfip"]                    - away_sp["xfip"],
+            "diff_sp_siera":               home_sp.get("siera", 4.0)          - away_sp.get("siera", 4.0),
+            "diff_roll30_runs_scored":     home_ts["runs_per_game"]          - away_ts["runs_per_game"],
+            "diff_roll30_hits":            home_ts.get("hits_per_game", 8.5) - away_ts.get("hits_per_game", 8.5),
+            "diff_roll30_homeruns":        home_ts.get("hr_per_game", 1.1)   - away_ts.get("hr_per_game", 1.1),
+            "home_sp_is_lhp":              1 if home_sp.get("pitch_hand", "R") == "L" else 0,
+            "away_sp_is_lhp":              1 if away_sp.get("pitch_hand", "R") == "L" else 0,
+            "diff_sp_whip":                home_sp.get("whip", 1.30)          - away_sp.get("whip", 1.30),
+            "diff_sp_so9":                 home_sp.get("so9", 8.0)            - away_sp.get("so9", 8.0),
+            "diff_sp_bb9":                 home_sp.get("bb9", 3.0)            - away_sp.get("bb9", 3.0),
+            "diff_sp_hr9":                 home_sp.get("hr9", 1.2)            - away_sp.get("hr9", 1.2),
+        })
+
+    X_raw = pd.DataFrame(feature_rows)[feature_cols]
+    X_scaled = scaler.transform(X_raw) if scaler is not None else X_raw
+    X_scaled_arr = X_scaled.values if hasattr(X_scaled, "values") else np.asarray(X_scaled)
+
+    # Ensemble: LR + GB + XGB (use whichever models are available) — each called once
+    # across all N games instead of once per game.
+    all_probs = [model.predict_proba(X_scaled)[:, 1]]  # LR (scaled)
+    if gb_model is not None:
+        all_probs.append(gb_model.predict_proba(X_raw)[:, 1])   # GB (raw)
+    if xgb_bootstrap_models:
+        boot_matrix = []
+        _n_total = len(xgb_bootstrap_models)
+        for _i, m in enumerate(xgb_bootstrap_models):
+            try:
+                boot_matrix.append(m.predict_proba(X_raw)[:, 1])
+            except Exception as _e:
+                print(f"[ensemble] bootstrap model {_i}/{_n_total} failed: {_e}", flush=True)
+        if boot_matrix:
+            if len(boot_matrix) < 40:
+                print(f"[ensemble] WARNING: only {len(boot_matrix)}/{_n_total} bootstrap "
+                      f"models succeeded (<40) — bootstrap signal is degraded", flush=True)
+            all_probs.append(np.mean(np.vstack(boot_matrix), axis=0))
+        else:
+            print(f"[ensemble] WARNING: all {_n_total} bootstrap models failed — "
+                  f"using LR/GB only", flush=True)
+    elif xgb_model is not None:
+        try:
+            all_probs.append(xgb_model.predict_proba(X_raw)[:, 1])  # XGB (raw)
+        except Exception as _e:
+            print(f"[ensemble] single xgb_model failed (stale/mismatched features): {_e}",
+                  flush=True)
+    probs = np.mean(np.vstack(all_probs), axis=0)
+
+    # Soft recalibration: nudge 4% toward MLB home win prior (53%) — identical to predict_game
+    _HOME_PRIOR  = 0.53
+    _RECAL_BLEND = 0.04
+    probs = (1 - _RECAL_BLEND) * probs + _RECAL_BLEND * _HOME_PRIOR
+
+    # Run line prediction (-1.5): ensemble of LR + GBM if models provided — batched
+    rl_probs = None
+    if runline_models is not None:
+        try:
+            rl_lr, rl_gb, rl_scaler = runline_models
+            X_rl_sc = rl_scaler.transform(X_raw) if rl_scaler is not None else X_raw
+            rl_probs = (rl_lr.predict_proba(X_rl_sc)[:, 1] + rl_gb.predict_proba(X_raw)[:, 1]) / 2
+        except Exception:
+            rl_probs = None
+
+    results = []
+    for i, (home_ts, away_ts, home_sp, away_sp) in enumerate(games_stats):
+        prob = float(probs[i])
+        result = {
+            "home_win_prob":     round(prob, 3),
+            "away_win_prob":     round(1 - prob, 3),
+            "predicted_winner":  "Home" if prob > 0.5 else "Away",
+            "confidence":        round(abs(prob - 0.5) * 2, 3),
+            "x_scaled_features": X_scaled_arr[i].tolist(),
+        }
+        if rl_probs is not None:
+            rl_prob = round(float(rl_probs[i]), 3)
+            result["home_cover_prob"] = rl_prob
+            result["away_cover_prob"] = round(1 - rl_prob, 3)
+        else:
+            result["home_cover_prob"] = None
+            result["away_cover_prob"] = None
+
+        _est = estimate_game_total(home_ts, away_ts, home_sp, away_sp)
+        result["predicted_total"] = _est["total"]
+        result["home_est_score"]  = _est["home"]
+        result["away_est_score"]  = _est["away"]
+        result["est_components"]  = _est["components"]
+
+        results.append(result)
+
+    return results
+
+
 def predict_by_name(home_team, away_team, home_sp_id, away_sp_id,
                     team_baselines, sp_baselines, model, scaler=None):
     """Predict using team abbreviations and pitcher IDs from the 2025 baselines."""

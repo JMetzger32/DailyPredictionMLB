@@ -49,7 +49,7 @@ def _today_et():
 
 from flask import Flask, jsonify, render_template, request
 
-from MLBModel import predict_game, _default_sp_stats
+from MLBModel import predict_game, predict_games_batch, _default_sp_stats
 from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__,
@@ -1505,6 +1505,11 @@ def predictions():
     predictions_out = []
     log_changed = False
 
+    # First pass: resolve baselines/pitchers for every game. Games missing a team
+    # baseline are skipped immediately (as before); everything else is collected so
+    # predictions can be run as ONE batched call instead of one call per game — see
+    # predict_games_batch() docstring for why that matters on Render's free tier.
+    game_ctx = []
     for game in games_raw:
         home = game.get("home_team")
         away = game.get("away_team")
@@ -1532,13 +1537,44 @@ def predictions():
         home_sp_name = game.get("home_pitcher_name") or home_sp.get("name", "TBD")
         away_sp_name = game.get("away_pitcher_name") or away_sp.get("name", "TBD")
 
+        game_ctx.append({
+            "game": game, "home": home, "away": away,
+            "home_ts": home_ts, "away_ts": away_ts,
+            "home_sp": home_sp, "away_sp": away_sp,
+            "home_sp_name": home_sp_name, "away_sp_name": away_sp_name,
+        })
+
+    # Batch-predict all valid games in one shot. If anything goes wrong (e.g. a
+    # malformed baseline raises inside feature-row construction), fall back to the
+    # original one-call-per-game path so a single bad game can't take down the whole
+    # slate — matches the per-game try/except that used to wrap this call directly.
+    results_by_idx = {}
+    if game_ctx:
         try:
-            result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model,
-                                  scaler=scaler, runline_models=runline_models,
-                                  gb_model=gb_model, xgb_model=xgb_model,
-                                  xgb_bootstrap_models=xgb_bootstrap_models)
+            batch_stats = [(c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"]) for c in game_ctx]
+            batch_results = predict_games_batch(batch_stats, lr_model, scaler=scaler,
+                                                 runline_models=runline_models, gb_model=gb_model,
+                                                 xgb_model=xgb_model, xgb_bootstrap_models=xgb_bootstrap_models)
+            results_by_idx = dict(enumerate(batch_results))
         except Exception as e:
-            predictions_out.append({**game, "skipped": True, "skip_reason": str(e)})
+            print(f"[app] batch prediction failed ({e}) — falling back to per-game", flush=True)
+            for i, c in enumerate(game_ctx):
+                try:
+                    results_by_idx[i] = predict_game(
+                        c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"], lr_model,
+                        scaler=scaler, runline_models=runline_models, gb_model=gb_model,
+                        xgb_model=xgb_model, xgb_bootstrap_models=xgb_bootstrap_models)
+                except Exception as _ge:
+                    results_by_idx[i] = ("error", str(_ge))
+
+    for i, c in enumerate(game_ctx):
+        game, home, away = c["game"], c["home"], c["away"]
+        home_ts, away_ts, home_sp, away_sp = c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"]
+        home_sp_name, away_sp_name = c["home_sp_name"], c["away_sp_name"]
+
+        result = results_by_idx.get(i)
+        if isinstance(result, tuple) and result[0] == "error":
+            predictions_out.append({**game, "skipped": True, "skip_reason": result[1]})
             continue
 
         # Determine actual results — use stored log first, then overlay live scores
