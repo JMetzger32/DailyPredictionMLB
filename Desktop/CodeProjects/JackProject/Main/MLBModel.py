@@ -1133,7 +1133,12 @@ if __name__ == "__main__":
 
     # Step 7c: Final model — retrain on ALL data 2021-2026 with recency weights
     print("\n[7c] Retraining final model on 2021-2026 with recency weights...")
-    YEAR_WEIGHTS = {2021: 1.0, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
+    # 2021 down-weighted 1.0 -> 0.3: after the prior-season leak fix its SP/bullpen
+    # features are 100% league-average (no 2020 rows in pitcher_stats/team_bullpen_stats
+    # — see scripts/results/prior_season_substitution_check.md), so its rows carry noise
+    # on the strongest features. Down-weighted rather than dropped to keep the season's
+    # team-level rolling signal. MUST stay identical to update_daily.retrain_model.
+    YEAR_WEIGHTS = {2021: 0.3, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
     _final_df = model_df.dropna(subset=FEATURE_COLS)
     _sw = _final_df["season"].map(YEAR_WEIGHTS).fillna(1.0)
     X_final = _final_df[FEATURE_COLS]

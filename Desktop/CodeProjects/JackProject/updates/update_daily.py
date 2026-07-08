@@ -1127,7 +1127,10 @@ def retrain_model():
         except ImportError:
             HAS_XGB = False
 
-        YEAR_WEIGHTS = {2021: 1.0, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
+        # 2021 down-weighted 1.0 -> 0.3 (post-leak-fix its SP/bullpen features are all
+        # league-average; see scripts/results/prior_season_substitution_check.md).
+        # MUST stay identical to MLBModel.py __main__ YEAR_WEIGHTS.
+        YEAR_WEIGHTS = {2021: 0.3, 2022: 1.1, 2023: 1.3, 2024: 1.5, 2025: 1.8, 2026: 1.8}
 
         # Validation: train 2021-2025, validate 2026
         sw_train = train_data["season"].map(YEAR_WEIGHTS).fillna(1.0).values
