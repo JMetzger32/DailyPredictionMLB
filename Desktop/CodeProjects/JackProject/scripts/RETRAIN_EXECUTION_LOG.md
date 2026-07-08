@@ -15,7 +15,16 @@ Phase E2 — no prior log existed; earlier attempts are reconstructed from sessi
 - Consequence: no local retrain — running one anyway would silently drop the 50-model
   bootstrap ensemble from the artifact.
 
-## 2026-07-07 — local attempt #2 (branch integrate/full-fix, Phase E3) — see entry below
+## 2026-07-07 — local attempt #2 (branch integrate/full-fix, Phase E3) — ❌ FAILED
+- `pip install xgboost==3.3.0` succeeded; import failed identically to attempt #1:
+  `Library not loaded: @rpath/libomp.dylib` (searched /opt/homebrew/opt/libomp/... —
+  absent). **No Homebrew and no Docker on this machine**, so neither fallback B nor C is
+  currently possible locally.
+- xgboost uninstalled again immediately: a half-broken install raises `XGBoostError`
+  (not `ImportError`) at import time, which would crash `MLBModel`'s optional-import
+  guard and take the whole app down. Verified post-uninstall: `MLBModel import OK,
+  HAS_XGBOOST = False`; smoke test green.
+- **Conclusion: retrain must happen via fallback A (Render).** Exact commands below.
 
 ---
 
