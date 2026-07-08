@@ -1,10 +1,23 @@
 # Artifact regeneration checklist — mlb_model_artifacts.pkl
 
+**⚠ UPDATED (Phase E2): the retrain MUST run on `integrate/full-fix` (or main after it
+merges) — NOT the old `fix/eval-and-leak-phased` branch alone.** The integrated branch
+combines everything the new artifact needs:
+- prior-season (S-1) SP/bullpen features — the leak fix
+- `k_per_pa` flowing into live team baselines (feature was always 0 in production)
+- **2021 down-weighted** (YEAR_WEIGHTS 1.0 → 0.3) in both training paths
+- no 1.4× post-hoc boost; `model_version` + `saved_at` stamped at save
+
 **Why:** the deployed pkl (13 MB, `updates/mlb_model_artifacts.pkl`) still contains the OLD
 model: leaked same-season SP/bullpen features, the (now-removed) 1.4× SP-ERA coefficient boost
 baked into `lr_model.coef_`, and `model_version=None`. All fixes are in code; the artifact
 catches up only when retrained in an xgboost-capable environment. **Do not retrain on a machine
 without working xgboost** — the bootstrap ensemble would be silently dropped from the artifact.
+
+**Practical path (recommended):** merge → Render deploys (Render HAS xgboost) → hit
+`GET /api/retrain-model?key=<TRIGGER_SECRET>` (weekly-retrain path, ~5-10 min) or run
+`python Main/MLBModel.py` in a Render shell for the full offline rebuild incl. baselines.
+Execution attempts are logged in `scripts/RETRAIN_EXECUTION_LOG.md`.
 
 ## 0. Environment prerequisites
 - [ ] Python env with `Main/requirements.txt` installed — notably `xgboost`,
@@ -14,7 +27,7 @@ without working xgboost** — the bootstrap ensemble would be silently dropped f
       (`brew install libomp`); on Render/Linux it works out of the box.
 - [ ] DB present at `Databases_and_logs/mlb_allseasons.db` with 2021–2026 games,
       `pitcher_stats` (2021–2025), `team_bullpen_stats` (2021–2025).
-- [ ] On branch `fix/eval-and-leak-phased` (or after merge, `main` with these commits).
+- [ ] On branch `integrate/full-fix` (or after merge, `main` with these commits).
 
 ## 1. Back up the current artifact (rollback point)
 ```bash
@@ -50,8 +63,9 @@ Two equivalent paths — pick one:
 - [ ] Confirm no boost: max |lr coef| for `diff_sp_era` should be its fitted value (the old
       artifact had it multiplied 1.4×; the new one must be the plain fit).
 - [ ] 2025-holdout sanity: expect ensemble AUC ≈ 0.576 / LogLoss ≈ 0.681 / Brier ≈ 0.244
-      (leak-fixed baselines from `scripts/PHASE4_RESULTS.md`); the old leaked ~0.608 is NOT
-      expected — matching it would suggest the leak fix didn't take.
+      (leak-fixed baselines from `scripts/PHASE4_RESULTS.md`; the 2021 down-weight and
+      k_per_pa fix may shift these slightly — a point or two either way is fine); the old
+      leaked ~0.608 is NOT expected — matching it would suggest the leak fix didn't take.
 
 ## 5. Side-by-side OLD vs NEW prediction comparison
 - [ ] Score the same fixed slate from step 2 with the NEW pkl → `new_model_slate.json`.
