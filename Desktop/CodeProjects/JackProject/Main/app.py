@@ -797,6 +797,7 @@ def _push_file_to_github(filepath, commit_message):
     (see scripts/results/phase1_root_causes.md)."""
     if not GITHUB_TOKEN:
         print(f"[github] PUSH FAIL {os.path.basename(filepath)}: GITHUB_TOKEN not set", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: GITHUB_TOKEN not set")
         return False
     import base64
     try:
@@ -815,17 +816,101 @@ def _push_file_to_github(filepath, commit_message):
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
             print(f"[github] PUSH OK {os.path.basename(filepath)} ({_github_path(filepath)})", flush=True)
+            _job_record_success("github_backup")
             return True
         print(f"[github] PUSH FAIL {os.path.basename(filepath)}: "
               f"HTTP {resp.status_code} {resp.text[:200]}", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: HTTP {resp.status_code}")
         return False
     except Exception as e:
         print(f"[github] PUSH FAIL {os.path.basename(filepath)}: {e}", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: {e}")
         return False
 
 
 def _push_log_to_github():
     _push_file_to_github(PREDICTIONS_LOG, f"Auto-backup predictions log {_today_et().isoformat()}")
+
+
+# ---------------------------------------------------------------------------
+# Job status registry — last success/error per scheduled job, for /api/status.
+# Persisted to JSON (atomic write) so it survives spin-down on the same instance;
+# resets on redeploy (Render clones fresh) — /api/status says so honestly.
+# ---------------------------------------------------------------------------
+import threading as _thr
+import functools as _functools
+
+_PROCESS_START_ISO = datetime.now(_ET).isoformat()
+_JOB_STATUS_PATH = os.path.join(_ROOT, "Databases_and_logs", "job_status.json")
+_job_status_lock = _thr.Lock()
+
+
+def _job_status_load():
+    try:
+        with open(_JOB_STATUS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _job_status_write(name, **fields):
+    """Merge fields into the named job's status record. Atomic tmp+rename write."""
+    with _job_status_lock:
+        data = _job_status_load()
+        rec = data.setdefault(name, {})
+        rec.update(fields)
+        tmp = _JOB_STATUS_PATH + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, _JOB_STATUS_PATH)
+        except Exception as e:
+            print(f"[status] could not persist job_status.json: {e}", flush=True)
+
+
+def _job_record_success(name, rows_delta=None):
+    now = datetime.now(_ET).isoformat()
+    _job_status_write(name, last_success=now, last_run=now, rows_delta=rows_delta)
+    print(f"[job:{name}] OK" + (f" rows{rows_delta:+d}" if rows_delta is not None else ""), flush=True)
+
+
+def _job_record_error(name, msg):
+    now = datetime.now(_ET).isoformat()
+    _job_status_write(name, last_run=now, last_error={"message": str(msg)[:300], "ts": now})
+    print(f"[job:{name}] FAIL {str(msg)[:200]}", flush=True)
+
+
+def _betting_row_count(where="1=1"):
+    """Cheap counter against betting_log for job rows_delta reporting."""
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        n = conn.execute(f"SELECT COUNT(*) FROM betting_log WHERE {where}").fetchone()[0]
+        conn.close()
+        return n
+    except Exception:
+        return None
+
+
+def _track_job(name, count_fn=None):
+    """Wrap a scheduled job so /api/status reflects its outcomes. Jobs that swallow
+    exceptions internally also call _job_record_error inside their own except blocks —
+    this wrapper alone can't see those."""
+    def deco(fn):
+        @_functools.wraps(fn)
+        def wrapper(*a, **kw):
+            before = count_fn() if count_fn else None
+            try:
+                out = fn(*a, **kw)
+            except Exception as e:
+                _job_record_error(name, e)
+                raise
+            after = count_fn() if count_fn else None
+            delta = (after - before) if (before is not None and after is not None) else None
+            _job_record_success(name, rows_delta=delta)
+            return out
+        return wrapper
+    return deco
 
 
 def _latest_date_key(obj):
@@ -1108,6 +1193,7 @@ def run_daily_update():
     except Exception as e:
         print(f"[app] Daily update failed: {e}")
         traceback.print_exc()
+        _job_record_error("daily_update", e)
 
 
 def resolve_todays_completed_games():
@@ -1126,6 +1212,7 @@ def resolve_todays_completed_games():
         _resolve_picks_for_date(today)
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
+        _job_record_error("resolve_games", e)
 
 
 def _store_closing_odds():
@@ -1169,15 +1256,20 @@ def _store_closing_odds():
             print(f"[app] Closing odds stored for {today}", flush=True)
     except Exception as e:
         print(f"[app] _store_closing_odds failed: {e}", flush=True)
+        _job_record_error("closing_odds", e)
 
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(run_daily_update, "cron", hour=8, minute=0, timezone="America/New_York")
-    scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
-    scheduler.add_job(_store_closing_odds, "cron", hour=18, minute=45, timezone="America/New_York")
-    scheduler.add_job(_refresh_today_odds, "interval", hours=3)
+    scheduler.add_job(_track_job("daily_update", lambda: _betting_row_count())(run_daily_update),
+                      "cron", hour=8, minute=0, timezone="America/New_York", id="daily_update")
+    scheduler.add_job(_track_job("resolve_games", lambda: _betting_row_count("correct IS NOT NULL"))(resolve_todays_completed_games),
+                      "interval", minutes=30, id="resolve_games")
+    scheduler.add_job(_track_job("closing_odds", lambda: _betting_row_count("closing_home_ml IS NOT NULL"))(_store_closing_odds),
+                      "cron", hour=18, minute=45, timezone="America/New_York", id="closing_odds")
+    scheduler.add_job(_track_job("odds_refresh")(_refresh_today_odds),
+                      "interval", hours=3, id="odds_refresh")
     scheduler.start()
     print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh every 3h")
 except ImportError:
@@ -1346,6 +1438,30 @@ def health():
     from datetime import timezone as _tz
     return jsonify({"status": "ok",
                     "timestamp": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z")})
+
+
+@app.route("/api/status")
+def api_status():
+    """Operational status: last success/error per scheduled job (see OPERATIONS.md).
+    State persists across spin-downs on the same instance but resets on redeploy."""
+    next_runs = {}
+    try:
+        if scheduler and scheduler.running:
+            for job in scheduler.get_jobs():
+                next_runs[job.id] = str(job.next_run_time)
+    except Exception:
+        pass
+    return jsonify({
+        "process_started":   _PROCESS_START_ISO,
+        "scheduler_running": bool(scheduler and getattr(scheduler, "running", False)),
+        "jobs":              _job_status_load(),
+        "next_runs":         next_runs,
+        "github_token_set":  bool(GITHUB_TOKEN),
+        "odds_api_key_set":  bool(ODDS_API_KEY),
+        "model_version":     _artifacts.get("model_version"),
+        "now":               datetime.now(_ET).isoformat(),
+        "note":              "job state persists across restarts on the same instance; resets on redeploy",
+    })
 
 
 @app.route("/")
@@ -2355,11 +2471,14 @@ def retrain_model():
                 load_artifacts()
                 _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup retrained model {_today_et().isoformat()}")
                 print(f"[retrain] Success: {metrics}")
+                _job_record_success("retrain")
             else:
                 print(f"[retrain] Failed to retrain model")
+                _job_record_error("retrain", "retrain_model() returned None")
         except Exception as e:
             print(f"[retrain] Exception: {e}")
             traceback.print_exc()
+            _job_record_error("retrain", e)
 
     threading.Thread(target=run_retrain, daemon=True).start()
     return jsonify({
