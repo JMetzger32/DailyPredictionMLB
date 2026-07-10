@@ -56,6 +56,17 @@ app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
             static_folder=os.path.join(_ROOT, "static"))
 
+
+@app.after_request
+def _no_store_api(resp):
+    """API responses must never be cached by the browser. Without this the app sent no
+    Cache-Control at all, so browsers heuristically cached /api/accuracy et al. — one of
+    the three causes of the 'accuracy page frozen' report (see
+    scripts/results/phase1_root_causes.md). Pages/static keep default caching."""
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
 ARTIFACTS_PATH      = os.environ.get("ARTIFACTS_PATH",       os.path.join(_ROOT, "updates",            "mlb_model_artifacts.pkl"))
 PREDICTIONS_LOG     = os.environ.get("PREDICTIONS_LOG",      os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
 BETTING_LOG_PATH    = os.environ.get("BETTING_LOG_PATH",     os.path.join(_ROOT, "Databases_and_logs", "betting_log.json"))
@@ -204,6 +215,7 @@ def _upsert_betting_entries(entries):
     if not to_write:
         return
 
+    conn = None
     try:
         import sqlite3
         conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
@@ -281,28 +293,32 @@ def _upsert_betting_entries(entries):
             ))
 
         conn.commit()
-        conn.close()
         print(f"[betting] Upserted {len(to_write)} entries to betting_log table", flush=True)
+        return
     except Exception as e:
         print(f"[betting] Failed to upsert to betting_log table: {e}", flush=True)
-        # Fallback to JSON for backward compatibility
-        blog = _load_betting_log()
-        changed = False
-        for entry in to_write:
-            date_str = entry.get("date")
-            if not date_str:
-                continue
-            if date_str not in blog:
-                blog[date_str] = []
-            existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
-            pk = entry.get("game_pk")
-            if pk and pk in existing:
-                existing[pk].update(entry)
-            else:
-                blog[date_str].append(entry)
-            changed = True
-        if changed:
-            _save_betting_log(blog)
+        traceback.print_exc()
+    finally:
+        if conn is not None:
+            conn.close()
+    # Fallback to JSON for backward compatibility (reached only on DB failure)
+    blog = _load_betting_log()
+    changed = False
+    for entry in to_write:
+        date_str = entry.get("date")
+        if not date_str:
+            continue
+        if date_str not in blog:
+            blog[date_str] = []
+        existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
+        pk = entry.get("game_pk")
+        if pk and pk in existing:
+            existing[pk].update(entry)
+        else:
+            blog[date_str].append(entry)
+        changed = True
+    if changed:
+        _save_betting_log(blog)
 
 
 def _resolve_betting_log_results(date_str, results):
@@ -310,6 +326,7 @@ def _resolve_betting_log_results(date_str, results):
     if not results:
         return
 
+    conn = None
     try:
         import sqlite3
         conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
@@ -346,10 +363,12 @@ def _resolve_betting_log_results(date_str, results):
         if updated_count > 0:
             conn.commit()
             print(f"[betting] Resolved {updated_count} results in betting_log for {date_str}", flush=True)
-
-        conn.close()
     except Exception as e:
         print(f"[betting] Failed to resolve results in betting_log table: {e}", flush=True)
+        traceback.print_exc()
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +495,9 @@ def _build_prediction_entry(game, result, odds_data=None):
     _utc = game.get("game_time_utc", "")
     try:
         _game_date = datetime.fromisoformat(_utc.replace("Z", "+00:00")).astimezone(_ET).date().isoformat()
-    except Exception:
+    except Exception as _date_err:
+        print(f"[log] game_time_utc unparseable for pk={game.get('game_pk')} "
+              f"({_utc!r}): {_date_err} — falling back to date prefix", flush=True)
         _game_date = _utc[:10]
     return {
         "game_pk":           game.get("game_pk"),
@@ -769,10 +790,14 @@ def log_todays_predictions():
 # GitHub log backup — commits predictions_log.json to git after each update
 # ---------------------------------------------------------------------------
 def _push_file_to_github(filepath, commit_message):
-    """Push any local file to GitHub so it survives Render redeploys."""
+    """Push any local file to GitHub so it survives Render redeploys.
+    Returns True on success, False on any failure. Every outcome logs one grep-able
+    `[github] PUSH OK|FAIL` line — as of 2026-07-09 NO auto-backup commit has ever
+    landed in the repo history, so failures here must be loud, not decorative
+    (see scripts/results/phase1_root_causes.md)."""
     if not GITHUB_TOKEN:
-        print("[github] GITHUB_TOKEN not set — skipping backup")
-        return
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: GITHUB_TOKEN not set", flush=True)
+        return False
     import base64
     try:
         headers = {
@@ -789,11 +814,14 @@ def _push_file_to_github(filepath, commit_message):
             payload["sha"] = sha
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
-            print(f"[github] {filepath} backed up to GitHub ({_github_path(filepath)})", flush=True)
-        else:
-            print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}", flush=True)
+            print(f"[github] PUSH OK {os.path.basename(filepath)} ({_github_path(filepath)})", flush=True)
+            return True
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: "
+              f"HTTP {resp.status_code} {resp.text[:200]}", flush=True)
+        return False
     except Exception as e:
-        print(f"[github] backup error: {e}")
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: {e}", flush=True)
+        return False
 
 
 def _push_log_to_github():
@@ -1771,7 +1799,9 @@ def accuracy():
     Splits regular season (game_type=R) and spring training (game_type=S).
     Auto-heals the log before computing: resolves unresolved entries and
     backfills missing days for the last 7 days.
-    Result is cached for 5 minutes so rapid reloads always show the same number.
+    Result is cached server-side for _ACCURACY_CACHE_TTL (60s) so rapid reloads
+    show the same number; response carries heal_in_progress when a large backfill
+    is running in the background (numbers will grow on a later request).
     """
     if time.time() - _accuracy_cache["ts"] < _ACCURACY_CACHE_TTL and _accuracy_cache["payload"]:
         return _accuracy_cache["payload"]
@@ -1786,8 +1816,12 @@ def accuracy():
         1 for i in range(1, _days_since_start + 1)
         if (_today_et() - timedelta(days=i)).isoformat() not in _existing
     )
+    heal_in_progress = False
     if _missing > 3:
-        # Large backfill: run in background so the page doesn't time out
+        # Large backfill: run in background so the page doesn't time out.
+        # The response below is computed from the PRE-heal log — flag it so the
+        # frontend can tell the user the totals are still filling in.
+        heal_in_progress = True
         _heal_target = _days_since_start
         _threading.Thread(
             target=_auto_heal_log, kwargs={"days": _heal_target}, daemon=True
@@ -1969,11 +2003,35 @@ def accuracy():
         "by_week":         by_week,
         "ou_stats":        ou_stats,
         "home_win_rate":   home_win_rate,
+        "heal_in_progress": heal_in_progress,
         "last_updated":    datetime.now().isoformat(),
     })
     _accuracy_cache["payload"] = response
     _accuracy_cache["ts"]      = time.time()
     return response
+
+
+def _pl_for_bet(b, stake=10.0):
+    """Net P/L for a flat `stake` bet on the predicted team; None when odds are missing."""
+    ml = b.get("predicted_team_ml")
+    if ml is None:
+        return None
+    if b["correct"]:
+        return round(stake * (ml / 100) if ml >= 0 else stake * (100 / abs(ml)), 2)
+    return round(-stake, 2)
+
+
+def _qualifying_bets(entries):
+    """The betting page's core filter: regular-season entries that have BOTH a bet_rating
+    (odds were captured pre-game) AND a resolution. Kept as a named helper so the
+    'all-zeros betting page' failure mode (rows where these never coexist — see
+    scripts/results/phase1_root_causes.md) has a unit-testable seam."""
+    return [
+        e for e in entries
+        if e.get("game_type") != "S"
+        and e.get("bet_rating") is not None
+        and e.get("correct") is not None
+    ]
 
 
 def _load_betting_log_from_db():
@@ -2000,27 +2058,29 @@ def betting_stats():
     all_entries_raw = _load_betting_log_from_db()
 
     # Only include RS entries with odds data that are resolved
-    all_entries = [
-        e for e in all_entries_raw
-        if e.get("game_type") != "S"
-        and e.get("bet_rating") is not None
-        and e.get("correct") is not None
-    ]
+    all_entries = _qualifying_bets(all_entries_raw)
+
+    # Diagnostics: when the page is empty, say WHY. The historical failure mode is rows
+    # where bet_rating and correct never coexist (odds attach to today, resolutions to the
+    # past, and un-backed-up state is lost on every Render restart).
+    diagnostics = {
+        "rows_total":       len(all_entries_raw),
+        "rows_with_rating": sum(1 for e in all_entries_raw if e.get("bet_rating") is not None),
+        "rows_resolved":    sum(1 for e in all_entries_raw if e.get("correct") is not None),
+        "rows_qualifying":  len(all_entries),
+    }
+    if diagnostics["rows_total"] > 0 and diagnostics["rows_qualifying"] == 0:
+        diagnostics["data_gap_note"] = (
+            "Rows exist but none have BOTH odds and a result. Odds captured pre-game are "
+            "being lost before games resolve — check that GITHUB_TOKEN is set on the host "
+            "so log backups persist across restarts (see OPERATIONS.md)."
+        )
 
     categories = {"good": [], "unsure": [], "bad": []}
     for e in all_entries:
         rating = e.get("bet_rating")
         if rating in categories:
             categories[rating].append(e)
-
-    def _pl_for_bet(b):
-        """Return net P/L for a $10 bet on the predicted team."""
-        ml = b.get("predicted_team_ml")
-        if ml is None:
-            return None
-        if b["correct"]:
-            return round(10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml)), 2)
-        return -10.0
 
     def cat_stats(bets):
         if not bets:
@@ -2154,6 +2214,7 @@ def betting_stats():
         "tracking_start":  tracking_start,
         "clv_stats":       clv_stats,
         "rl_stats":        rl_stats,
+        "diagnostics":     diagnostics,
         "last_updated":    datetime.now().isoformat(),
     })
 

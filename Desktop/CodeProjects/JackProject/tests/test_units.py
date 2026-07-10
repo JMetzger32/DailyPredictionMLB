@@ -146,6 +146,31 @@ def test_betting_upsert_coalesce():
     conn.close()
 
 
+def test_pl_for_bet():
+    ns = _extract("_pl_for_bet")
+    f = ns["_pl_for_bet"]
+    assert f({"predicted_team_ml": None, "correct": 1}) is None      # no odds -> no P/L
+    assert f({"predicted_team_ml": 120, "correct": 1}) == 12.0       # +120 win pays $12
+    assert f({"predicted_team_ml": -150, "correct": 1}) == 6.67      # -150 win pays $6.67
+    assert f({"predicted_team_ml": -150, "correct": 0}) == -10.0     # loss = -stake
+    assert f({"predicted_team_ml": 120, "correct": 0, }, stake=25) == -25.0
+
+
+def test_qualifying_bets():
+    """Regression for the empty-betting-page failure: rows where bet_rating and correct
+    never coexist must yield zero qualifying bets; rows with both must qualify."""
+    ns = _extract("_qualifying_bets")
+    f = ns["_qualifying_bets"]
+    broken_state = (
+        [{"bet_rating": None, "correct": 1, "game_type": "R"}] * 3 +   # resolved, no odds
+        [{"bet_rating": "good", "correct": None, "game_type": "R"}] * 2  # odds, unresolved
+    )
+    assert f(broken_state) == [], "odds-XOR-resolved rows must not qualify (the live bug)"
+    healthy = {"bet_rating": "good", "correct": 1, "game_type": "R"}
+    spring  = {"bet_rating": "good", "correct": 1, "game_type": "S"}
+    assert f(broken_state + [healthy, spring]) == [healthy], "RS rows with both must qualify; ST excluded"
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
