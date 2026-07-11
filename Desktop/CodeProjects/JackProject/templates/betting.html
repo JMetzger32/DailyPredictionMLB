@@ -99,6 +99,39 @@
           <div class="fs-5 fw-bold" id="roi-pct">—</div>
           <div class="text-muted small">ROI</div>
         </div>
+        <div class="text-muted fs-4">·</div>
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="kelly-net">—</div>
+          <div class="text-muted small">¼-Kelly Net P/L</div>
+        </div>
+        <div class="text-center">
+          <div class="fs-5 fw-bold" id="kelly-roi">—</div>
+          <div class="text-muted small">¼-Kelly ROI</div>
+        </div>
+        <div class="w-100 text-center text-muted mt-1" style="font-size:0.75rem;" id="kelly-note"></div>
+      </div>
+    </div>
+
+    <!-- ── Weekly Results Table ─────────────────────────────────── -->
+    <div id="weekly-card" class="card border-0 shadow-sm mb-4 d-none">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">Weekly Results <span class="text-muted small fw-normal">(click a week to see its bets below)</span></h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>Week</th>
+                <th class="d-none d-sm-table-cell">Dates</th>
+                <th class="text-center">W-L</th>
+                <th class="text-center">Win %</th>
+                <th class="text-center">Avg Edge</th>
+                <th class="text-center d-none d-sm-table-cell">Avg CLV</th>
+                <th class="text-end">Net P/L</th>
+              </tr>
+            </thead>
+            <tbody id="weekly-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -141,7 +174,8 @@
     <!-- ── Recent Value Bets Table ─────────────────────────────── -->
     <div id="recent-card" class="card border-0 shadow-sm mb-4 d-none">
       <div class="card-body">
-        <h6 class="fw-semibold mb-3">Recent Value Bets <span class="text-muted small fw-normal">(click a row for game details)</span></h6>
+        <h6 class="fw-semibold mb-3"><span id="recent-title">Recent Value Bets</span> <span class="text-muted small fw-normal">(click a row for game details)</span>
+          <a href="#" id="show-recent-link" class="small ms-2 d-none">← show recent</a></h6>
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-dark">
@@ -152,8 +186,10 @@
                 <th class="text-center">Odds</th>
                 <th class="text-center">Edge</th>
                 <th class="text-center" title="Expected value per $10 bet based on model probability">EV</th>
+                <th class="text-center" title="Quarter-Kelly stake off a $100 bankroll, capped at 5%">¼K Stake</th>
                 <th class="text-center">Result</th>
                 <th class="text-end">P/L</th>
+                <th class="text-end" title="P/L at the quarter-Kelly stake">¼K P/L</th>
               </tr>
             </thead>
             <tbody id="recent-tbody"></tbody>
@@ -283,6 +319,92 @@
     if (pct >= 0.60) return "text-success";
     if (pct >= 0.50) return "text-warning";
     return "text-danger";
+  }
+
+  function fmtStake(s) {
+    if (s === null || s === undefined) return "—";
+    return `$${s.toFixed(2)}`;
+  }
+
+  // ── Shared bet-row renderer (recent list + weekly detail) ─────
+  let _recentBets = [];   // cached so "show recent" restores without a refetch
+
+  function renderBetRows(rows) {
+    const tbody = document.getElementById("recent-tbody");
+    tbody.innerHTML = "";
+    rows.forEach(b => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      if (b.correct === true)  tr.classList.add("table-success");
+      else if (b.correct === false) tr.classList.add("table-danger");
+      const evStr  = b.ev != null ? fmtPL(b.ev) : "—";
+      const evCls  = b.ev != null ? plColor(b.ev) : "text-muted";
+      const kplCls = b.kelly_pl != null ? plColor(b.kelly_pl) : "text-muted";
+      tr.innerHTML = `
+        <td class="text-nowrap text-muted small">${b.date}</td>
+        <td class="small">${b.away_team} @ ${b.home_team}</td>
+        <td class="fw-semibold small">${b.pick || "—"}</td>
+        <td class="text-center small">${fmtOdds(b.ml)}</td>
+        <td class="text-center small">${fmtEdge(b.edge)}</td>
+        <td class="text-center small fw-semibold ${evCls}">${evStr}</td>
+        <td class="text-center small text-muted">${fmtStake(b.kelly_stake)}</td>
+        <td class="text-center">${b.correct === true ? "✅" : b.correct === false ? "❌" : "⏳"}</td>
+        <td class="text-end fw-semibold small ${plColor(b.pl)}">${fmtPL(b.pl)}</td>
+        <td class="text-end small ${kplCls}">${fmtPL(b.kelly_pl)}</td>`;
+      tr.addEventListener("click", () => openBetModal(b));
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showRecent() {
+    document.getElementById("recent-title").textContent = "Recent Value Bets";
+    document.getElementById("show-recent-link").classList.add("d-none");
+    renderBetRows(_recentBets);
+  }
+  document.getElementById("show-recent-link").addEventListener("click", e => {
+    e.preventDefault();
+    showRecent();
+  });
+
+  async function showWeekDetail(week) {
+    try {
+      const res  = await fetch(`/api/betting/weekly?week=${encodeURIComponent(week)}`);
+      const data = await res.json();
+      document.getElementById("recent-title").textContent = `Bets — ${week}`;
+      document.getElementById("show-recent-link").classList.remove("d-none");
+      renderBetRows(data.bets || []);
+      document.getElementById("recent-card").scrollIntoView({behavior: "smooth", block: "start"});
+    } catch (e) { /* leave current table as-is */ }
+  }
+
+  async function loadWeekly() {
+    try {
+      const res  = await fetch("/api/betting/weekly");
+      const data = await res.json();
+      const weeks = data.weeks || [];
+      if (weeks.length === 0) return;
+      document.getElementById("weekly-card").classList.remove("d-none");
+      const tbody = document.getElementById("weekly-tbody");
+      tbody.innerHTML = "";
+      weeks.forEach(w => {
+        const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        const plCls  = w.net_pl >= 0 ? "text-success" : "text-danger";
+        const accCls = accuracyColor(w.win_rate);
+        const clvStr = w.avg_clv != null
+          ? `${w.avg_clv >= 0 ? "+" : ""}${(w.avg_clv * 100).toFixed(2)}%` : "—";
+        tr.innerHTML = `
+          <td class="fw-semibold small text-nowrap">${w.week}</td>
+          <td class="text-muted small d-none d-sm-table-cell">${w.start} → ${w.end}</td>
+          <td class="text-center small">${w.wins}-${w.losses}</td>
+          <td class="text-center small ${accCls}">${(w.win_rate * 100).toFixed(1)}%</td>
+          <td class="text-center small">${fmtEdge(w.avg_edge)}</td>
+          <td class="text-center small d-none d-sm-table-cell">${clvStr}</td>
+          <td class="text-end fw-bold small ${plCls}">${fmtPL(w.net_pl)}</td>`;
+        tr.addEventListener("click", () => showWeekDetail(w.week));
+        tbody.appendChild(tr);
+      });
+    } catch (e) { /* weekly view is additive — never break the page */ }
   }
 
   // ── Game detail modal ──────────────────────────────────────────
@@ -451,27 +573,30 @@
       const recent = data.recent_bets || [];
       if (recent.length > 0) {
         document.getElementById("recent-card").classList.remove("d-none");
-        const tbody = document.getElementById("recent-tbody");
-        recent.forEach(b => {
-          const tr = document.createElement("tr");
-          tr.style.cursor = "pointer";
-          if (b.correct === true)  tr.classList.add("table-success");
-          else if (b.correct === false) tr.classList.add("table-danger");
-          const evStr  = b.ev != null ? fmtPL(b.ev) : "—";
-          const evCls  = b.ev != null ? plColor(b.ev) : "text-muted";
-          tr.innerHTML = `
-            <td class="text-nowrap text-muted small">${b.date}</td>
-            <td class="small">${b.away_team} @ ${b.home_team}</td>
-            <td class="fw-semibold small">${b.pick || "—"}</td>
-            <td class="text-center small">${fmtOdds(b.ml)}</td>
-            <td class="text-center small">${fmtEdge(b.edge)}</td>
-            <td class="text-center small fw-semibold ${evCls}">${evStr}</td>
-            <td class="text-center">${b.correct === true ? "✅" : b.correct === false ? "❌" : "⏳"}</td>
-            <td class="text-end fw-semibold small ${plColor(b.pl)}">${fmtPL(b.pl)}</td>`;
-          tr.addEventListener("click", () => openBetModal(b));
-          tbody.appendChild(tr);
-        });
+        _recentBets = recent;
+        renderBetRows(recent);
       }
+
+      // Kelly summary tile + footnote
+      const k = data.kelly;
+      if (k && k.bets > 0) {
+        const kCls  = k.net_pl >= 0 ? "text-success" : "text-danger";
+        const kSign = k.net_pl >= 0 ? "+" : "";
+        const netEl2 = document.getElementById("kelly-net");
+        netEl2.textContent = `${kSign}$${Math.abs(k.net_pl).toFixed(2)}`;
+        netEl2.className   = `fs-5 fw-bold ${kCls}`;
+        if (k.roi !== null) {
+          const roiEl2 = document.getElementById("kelly-roi");
+          roiEl2.textContent = `${kSign}${(k.roi * 100).toFixed(1)}%`;
+          roiEl2.className   = `fs-5 fw-bold ${kCls}`;
+        }
+        document.getElementById("kelly-note").textContent =
+          `¼-Kelly: ${k.bets} bets, $${k.total_staked.toFixed(2)} staked off a fixed ` +
+          `$${k.bankroll.toFixed(0)} bankroll (stakes capped at ${(k.max_stake_pct * 100).toFixed(0)}%). ` +
+          `Fractional Kelly is used because the model's calibration error (ECE ≈ 0.08) makes full Kelly overbet.`;
+      }
+
+      loadWeekly();
 
       // Team-by-team stats
       const teams = data.team_stats || [];

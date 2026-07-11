@@ -2150,6 +2150,67 @@ def _qualifying_bets(entries):
     ]
 
 
+def _kelly_stake(win_prob, ml, bankroll, fraction, max_stake_pct):
+    """Fractional-Kelly stake in dollars for an American-odds moneyline bet.
+    None when inputs are missing; 0.0 when Kelly says no bet (f* <= 0).
+    Stake = bankroll * min(f* x fraction, max_stake_pct) — flat, non-compounding."""
+    if win_prob is None or ml is None:
+        return None
+    b = (ml / 100) if ml >= 0 else (100 / abs(ml))  # net profit per $1 staked
+    f = (win_prob * b - (1 - win_prob)) / b
+    if f <= 0:
+        return 0.0
+    return round(bankroll * min(f * fraction, max_stake_pct), 2)
+
+
+def _bet_row(b, kelly=None):
+    """API row for one value bet — shared by /api/betting recent list and
+    /api/betting/weekly detail. `kelly` = (bankroll, fraction, max_stake_pct);
+    when given, adds kelly_stake / kelly_pl."""
+    pl = _pl_for_bet(b)
+    pick_is_home = b["predicted_winner"] == "Home"
+    ml   = b.get("predicted_team_ml")
+    hwp  = b.get("home_win_prob")
+    win_p = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
+    if ml is not None and win_p is not None:
+        profit = 10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml))
+        ev = round(win_p * profit - (1 - win_p) * 10, 2)
+    else:
+        ev = None
+    row = {
+        "game_pk":        b.get("game_pk"),
+        "date":           b["date"],
+        "away_team":      b.get("away_team_name", b.get("away_team")),
+        "home_team":      b.get("home_team_name", b.get("home_team")),
+        "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
+        "ml":             ml,
+        "edge":           b.get("model_edge"),
+        "ev":             ev,
+        "correct":        b["correct"],
+        "pl":             pl,
+        "home_win_prob":  hwp,
+        "away_win_prob":  b.get("away_win_prob"),
+        "predicted_winner": b.get("predicted_winner"),
+        "away_score":     b.get("away_score"),
+        "home_score":     b.get("home_score"),
+    }
+    if kelly is not None:
+        stake = _kelly_stake(win_p, ml, *kelly)
+        row["kelly_stake"] = stake
+        row["kelly_pl"] = _pl_for_bet(b, stake=stake) if stake else (0.0 if stake == 0 else None)
+    return row
+
+
+def _week_key(date_str):
+    """ISO-week key ('2026-W27') for a YYYY-MM-DD date; None if unparseable.
+    Grouped in Python because SQLite's strftime %G/%V needs >= 3.46."""
+    try:
+        y, w, _ = datetime.strptime(date_str, "%Y-%m-%d").date().isocalendar()
+        return f"{y}-W{w:02d}"
+    except (TypeError, ValueError):
+        return None
+
+
 def _load_betting_log_from_db():
     """Load all betting_log entries from SQLite as a list of dicts."""
     try:
@@ -2236,36 +2297,36 @@ def betting_stats():
             "edge":    b.get("model_edge"),
         })
 
+    # Kelly sizing params (query-string overridable, clamped). Fraction defaults to
+    # 1/4 Kelly: live calibration error (ECE ~ 0.079) means full Kelly would overbet.
+    def _qparam(name, default, lo, hi):
+        try:
+            v = float(request.args.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(hi, v))
+    kelly_params = (_qparam("bankroll", 100.0, 1.0, 1_000_000.0),
+                    _qparam("kelly_fraction", 0.25, 0.0, 1.0),
+                    _qparam("max_stake_pct", 0.05, 0.001, 1.0))
+
     # Recent value bets (last 20, most recent first)
-    recent_value_bets = []
-    for b in reversed(value_bets[-20:]):
-        pl = _pl_for_bet(b)
-        pick_is_home = b["predicted_winner"] == "Home"
-        ml   = b.get("predicted_team_ml")
-        hwp  = b.get("home_win_prob")
-        win_p = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
-        if ml is not None and win_p is not None:
-            profit = 10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml))
-            ev = round(win_p * profit - (1 - win_p) * 10, 2)
-        else:
-            ev = None
-        recent_value_bets.append({
-            "game_pk":        b.get("game_pk"),
-            "date":           b["date"],
-            "away_team":      b.get("away_team_name", b.get("away_team")),
-            "home_team":      b.get("home_team_name", b.get("home_team")),
-            "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
-            "ml":             ml,
-            "edge":           b.get("model_edge"),
-            "ev":             ev,
-            "correct":        b["correct"],
-            "pl":             pl,
-            "home_win_prob":  hwp,
-            "away_win_prob":  b.get("away_win_prob"),
-            "predicted_winner": b.get("predicted_winner"),
-            "away_score":     b.get("away_score"),
-            "home_score":     b.get("home_score"),
-        })
+    recent_value_bets = [_bet_row(b, kelly=kelly_params) for b in reversed(value_bets[-20:])]
+
+    # Kelly summary over ALL resolved value bets (flat stakes off a fixed bankroll)
+    kelly_summary = {"bets": 0, "total_staked": 0.0, "net_pl": 0.0, "roi": None,
+                     "bankroll": kelly_params[0], "kelly_fraction": kelly_params[1],
+                     "max_stake_pct": kelly_params[2]}
+    for b in value_bets:
+        hwp = b.get("home_win_prob")
+        win_p = hwp if b["predicted_winner"] == "Home" else (1 - hwp) if hwp is not None else None
+        stake = _kelly_stake(win_p, b.get("predicted_team_ml"), *kelly_params)
+        if not stake:  # None (no odds) or 0.0 (Kelly passes) -> no bet placed
+            continue
+        kelly_summary["bets"] += 1
+        kelly_summary["total_staked"] = round(kelly_summary["total_staked"] + stake, 2)
+        kelly_summary["net_pl"] = round(kelly_summary["net_pl"] + _pl_for_bet(b, stake=stake), 2)
+    if kelly_summary["total_staked"]:
+        kelly_summary["roi"] = round(kelly_summary["net_pl"] / kelly_summary["total_staked"], 4)
 
     # Tracking start date (first entry with odds data, RS only)
     odds_entries = [e for e in all_entries_raw
@@ -2330,9 +2391,57 @@ def betting_stats():
         "tracking_start":  tracking_start,
         "clv_stats":       clv_stats,
         "rl_stats":        rl_stats,
+        "kelly":           kelly_summary,
         "diagnostics":     diagnostics,
         "last_updated":    datetime.now().isoformat(),
     })
+
+
+@app.route("/api/betting/weekly")
+def betting_weekly():
+    """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows."""
+    value_bets = [e for e in _qualifying_bets(_load_betting_log_from_db())
+                  if e.get("bet_rating") == "good"]
+    value_bets.sort(key=lambda e: (e["date"], e.get("game_pk", 0)))
+
+    week_param = request.args.get("week")
+    if week_param:
+        rows = [_bet_row(b, kelly=(100.0, 0.25, 0.05)) for b in value_bets
+                if _week_key(b["date"]) == week_param]
+        return jsonify({"week": week_param, "bets": rows[::-1]})
+
+    weeks = {}
+    for b in value_bets:
+        k = _week_key(b["date"])
+        if k is None:
+            continue
+        w = weeks.setdefault(k, {"start": b["date"], "end": b["date"], "bets": 0,
+                                 "wins": 0, "net_pl": 0.0, "edges": [], "clvs": []})
+        w["start"] = min(w["start"], b["date"])
+        w["end"]   = max(w["end"], b["date"])
+        w["bets"] += 1
+        w["wins"] += int(bool(b["correct"]))
+        pl = _pl_for_bet(b)
+        if pl is not None:
+            w["net_pl"] = round(w["net_pl"] + pl, 2)
+        if b.get("model_edge") is not None:
+            w["edges"].append(b["model_edge"])
+        if b.get("clv") is not None:
+            w["clvs"].append(b["clv"])
+
+    out = [{
+        "week":     k,
+        "start":    w["start"],
+        "end":      w["end"],
+        "bets":     w["bets"],
+        "wins":     w["wins"],
+        "losses":   w["bets"] - w["wins"],
+        "win_rate": round(w["wins"] / w["bets"], 3),
+        "net_pl":   w["net_pl"],
+        "avg_edge": round(sum(w["edges"]) / len(w["edges"]), 4) if w["edges"] else None,
+        "avg_clv":  round(sum(w["clvs"]) / len(w["clvs"]), 4) if w["clvs"] else None,
+    } for k, w in sorted(weeks.items(), reverse=True)]  # zero-padded keys sort correctly
+    return jsonify({"weeks": out, "last_updated": datetime.now().isoformat()})
 
 
 @app.route("/api/calibration")

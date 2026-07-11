@@ -171,6 +171,45 @@ def test_qualifying_bets():
     assert f(broken_state + [healthy, spring]) == [healthy], "RS rows with both must qualify; ST excluded"
 
 
+def test_kelly_stake():
+    ns = _extract("_kelly_stake")
+    f = ns["_kelly_stake"]
+    assert f(None, -140, 100, 0.25, 0.05) is None       # missing prob
+    assert f(0.62, None, 100, 0.25, 0.05) is None       # missing odds
+    # -140, p=0.62: b=100/140, f*=(0.62b-0.38)/b=0.088 -> quarter=0.022 -> $2.20
+    assert abs(f(0.62, -140, 100, 0.25, 0.05) - 2.20) < 0.01
+    assert f(0.40, 120, 100, 0.25, 0.05) == 0.0         # negative edge -> no bet
+    assert f(0.90, 200, 100, 0.25, 0.05) == 5.0         # f*=0.85 -> capped at 5% of bankroll
+    assert abs(f(0.62, -140, 1000, 0.25, 0.05) - 22.0) < 0.1  # scales with bankroll
+
+
+def test_week_key():
+    import datetime as _dt
+    ns = _extract("_week_key")
+    ns["datetime"] = _dt.datetime
+    f = ns["_week_key"]
+    assert f("2024-12-30") == "2025-W01"    # ISO year rollover
+    assert f("2025-01-08") == "2025-W02"    # zero-padded week number
+    assert f("garbage") is None
+    assert f(None) is None
+
+
+def test_bet_row_kelly():
+    ns = _extract("_pl_for_bet", "_kelly_stake", "_bet_row")
+    f = ns["_bet_row"]
+    b = {"predicted_winner": "Home", "home_win_prob": 0.62, "predicted_team_ml": -140,
+         "correct": 1, "date": "2026-07-06", "game_pk": 1, "model_edge": 0.06}
+    row = f(b, kelly=(100, 0.25, 0.05))
+    assert abs(row["kelly_stake"] - 2.20) < 0.01
+    assert row["kelly_pl"] == round(2.20 * 100 / 140, 2)   # win at -140
+    assert f(b).get("kelly_stake") is None                  # no kelly ctx -> no kelly fields
+    b_loss = dict(b, correct=0)
+    assert f(b_loss, kelly=(100, 0.25, 0.05))["kelly_pl"] == -2.20
+    b_no_odds = dict(b, predicted_team_ml=None)
+    r = f(b_no_odds, kelly=(100, 0.25, 0.05))
+    assert r["kelly_stake"] is None and r["kelly_pl"] is None
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
