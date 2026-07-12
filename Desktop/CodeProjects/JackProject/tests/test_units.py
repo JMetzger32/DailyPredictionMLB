@@ -210,6 +210,26 @@ def test_bet_row_kelly():
     assert r["kelly_stake"] is None and r["kelly_pl"] is None
 
 
+def test_synth_results_from_log():
+    """Past-date fast path: full synthesis when every game has a stored prediction;
+    None (-> fall back to inference) when any game lacks one."""
+    ns = _extract("_synth_results_from_log")
+    f = ns["_synth_results_from_log"]
+    ctx = [{"game": {"game_pk": 1}}, {"game": {"game_pk": 2}}]
+    log = {1: {"home_win_prob": 0.62, "away_win_prob": 0.38, "predicted_winner": "Home",
+               "predicted_total": 8.5},
+           2: {"home_win_prob": 0.45, "predicted_winner": "Away"}}
+    out = f(ctx, log)
+    assert set(out) == {0, 1}
+    assert out[0]["predicted_winner"] == "Home" and out[0]["home_win_prob"] == 0.62
+    assert out[0]["confidence"] == 0.24 and out[0]["predicted_total"] == 8.5
+    assert out[1]["away_win_prob"] == 0.55            # derived from 1 - hwp
+    assert out[1]["est_components"] is None           # not logged -> None, UI hides it
+    assert f(ctx, {1: log[1]}) is None                # game 2 unstored -> no fast path
+    assert f(ctx, {1: log[1], 2: {"home_win_prob": None, "predicted_winner": "Away"}}) is None
+    assert f([], {}) == {}                            # empty slate -> empty dict
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

@@ -172,9 +172,23 @@ def _load_log():
         return {}
 
 
+# Response cache for fully-resolved PAST dates. Those payloads only change when the
+# predictions log itself changes, so they're served from memory instead of re-running
+# inference on Render's 0.1 vCPU. Bounded; cleared wholesale on any log write.
+import threading as _pc_thr
+from collections import OrderedDict as _PCOrderedDict
+_past_pred_cache: dict = _PCOrderedDict()
+_PAST_PRED_CACHE_MAX = 30
+_past_pred_cache_lock = _pc_thr.Lock()
+
+
 def _save_log(log):
     with open(PREDICTIONS_LOG, "w") as f:
         json.dump(log, f, indent=2)
+    # Any log write can change what a past-date response should contain (results,
+    # backfilled odds, healed days) — drop all cached payloads rather than guess which.
+    with _past_pred_cache_lock:
+        _past_pred_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1585,6 +1599,32 @@ def picks_leaderboard():
     })
 
 
+def _synth_results_from_log(game_ctx, log_by_pk):
+    """Past-date fast path: build the per-game results dict from stored log entries
+    so predict_games_batch can be skipped entirely. Returns None if ANY game lacks a
+    stored pre-game prediction — the caller then falls back to real inference.
+    Cover probs / est_components aren't logged, so they come back None; the UI
+    null-guards both and simply hides those sections on past-date cards."""
+    out = {}
+    for i, c in enumerate(game_ctx):
+        stored = log_by_pk.get(c["game"].get("game_pk"))
+        if (not stored or stored.get("home_win_prob") is None
+                or stored.get("predicted_winner") is None):
+            return None
+        hwp = stored["home_win_prob"]
+        out[i] = {
+            "home_win_prob":    hwp,
+            "away_win_prob":    stored.get("away_win_prob") or round(1 - hwp, 4),
+            "predicted_winner": stored["predicted_winner"],
+            "confidence":       round(abs(hwp - 0.5) * 2, 3),
+            "home_cover_prob":  stored.get("home_cover_prob"),
+            "away_cover_prob":  stored.get("away_cover_prob"),
+            "predicted_total":  stored.get("predicted_total"),
+            "est_components":   stored.get("est_components"),
+        }
+    return out
+
+
 @app.route("/api/predictions")
 def predictions():
     """
@@ -1600,6 +1640,14 @@ def predictions():
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
     else:
         target_date = _today_et()
+
+    # Fully-resolved past dates are served straight from the response cache
+    # (populated below, invalidated by _save_log).
+    if target_date < _today_et() - timedelta(days=1):
+        with _past_pred_cache_lock:
+            cached = _past_pred_cache.get(target_date.isoformat())
+        if cached is not None:
+            return jsonify(cached)
 
     team_baselines = _artifacts.get("team_baselines", {})
     sp_baselines   = _artifacts.get("sp_baselines", {})
@@ -1693,7 +1741,15 @@ def predictions():
     # original one-call-per-game path so a single bad game can't take down the whole
     # slate — matches the per-game try/except that used to wrap this call directly.
     results_by_idx = {}
-    if game_ctx:
+    # Past dates: if every game already has a stored pre-game prediction, synthesize
+    # results from the log — the past-date card overlay would overwrite the freshly
+    # computed numbers with the stored ones anyway, so inference is pure waste here.
+    if game_ctx and target_date < _today_et():
+        results_by_idx = _synth_results_from_log(game_ctx, log_by_pk) or {}
+        if results_by_idx:
+            print(f"[pred] {date_str}: all {len(results_by_idx)} predictions from log — "
+                  "inference skipped", flush=True)
+    if game_ctx and not results_by_idx:
         try:
             batch_stats = [(c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"]) for c in game_ctx]
             batch_results = predict_games_batch(batch_stats, lr_model, scaler=scaler,
@@ -1896,12 +1952,26 @@ def predictions():
         _push_log_to_github()
         _upsert_betting_entries(log.get(date_str, []))
 
-    return jsonify({
+    payload = {
         "date":          target_date.isoformat(),
         "games":         predictions_out,
         "model_version": _artifacts.get("model_version"),
         "last_updated":  datetime.now().isoformat(),
-    })
+    }
+
+    # Cache only fully-resolved dates older than yesterday: every non-skipped game
+    # has a result, so the payload can't change until the log does (and _save_log —
+    # called above BEFORE this point when log_changed — clears the cache on write).
+    if (target_date < _today_et() - timedelta(days=1)
+            and any(not g.get("skipped") for g in predictions_out)
+            and all(g.get("skipped") or g.get("actual_winner") is not None
+                    for g in predictions_out)):
+        with _past_pred_cache_lock:
+            _past_pred_cache[date_str] = payload
+            while len(_past_pred_cache) > _PAST_PRED_CACHE_MAX:
+                _past_pred_cache.popitem(last=False)
+
+    return jsonify(payload)
 
 
 _accuracy_cache: dict = {"ts": 0.0, "payload": None}
