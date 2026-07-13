@@ -146,6 +146,90 @@ def test_betting_upsert_coalesce():
     conn.close()
 
 
+def test_pl_for_bet():
+    ns = _extract("_pl_for_bet")
+    f = ns["_pl_for_bet"]
+    assert f({"predicted_team_ml": None, "correct": 1}) is None      # no odds -> no P/L
+    assert f({"predicted_team_ml": 120, "correct": 1}) == 12.0       # +120 win pays $12
+    assert f({"predicted_team_ml": -150, "correct": 1}) == 6.67      # -150 win pays $6.67
+    assert f({"predicted_team_ml": -150, "correct": 0}) == -10.0     # loss = -stake
+    assert f({"predicted_team_ml": 120, "correct": 0, }, stake=25) == -25.0
+
+
+def test_qualifying_bets():
+    """Regression for the empty-betting-page failure: rows where bet_rating and correct
+    never coexist must yield zero qualifying bets; rows with both must qualify."""
+    ns = _extract("_qualifying_bets")
+    f = ns["_qualifying_bets"]
+    broken_state = (
+        [{"bet_rating": None, "correct": 1, "game_type": "R"}] * 3 +   # resolved, no odds
+        [{"bet_rating": "good", "correct": None, "game_type": "R"}] * 2  # odds, unresolved
+    )
+    assert f(broken_state) == [], "odds-XOR-resolved rows must not qualify (the live bug)"
+    healthy = {"bet_rating": "good", "correct": 1, "game_type": "R"}
+    spring  = {"bet_rating": "good", "correct": 1, "game_type": "S"}
+    assert f(broken_state + [healthy, spring]) == [healthy], "RS rows with both must qualify; ST excluded"
+
+
+def test_kelly_stake():
+    ns = _extract("_kelly_stake")
+    f = ns["_kelly_stake"]
+    assert f(None, -140, 100, 0.25, 0.05) is None       # missing prob
+    assert f(0.62, None, 100, 0.25, 0.05) is None       # missing odds
+    # -140, p=0.62: b=100/140, f*=(0.62b-0.38)/b=0.088 -> quarter=0.022 -> $2.20
+    assert abs(f(0.62, -140, 100, 0.25, 0.05) - 2.20) < 0.01
+    assert f(0.40, 120, 100, 0.25, 0.05) == 0.0         # negative edge -> no bet
+    assert f(0.90, 200, 100, 0.25, 0.05) == 5.0         # f*=0.85 -> capped at 5% of bankroll
+    assert abs(f(0.62, -140, 1000, 0.25, 0.05) - 22.0) < 0.1  # scales with bankroll
+
+
+def test_week_key():
+    import datetime as _dt
+    ns = _extract("_week_key")
+    ns["datetime"] = _dt.datetime
+    f = ns["_week_key"]
+    assert f("2024-12-30") == "2025-W01"    # ISO year rollover
+    assert f("2025-01-08") == "2025-W02"    # zero-padded week number
+    assert f("garbage") is None
+    assert f(None) is None
+
+
+def test_bet_row_kelly():
+    ns = _extract("_pl_for_bet", "_kelly_stake", "_bet_row")
+    f = ns["_bet_row"]
+    b = {"predicted_winner": "Home", "home_win_prob": 0.62, "predicted_team_ml": -140,
+         "correct": 1, "date": "2026-07-06", "game_pk": 1, "model_edge": 0.06}
+    row = f(b, kelly=(100, 0.25, 0.05))
+    assert abs(row["kelly_stake"] - 2.20) < 0.01
+    assert row["kelly_pl"] == round(2.20 * 100 / 140, 2)   # win at -140
+    assert f(b).get("kelly_stake") is None                  # no kelly ctx -> no kelly fields
+    b_loss = dict(b, correct=0)
+    assert f(b_loss, kelly=(100, 0.25, 0.05))["kelly_pl"] == -2.20
+    b_no_odds = dict(b, predicted_team_ml=None)
+    r = f(b_no_odds, kelly=(100, 0.25, 0.05))
+    assert r["kelly_stake"] is None and r["kelly_pl"] is None
+
+
+def test_synth_results_from_log():
+    """Past-date fast path: full synthesis when every game has a stored prediction;
+    None (-> fall back to inference) when any game lacks one."""
+    ns = _extract("_synth_results_from_log")
+    f = ns["_synth_results_from_log"]
+    ctx = [{"game": {"game_pk": 1}}, {"game": {"game_pk": 2}}]
+    log = {1: {"home_win_prob": 0.62, "away_win_prob": 0.38, "predicted_winner": "Home",
+               "predicted_total": 8.5},
+           2: {"home_win_prob": 0.45, "predicted_winner": "Away"}}
+    out = f(ctx, log)
+    assert set(out) == {0, 1}
+    assert out[0]["predicted_winner"] == "Home" and out[0]["home_win_prob"] == 0.62
+    assert out[0]["confidence"] == 0.24 and out[0]["predicted_total"] == 8.5
+    assert out[1]["away_win_prob"] == 0.55            # derived from 1 - hwp
+    assert out[1]["est_components"] is None           # not logged -> None, UI hides it
+    assert f(ctx, {1: log[1]}) is None                # game 2 unstored -> no fast path
+    assert f(ctx, {1: log[1], 2: {"home_win_prob": None, "predicted_winner": "Away"}}) is None
+    assert f([], {}) == {}                            # empty slate -> empty dict
+
+
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

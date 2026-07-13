@@ -347,6 +347,35 @@ def compute_rolling_team_features(tgl):
 # ===========================================================================
 # Section 4: Starting Pitcher Features (from Baseball Reference stats)
 # ===========================================================================
+def _normalize_pitcher_name(name):
+    """Normalize a pitcher name for matching against pitcher_handedness. Same rules as
+    schedule_fetcher._normalize_name (kept local to avoid a cross-package import from
+    Main/ into updates/ for a single helper)."""
+    import re
+    import unicodedata
+    if not isinstance(name, str) or not name:
+        return ""
+    name = unicodedata.normalize("NFKD", name)
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    name = name.lower().strip()
+    name = re.sub(r"\b(jr|sr|ii|iii|iv)\b\.?", "", name).strip()
+    name = re.sub(r"[^a-z\s]", "", name)
+    return " ".join(name.split())
+
+
+def _load_handedness_map(db_path):
+    """Load pitcher_handedness (player_name -> 'L'/'R') keyed by normalized name.
+    Returns {} if the table doesn't exist yet (backfill not run) — callers must handle
+    that by falling back to a default hand, same as before this table existed."""
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT player_name, pitch_hand FROM pitcher_handedness").fetchall()
+        conn.close()
+    except Exception:
+        return {}
+    return {_normalize_pitcher_name(name): hand for name, hand in rows if name and hand}
+
+
 def merge_sp_stats(tgl, pitcher_stats):
     """Merge real pitcher season stats (ERA, WHIP, xFIP, IP/GS, K/BB) into tgl."""
     has_xfip  = "xfip"  in pitcher_stats.columns
@@ -419,6 +448,22 @@ def merge_sp_stats(tgl, pitcher_stats):
         tgl[col] = pd.to_numeric(tgl[col], errors="coerce")
         tgl[col] = tgl[col].fillna(tgl[col].mean())
 
+    # Handedness is a fixed physical trait, not a per-season stat — no leak-fix prior-season
+    # lookup needed like the stats above; matching by name against the current pitcher_handedness
+    # table (any pitcher's throwing hand today is the same as it was in any prior game) is safe.
+    # Falls back to "R" (majority class) for unmatched names or if the backfill hasn't run —
+    # same neutral default this column always had before pitcher_handedness existed.
+    handedness_map = _load_handedness_map(DB_PATH)
+    if handedness_map and "starting_pitcher_name" in tgl.columns:
+        tgl["sp_is_lhp"] = (
+            tgl["starting_pitcher_name"]
+            .map(lambda n: handedness_map.get(_normalize_pitcher_name(n)))
+            .eq("L")
+            .astype(int)
+        )
+    else:
+        tgl["sp_is_lhp"] = 0
+
     return tgl
 
 
@@ -470,6 +515,7 @@ def assemble_features(df, tgl):
         "sp_k_bb":                 "sp_k_bb",
         "sp_xfip":                 "sp_xfip",
         "sp_siera":                "sp_siera",
+        "sp_is_lhp":               "sp_is_lhp",
     }
 
     tgl_cols = ["game_id", "is_home"] + list(feature_map.values())
@@ -1121,8 +1167,13 @@ def compute_vif(model_df, feature_cols):
 # ===========================================================================
 # Section 11: Pitcher Handedness Lookup (for future platoon splits)
 # ===========================================================================
-def build_handedness_lookup(db_path):
-    """Fetch pitch_hand (L/R) for all pitchers via MLB Stats API.
+def build_handedness_lookup(db_path, seasons=range(2021, 2027)):
+    """Fetch pitch_hand (L/R) for pitchers via MLB Stats API, one full season roster at a
+    time (/sports/1/players?season=YYYY), rather than the old 'career' leaderboard query
+    (which silently capped at ~1000 results and missed most 2021-2026 starters, including
+    stars like Yu Darvish and Gerrit Cole — verified 0.4% match rate against training data).
+    The season-roster endpoint returns every player on a roster that season (~800 pitchers/
+    season), so 6 calls (2021-2026) give far more complete coverage than one broad query.
     Creates pitcher_handedness table in DB: (player_name TEXT, pitch_hand TEXT).
     Safe to re-run — uses INSERT OR REPLACE."""
     import requests as _req
@@ -1136,41 +1187,31 @@ def build_handedness_lookup(db_path):
     """)
     conn.commit()
 
-    print("  [handedness] Fetching pitcher list from MLB Stats API...", flush=True)
-    try:
-        resp = _req.get(
-            "https://statsapi.mlb.com/api/v1/stats",
-            params={"stats": "career", "group": "pitching", "sportId": 1,
-                    "playerPool": "All", "limit": 5000},
-            timeout=30,
-        )
-        splits = resp.json().get("stats", [{}])[0].get("splits", [])
-    except Exception as e:
-        print(f"  [handedness] MLB API failed: {e}")
-        conn.close()
-        return
-
-    player_ids = [s["player"]["id"] for s in splits if s.get("player")]
-    print(f"  [handedness] {len(player_ids)} pitcher IDs found — fetching handedness...", flush=True)
-
     handedness_map = {}
-    chunk_size = 100
-    for i in range(0, len(player_ids), chunk_size):
-        chunk = player_ids[i : i + chunk_size]
+    for season in seasons:
+        print(f"  [handedness] Fetching {season} season roster from MLB Stats API...", flush=True)
         try:
-            pr = _req.get(
-                "https://statsapi.mlb.com/api/v1/people",
-                params={"personIds": ",".join(str(x) for x in chunk),
-                        "fields":    "people,id,fullName,pitchHand,code"},
-                timeout=15,
+            resp = _req.get(
+                "https://statsapi.mlb.com/api/v1/sports/1/players",
+                params={"season": season},
+                timeout=30,
             )
-            for person in pr.json().get("people", []):
-                name = person.get("fullName", "")
-                hand = person.get("pitchHand", {}).get("code", "R")
-                if name:
-                    handedness_map[name] = hand
-        except Exception:
-            pass
+            resp.raise_for_status()
+            people = resp.json().get("people", [])
+        except Exception as e:
+            print(f"  [handedness] {season} fetch failed: {e}")
+            continue
+
+        season_pitchers = 0
+        for person in people:
+            if person.get("primaryPosition", {}).get("code") != "1":
+                continue  # not a pitcher
+            name = person.get("fullName", "")
+            hand = person.get("pitchHand", {}).get("code")
+            if name and hand:
+                handedness_map[name] = hand
+                season_pitchers += 1
+        print(f"  [handedness] {season}: {season_pitchers} pitchers", flush=True)
 
     now = pd.Timestamp.now().isoformat()
     for name, hand in handedness_map.items():

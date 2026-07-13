@@ -56,6 +56,17 @@ app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
             static_folder=os.path.join(_ROOT, "static"))
 
+
+@app.after_request
+def _no_store_api(resp):
+    """API responses must never be cached by the browser. Without this the app sent no
+    Cache-Control at all, so browsers heuristically cached /api/accuracy et al. — one of
+    the three causes of the 'accuracy page frozen' report (see
+    scripts/results/phase1_root_causes.md). Pages/static keep default caching."""
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
 ARTIFACTS_PATH      = os.environ.get("ARTIFACTS_PATH",       os.path.join(_ROOT, "updates",            "mlb_model_artifacts.pkl"))
 PREDICTIONS_LOG     = os.environ.get("PREDICTIONS_LOG",      os.path.join(_ROOT, "Databases_and_logs", "predictions_log.json"))
 BETTING_LOG_PATH    = os.environ.get("BETTING_LOG_PATH",     os.path.join(_ROOT, "Databases_and_logs", "betting_log.json"))
@@ -161,9 +172,23 @@ def _load_log():
         return {}
 
 
+# Response cache for fully-resolved PAST dates. Those payloads only change when the
+# predictions log itself changes, so they're served from memory instead of re-running
+# inference on Render's 0.1 vCPU. Bounded; cleared wholesale on any log write.
+import threading as _pc_thr
+from collections import OrderedDict as _PCOrderedDict
+_past_pred_cache: dict = _PCOrderedDict()
+_PAST_PRED_CACHE_MAX = 30
+_past_pred_cache_lock = _pc_thr.Lock()
+
+
 def _save_log(log):
     with open(PREDICTIONS_LOG, "w") as f:
         json.dump(log, f, indent=2)
+    # Any log write can change what a past-date response should contain (results,
+    # backfilled odds, healed days) — drop all cached payloads rather than guess which.
+    with _past_pred_cache_lock:
+        _past_pred_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +229,7 @@ def _upsert_betting_entries(entries):
     if not to_write:
         return
 
+    conn = None
     try:
         import sqlite3
         conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
@@ -281,28 +307,32 @@ def _upsert_betting_entries(entries):
             ))
 
         conn.commit()
-        conn.close()
         print(f"[betting] Upserted {len(to_write)} entries to betting_log table", flush=True)
+        return
     except Exception as e:
         print(f"[betting] Failed to upsert to betting_log table: {e}", flush=True)
-        # Fallback to JSON for backward compatibility
-        blog = _load_betting_log()
-        changed = False
-        for entry in to_write:
-            date_str = entry.get("date")
-            if not date_str:
-                continue
-            if date_str not in blog:
-                blog[date_str] = []
-            existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
-            pk = entry.get("game_pk")
-            if pk and pk in existing:
-                existing[pk].update(entry)
-            else:
-                blog[date_str].append(entry)
-            changed = True
-        if changed:
-            _save_betting_log(blog)
+        traceback.print_exc()
+    finally:
+        if conn is not None:
+            conn.close()
+    # Fallback to JSON for backward compatibility (reached only on DB failure)
+    blog = _load_betting_log()
+    changed = False
+    for entry in to_write:
+        date_str = entry.get("date")
+        if not date_str:
+            continue
+        if date_str not in blog:
+            blog[date_str] = []
+        existing = {e["game_pk"]: e for e in blog[date_str] if e.get("game_pk")}
+        pk = entry.get("game_pk")
+        if pk and pk in existing:
+            existing[pk].update(entry)
+        else:
+            blog[date_str].append(entry)
+        changed = True
+    if changed:
+        _save_betting_log(blog)
 
 
 def _resolve_betting_log_results(date_str, results):
@@ -310,6 +340,7 @@ def _resolve_betting_log_results(date_str, results):
     if not results:
         return
 
+    conn = None
     try:
         import sqlite3
         conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
@@ -346,10 +377,12 @@ def _resolve_betting_log_results(date_str, results):
         if updated_count > 0:
             conn.commit()
             print(f"[betting] Resolved {updated_count} results in betting_log for {date_str}", flush=True)
-
-        conn.close()
     except Exception as e:
         print(f"[betting] Failed to resolve results in betting_log table: {e}", flush=True)
+        traceback.print_exc()
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +509,9 @@ def _build_prediction_entry(game, result, odds_data=None):
     _utc = game.get("game_time_utc", "")
     try:
         _game_date = datetime.fromisoformat(_utc.replace("Z", "+00:00")).astimezone(_ET).date().isoformat()
-    except Exception:
+    except Exception as _date_err:
+        print(f"[log] game_time_utc unparseable for pk={game.get('game_pk')} "
+              f"({_utc!r}): {_date_err} — falling back to date prefix", flush=True)
         _game_date = _utc[:10]
     return {
         "game_pk":           game.get("game_pk"),
@@ -769,10 +804,15 @@ def log_todays_predictions():
 # GitHub log backup — commits predictions_log.json to git after each update
 # ---------------------------------------------------------------------------
 def _push_file_to_github(filepath, commit_message):
-    """Push any local file to GitHub so it survives Render redeploys."""
+    """Push any local file to GitHub so it survives Render redeploys.
+    Returns True on success, False on any failure. Every outcome logs one grep-able
+    `[github] PUSH OK|FAIL` line — as of 2026-07-09 NO auto-backup commit has ever
+    landed in the repo history, so failures here must be loud, not decorative
+    (see scripts/results/phase1_root_causes.md)."""
     if not GITHUB_TOKEN:
-        print("[github] GITHUB_TOKEN not set — skipping backup")
-        return
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: GITHUB_TOKEN not set", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: GITHUB_TOKEN not set")
+        return False
     import base64
     try:
         headers = {
@@ -789,15 +829,102 @@ def _push_file_to_github(filepath, commit_message):
             payload["sha"] = sha
         resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
         if resp.status_code in (200, 201):
-            print(f"[github] {filepath} backed up to GitHub ({_github_path(filepath)})", flush=True)
-        else:
-            print(f"[github] backup failed: {resp.status_code} {resp.text[:200]}", flush=True)
+            print(f"[github] PUSH OK {os.path.basename(filepath)} ({_github_path(filepath)})", flush=True)
+            _job_record_success("github_backup")
+            return True
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: "
+              f"HTTP {resp.status_code} {resp.text[:200]}", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: HTTP {resp.status_code}")
+        return False
     except Exception as e:
-        print(f"[github] backup error: {e}")
+        print(f"[github] PUSH FAIL {os.path.basename(filepath)}: {e}", flush=True)
+        _job_record_error("github_backup", f"{os.path.basename(filepath)}: {e}")
+        return False
 
 
 def _push_log_to_github():
     _push_file_to_github(PREDICTIONS_LOG, f"Auto-backup predictions log {_today_et().isoformat()}")
+
+
+# ---------------------------------------------------------------------------
+# Job status registry — last success/error per scheduled job, for /api/status.
+# Persisted to JSON (atomic write) so it survives spin-down on the same instance;
+# resets on redeploy (Render clones fresh) — /api/status says so honestly.
+# ---------------------------------------------------------------------------
+import threading as _thr
+import functools as _functools
+
+_PROCESS_START_ISO = datetime.now(_ET).isoformat()
+_JOB_STATUS_PATH = os.path.join(_ROOT, "Databases_and_logs", "job_status.json")
+_job_status_lock = _thr.Lock()
+
+
+def _job_status_load():
+    try:
+        with open(_JOB_STATUS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _job_status_write(name, **fields):
+    """Merge fields into the named job's status record. Atomic tmp+rename write."""
+    with _job_status_lock:
+        data = _job_status_load()
+        rec = data.setdefault(name, {})
+        rec.update(fields)
+        tmp = _JOB_STATUS_PATH + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, _JOB_STATUS_PATH)
+        except Exception as e:
+            print(f"[status] could not persist job_status.json: {e}", flush=True)
+
+
+def _job_record_success(name, rows_delta=None):
+    now = datetime.now(_ET).isoformat()
+    _job_status_write(name, last_success=now, last_run=now, rows_delta=rows_delta)
+    print(f"[job:{name}] OK" + (f" rows{rows_delta:+d}" if rows_delta is not None else ""), flush=True)
+
+
+def _job_record_error(name, msg):
+    now = datetime.now(_ET).isoformat()
+    _job_status_write(name, last_run=now, last_error={"message": str(msg)[:300], "ts": now})
+    print(f"[job:{name}] FAIL {str(msg)[:200]}", flush=True)
+
+
+def _betting_row_count(where="1=1"):
+    """Cheap counter against betting_log for job rows_delta reporting."""
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        n = conn.execute(f"SELECT COUNT(*) FROM betting_log WHERE {where}").fetchone()[0]
+        conn.close()
+        return n
+    except Exception:
+        return None
+
+
+def _track_job(name, count_fn=None):
+    """Wrap a scheduled job so /api/status reflects its outcomes. Jobs that swallow
+    exceptions internally also call _job_record_error inside their own except blocks —
+    this wrapper alone can't see those."""
+    def deco(fn):
+        @_functools.wraps(fn)
+        def wrapper(*a, **kw):
+            before = count_fn() if count_fn else None
+            try:
+                out = fn(*a, **kw)
+            except Exception as e:
+                _job_record_error(name, e)
+                raise
+            after = count_fn() if count_fn else None
+            delta = (after - before) if (before is not None and after is not None) else None
+            _job_record_success(name, rows_delta=delta)
+            return out
+        return wrapper
+    return deco
 
 
 def _latest_date_key(obj):
@@ -1080,6 +1207,7 @@ def run_daily_update():
     except Exception as e:
         print(f"[app] Daily update failed: {e}")
         traceback.print_exc()
+        _job_record_error("daily_update", e)
 
 
 def resolve_todays_completed_games():
@@ -1098,6 +1226,7 @@ def resolve_todays_completed_games():
         _resolve_picks_for_date(today)
     except Exception as e:
         print(f"[app] resolve_todays_completed_games failed: {e}")
+        _job_record_error("resolve_games", e)
 
 
 def _store_closing_odds():
@@ -1141,15 +1270,20 @@ def _store_closing_odds():
             print(f"[app] Closing odds stored for {today}", flush=True)
     except Exception as e:
         print(f"[app] _store_closing_odds failed: {e}", flush=True)
+        _job_record_error("closing_odds", e)
 
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(run_daily_update, "cron", hour=8, minute=0, timezone="America/New_York")
-    scheduler.add_job(resolve_todays_completed_games, "interval", minutes=30)
-    scheduler.add_job(_store_closing_odds, "cron", hour=18, minute=45, timezone="America/New_York")
-    scheduler.add_job(_refresh_today_odds, "interval", hours=3)
+    scheduler.add_job(_track_job("daily_update", lambda: _betting_row_count())(run_daily_update),
+                      "cron", hour=8, minute=0, timezone="America/New_York", id="daily_update")
+    scheduler.add_job(_track_job("resolve_games", lambda: _betting_row_count("correct IS NOT NULL"))(resolve_todays_completed_games),
+                      "interval", minutes=30, id="resolve_games")
+    scheduler.add_job(_track_job("closing_odds", lambda: _betting_row_count("closing_home_ml IS NOT NULL"))(_store_closing_odds),
+                      "cron", hour=18, minute=45, timezone="America/New_York", id="closing_odds")
+    scheduler.add_job(_track_job("odds_refresh")(_refresh_today_odds),
+                      "interval", hours=3, id="odds_refresh")
     scheduler.start()
     print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh every 3h")
 except ImportError:
@@ -1320,6 +1454,30 @@ def health():
                     "timestamp": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z")})
 
 
+@app.route("/api/status")
+def api_status():
+    """Operational status: last success/error per scheduled job (see OPERATIONS.md).
+    State persists across spin-downs on the same instance but resets on redeploy."""
+    next_runs = {}
+    try:
+        if scheduler and scheduler.running:
+            for job in scheduler.get_jobs():
+                next_runs[job.id] = str(job.next_run_time)
+    except Exception:
+        pass
+    return jsonify({
+        "process_started":   _PROCESS_START_ISO,
+        "scheduler_running": bool(scheduler and getattr(scheduler, "running", False)),
+        "jobs":              _job_status_load(),
+        "next_runs":         next_runs,
+        "github_token_set":  bool(GITHUB_TOKEN),
+        "odds_api_key_set":  bool(ODDS_API_KEY),
+        "model_version":     _artifacts.get("model_version"),
+        "now":               datetime.now(_ET).isoformat(),
+        "note":              "job state persists across restarts on the same instance; resets on redeploy",
+    })
+
+
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -1441,6 +1599,32 @@ def picks_leaderboard():
     })
 
 
+def _synth_results_from_log(game_ctx, log_by_pk):
+    """Past-date fast path: build the per-game results dict from stored log entries
+    so predict_games_batch can be skipped entirely. Returns None if ANY game lacks a
+    stored pre-game prediction — the caller then falls back to real inference.
+    Cover probs / est_components aren't logged, so they come back None; the UI
+    null-guards both and simply hides those sections on past-date cards."""
+    out = {}
+    for i, c in enumerate(game_ctx):
+        stored = log_by_pk.get(c["game"].get("game_pk"))
+        if (not stored or stored.get("home_win_prob") is None
+                or stored.get("predicted_winner") is None):
+            return None
+        hwp = stored["home_win_prob"]
+        out[i] = {
+            "home_win_prob":    hwp,
+            "away_win_prob":    stored.get("away_win_prob") or round(1 - hwp, 4),
+            "predicted_winner": stored["predicted_winner"],
+            "confidence":       round(abs(hwp - 0.5) * 2, 3),
+            "home_cover_prob":  stored.get("home_cover_prob"),
+            "away_cover_prob":  stored.get("away_cover_prob"),
+            "predicted_total":  stored.get("predicted_total"),
+            "est_components":   stored.get("est_components"),
+        }
+    return out
+
+
 @app.route("/api/predictions")
 def predictions():
     """
@@ -1456,6 +1640,14 @@ def predictions():
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
     else:
         target_date = _today_et()
+
+    # Fully-resolved past dates are served straight from the response cache
+    # (populated below, invalidated by _save_log).
+    if target_date < _today_et() - timedelta(days=1):
+        with _past_pred_cache_lock:
+            cached = _past_pred_cache.get(target_date.isoformat())
+        if cached is not None:
+            return jsonify(cached)
 
     team_baselines = _artifacts.get("team_baselines", {})
     sp_baselines   = _artifacts.get("sp_baselines", {})
@@ -1549,7 +1741,15 @@ def predictions():
     # original one-call-per-game path so a single bad game can't take down the whole
     # slate — matches the per-game try/except that used to wrap this call directly.
     results_by_idx = {}
-    if game_ctx:
+    # Past dates: if every game already has a stored pre-game prediction, synthesize
+    # results from the log — the past-date card overlay would overwrite the freshly
+    # computed numbers with the stored ones anyway, so inference is pure waste here.
+    if game_ctx and target_date < _today_et():
+        results_by_idx = _synth_results_from_log(game_ctx, log_by_pk) or {}
+        if results_by_idx:
+            print(f"[pred] {date_str}: all {len(results_by_idx)} predictions from log — "
+                  "inference skipped", flush=True)
+    if game_ctx and not results_by_idx:
         try:
             batch_stats = [(c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"]) for c in game_ctx]
             batch_results = predict_games_batch(batch_stats, lr_model, scaler=scaler,
@@ -1752,12 +1952,26 @@ def predictions():
         _push_log_to_github()
         _upsert_betting_entries(log.get(date_str, []))
 
-    return jsonify({
+    payload = {
         "date":          target_date.isoformat(),
         "games":         predictions_out,
         "model_version": _artifacts.get("model_version"),
         "last_updated":  datetime.now().isoformat(),
-    })
+    }
+
+    # Cache only fully-resolved dates older than yesterday: every non-skipped game
+    # has a result, so the payload can't change until the log does (and _save_log —
+    # called above BEFORE this point when log_changed — clears the cache on write).
+    if (target_date < _today_et() - timedelta(days=1)
+            and any(not g.get("skipped") for g in predictions_out)
+            and all(g.get("skipped") or g.get("actual_winner") is not None
+                    for g in predictions_out)):
+        with _past_pred_cache_lock:
+            _past_pred_cache[date_str] = payload
+            while len(_past_pred_cache) > _PAST_PRED_CACHE_MAX:
+                _past_pred_cache.popitem(last=False)
+
+    return jsonify(payload)
 
 
 _accuracy_cache: dict = {"ts": 0.0, "payload": None}
@@ -1771,7 +1985,9 @@ def accuracy():
     Splits regular season (game_type=R) and spring training (game_type=S).
     Auto-heals the log before computing: resolves unresolved entries and
     backfills missing days for the last 7 days.
-    Result is cached for 5 minutes so rapid reloads always show the same number.
+    Result is cached server-side for _ACCURACY_CACHE_TTL (60s) so rapid reloads
+    show the same number; response carries heal_in_progress when a large backfill
+    is running in the background (numbers will grow on a later request).
     """
     if time.time() - _accuracy_cache["ts"] < _ACCURACY_CACHE_TTL and _accuracy_cache["payload"]:
         return _accuracy_cache["payload"]
@@ -1786,8 +2002,12 @@ def accuracy():
         1 for i in range(1, _days_since_start + 1)
         if (_today_et() - timedelta(days=i)).isoformat() not in _existing
     )
+    heal_in_progress = False
     if _missing > 3:
-        # Large backfill: run in background so the page doesn't time out
+        # Large backfill: run in background so the page doesn't time out.
+        # The response below is computed from the PRE-heal log — flag it so the
+        # frontend can tell the user the totals are still filling in.
+        heal_in_progress = True
         _heal_target = _days_since_start
         _threading.Thread(
             target=_auto_heal_log, kwargs={"days": _heal_target}, daemon=True
@@ -1969,11 +2189,96 @@ def accuracy():
         "by_week":         by_week,
         "ou_stats":        ou_stats,
         "home_win_rate":   home_win_rate,
+        "heal_in_progress": heal_in_progress,
         "last_updated":    datetime.now().isoformat(),
     })
     _accuracy_cache["payload"] = response
     _accuracy_cache["ts"]      = time.time()
     return response
+
+
+def _pl_for_bet(b, stake=10.0):
+    """Net P/L for a flat `stake` bet on the predicted team; None when odds are missing."""
+    ml = b.get("predicted_team_ml")
+    if ml is None:
+        return None
+    if b["correct"]:
+        return round(stake * (ml / 100) if ml >= 0 else stake * (100 / abs(ml)), 2)
+    return round(-stake, 2)
+
+
+def _qualifying_bets(entries):
+    """The betting page's core filter: regular-season entries that have BOTH a bet_rating
+    (odds were captured pre-game) AND a resolution. Kept as a named helper so the
+    'all-zeros betting page' failure mode (rows where these never coexist — see
+    scripts/results/phase1_root_causes.md) has a unit-testable seam."""
+    return [
+        e for e in entries
+        if e.get("game_type") != "S"
+        and e.get("bet_rating") is not None
+        and e.get("correct") is not None
+    ]
+
+
+def _kelly_stake(win_prob, ml, bankroll, fraction, max_stake_pct):
+    """Fractional-Kelly stake in dollars for an American-odds moneyline bet.
+    None when inputs are missing; 0.0 when Kelly says no bet (f* <= 0).
+    Stake = bankroll * min(f* x fraction, max_stake_pct) — flat, non-compounding."""
+    if win_prob is None or ml is None:
+        return None
+    b = (ml / 100) if ml >= 0 else (100 / abs(ml))  # net profit per $1 staked
+    f = (win_prob * b - (1 - win_prob)) / b
+    if f <= 0:
+        return 0.0
+    return round(bankroll * min(f * fraction, max_stake_pct), 2)
+
+
+def _bet_row(b, kelly=None):
+    """API row for one value bet — shared by /api/betting recent list and
+    /api/betting/weekly detail. `kelly` = (bankroll, fraction, max_stake_pct);
+    when given, adds kelly_stake / kelly_pl."""
+    pl = _pl_for_bet(b)
+    pick_is_home = b["predicted_winner"] == "Home"
+    ml   = b.get("predicted_team_ml")
+    hwp  = b.get("home_win_prob")
+    win_p = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
+    if ml is not None and win_p is not None:
+        profit = 10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml))
+        ev = round(win_p * profit - (1 - win_p) * 10, 2)
+    else:
+        ev = None
+    row = {
+        "game_pk":        b.get("game_pk"),
+        "date":           b["date"],
+        "away_team":      b.get("away_team_name", b.get("away_team")),
+        "home_team":      b.get("home_team_name", b.get("home_team")),
+        "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
+        "ml":             ml,
+        "edge":           b.get("model_edge"),
+        "ev":             ev,
+        "correct":        b["correct"],
+        "pl":             pl,
+        "home_win_prob":  hwp,
+        "away_win_prob":  b.get("away_win_prob"),
+        "predicted_winner": b.get("predicted_winner"),
+        "away_score":     b.get("away_score"),
+        "home_score":     b.get("home_score"),
+    }
+    if kelly is not None:
+        stake = _kelly_stake(win_p, ml, *kelly)
+        row["kelly_stake"] = stake
+        row["kelly_pl"] = _pl_for_bet(b, stake=stake) if stake else (0.0 if stake == 0 else None)
+    return row
+
+
+def _week_key(date_str):
+    """ISO-week key ('2026-W27') for a YYYY-MM-DD date; None if unparseable.
+    Grouped in Python because SQLite's strftime %G/%V needs >= 3.46."""
+    try:
+        y, w, _ = datetime.strptime(date_str, "%Y-%m-%d").date().isocalendar()
+        return f"{y}-W{w:02d}"
+    except (TypeError, ValueError):
+        return None
 
 
 def _load_betting_log_from_db():
@@ -2000,27 +2305,29 @@ def betting_stats():
     all_entries_raw = _load_betting_log_from_db()
 
     # Only include RS entries with odds data that are resolved
-    all_entries = [
-        e for e in all_entries_raw
-        if e.get("game_type") != "S"
-        and e.get("bet_rating") is not None
-        and e.get("correct") is not None
-    ]
+    all_entries = _qualifying_bets(all_entries_raw)
+
+    # Diagnostics: when the page is empty, say WHY. The historical failure mode is rows
+    # where bet_rating and correct never coexist (odds attach to today, resolutions to the
+    # past, and un-backed-up state is lost on every Render restart).
+    diagnostics = {
+        "rows_total":       len(all_entries_raw),
+        "rows_with_rating": sum(1 for e in all_entries_raw if e.get("bet_rating") is not None),
+        "rows_resolved":    sum(1 for e in all_entries_raw if e.get("correct") is not None),
+        "rows_qualifying":  len(all_entries),
+    }
+    if diagnostics["rows_total"] > 0 and diagnostics["rows_qualifying"] == 0:
+        diagnostics["data_gap_note"] = (
+            "Rows exist but none have BOTH odds and a result. Odds captured pre-game are "
+            "being lost before games resolve — check that GITHUB_TOKEN is set on the host "
+            "so log backups persist across restarts (see OPERATIONS.md)."
+        )
 
     categories = {"good": [], "unsure": [], "bad": []}
     for e in all_entries:
         rating = e.get("bet_rating")
         if rating in categories:
             categories[rating].append(e)
-
-    def _pl_for_bet(b):
-        """Return net P/L for a $10 bet on the predicted team."""
-        ml = b.get("predicted_team_ml")
-        if ml is None:
-            return None
-        if b["correct"]:
-            return round(10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml)), 2)
-        return -10.0
 
     def cat_stats(bets):
         if not bets:
@@ -2060,36 +2367,36 @@ def betting_stats():
             "edge":    b.get("model_edge"),
         })
 
+    # Kelly sizing params (query-string overridable, clamped). Fraction defaults to
+    # 1/4 Kelly: live calibration error (ECE ~ 0.079) means full Kelly would overbet.
+    def _qparam(name, default, lo, hi):
+        try:
+            v = float(request.args.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(hi, v))
+    kelly_params = (_qparam("bankroll", 100.0, 1.0, 1_000_000.0),
+                    _qparam("kelly_fraction", 0.25, 0.0, 1.0),
+                    _qparam("max_stake_pct", 0.05, 0.001, 1.0))
+
     # Recent value bets (last 20, most recent first)
-    recent_value_bets = []
-    for b in reversed(value_bets[-20:]):
-        pl = _pl_for_bet(b)
-        pick_is_home = b["predicted_winner"] == "Home"
-        ml   = b.get("predicted_team_ml")
-        hwp  = b.get("home_win_prob")
-        win_p = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
-        if ml is not None and win_p is not None:
-            profit = 10 * (ml / 100) if ml >= 0 else 10 * (100 / abs(ml))
-            ev = round(win_p * profit - (1 - win_p) * 10, 2)
-        else:
-            ev = None
-        recent_value_bets.append({
-            "game_pk":        b.get("game_pk"),
-            "date":           b["date"],
-            "away_team":      b.get("away_team_name", b.get("away_team")),
-            "home_team":      b.get("home_team_name", b.get("home_team")),
-            "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
-            "ml":             ml,
-            "edge":           b.get("model_edge"),
-            "ev":             ev,
-            "correct":        b["correct"],
-            "pl":             pl,
-            "home_win_prob":  hwp,
-            "away_win_prob":  b.get("away_win_prob"),
-            "predicted_winner": b.get("predicted_winner"),
-            "away_score":     b.get("away_score"),
-            "home_score":     b.get("home_score"),
-        })
+    recent_value_bets = [_bet_row(b, kelly=kelly_params) for b in reversed(value_bets[-20:])]
+
+    # Kelly summary over ALL resolved value bets (flat stakes off a fixed bankroll)
+    kelly_summary = {"bets": 0, "total_staked": 0.0, "net_pl": 0.0, "roi": None,
+                     "bankroll": kelly_params[0], "kelly_fraction": kelly_params[1],
+                     "max_stake_pct": kelly_params[2]}
+    for b in value_bets:
+        hwp = b.get("home_win_prob")
+        win_p = hwp if b["predicted_winner"] == "Home" else (1 - hwp) if hwp is not None else None
+        stake = _kelly_stake(win_p, b.get("predicted_team_ml"), *kelly_params)
+        if not stake:  # None (no odds) or 0.0 (Kelly passes) -> no bet placed
+            continue
+        kelly_summary["bets"] += 1
+        kelly_summary["total_staked"] = round(kelly_summary["total_staked"] + stake, 2)
+        kelly_summary["net_pl"] = round(kelly_summary["net_pl"] + _pl_for_bet(b, stake=stake), 2)
+    if kelly_summary["total_staked"]:
+        kelly_summary["roi"] = round(kelly_summary["net_pl"] / kelly_summary["total_staked"], 4)
 
     # Tracking start date (first entry with odds data, RS only)
     odds_entries = [e for e in all_entries_raw
@@ -2154,8 +2461,57 @@ def betting_stats():
         "tracking_start":  tracking_start,
         "clv_stats":       clv_stats,
         "rl_stats":        rl_stats,
+        "kelly":           kelly_summary,
+        "diagnostics":     diagnostics,
         "last_updated":    datetime.now().isoformat(),
     })
+
+
+@app.route("/api/betting/weekly")
+def betting_weekly():
+    """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows."""
+    value_bets = [e for e in _qualifying_bets(_load_betting_log_from_db())
+                  if e.get("bet_rating") == "good"]
+    value_bets.sort(key=lambda e: (e["date"], e.get("game_pk", 0)))
+
+    week_param = request.args.get("week")
+    if week_param:
+        rows = [_bet_row(b, kelly=(100.0, 0.25, 0.05)) for b in value_bets
+                if _week_key(b["date"]) == week_param]
+        return jsonify({"week": week_param, "bets": rows[::-1]})
+
+    weeks = {}
+    for b in value_bets:
+        k = _week_key(b["date"])
+        if k is None:
+            continue
+        w = weeks.setdefault(k, {"start": b["date"], "end": b["date"], "bets": 0,
+                                 "wins": 0, "net_pl": 0.0, "edges": [], "clvs": []})
+        w["start"] = min(w["start"], b["date"])
+        w["end"]   = max(w["end"], b["date"])
+        w["bets"] += 1
+        w["wins"] += int(bool(b["correct"]))
+        pl = _pl_for_bet(b)
+        if pl is not None:
+            w["net_pl"] = round(w["net_pl"] + pl, 2)
+        if b.get("model_edge") is not None:
+            w["edges"].append(b["model_edge"])
+        if b.get("clv") is not None:
+            w["clvs"].append(b["clv"])
+
+    out = [{
+        "week":     k,
+        "start":    w["start"],
+        "end":      w["end"],
+        "bets":     w["bets"],
+        "wins":     w["wins"],
+        "losses":   w["bets"] - w["wins"],
+        "win_rate": round(w["wins"] / w["bets"], 3),
+        "net_pl":   w["net_pl"],
+        "avg_edge": round(sum(w["edges"]) / len(w["edges"]), 4) if w["edges"] else None,
+        "avg_clv":  round(sum(w["clvs"]) / len(w["clvs"]), 4) if w["clvs"] else None,
+    } for k, w in sorted(weeks.items(), reverse=True)]  # zero-padded keys sort correctly
+    return jsonify({"weeks": out, "last_updated": datetime.now().isoformat()})
 
 
 @app.route("/api/calibration")
@@ -2294,11 +2650,14 @@ def retrain_model():
                 load_artifacts()
                 _push_file_to_github(ARTIFACTS_PATH, f"Auto-backup retrained model {_today_et().isoformat()}")
                 print(f"[retrain] Success: {metrics}")
+                _job_record_success("retrain")
             else:
                 print(f"[retrain] Failed to retrain model")
+                _job_record_error("retrain", "retrain_model() returned None")
         except Exception as e:
             print(f"[retrain] Exception: {e}")
             traceback.print_exc()
+            _job_record_error("retrain", e)
 
     threading.Thread(target=run_retrain, daemon=True).start()
     return jsonify({

@@ -1,99 +1,152 @@
 """
 backtest_kelly.py
 -----------------
-Compares flat $10/game betting vs half-Kelly sizing (capped at $30)
-against historical resolved value bets.
+Compares stake-sizing strategies on historical resolved value bets:
+    flat $10  vs  quarter-Kelly (the production default on /api/betting)
+              vs  half-Kelly   (the original skeleton's suggestion)
 
-BEFORE RUNNING:
-    1. Download latest logs: python3 scripts/download_logs.py
-    2. Wait until ~July 10 — need ~200 resolved value bets for meaningful results
-    3. python3 scripts/backtest_kelly.py
+Usage:
+    python3 scripts/backtest_kelly.py [--bankroll 100] [--cap-pct 0.05]
 
-Kelly formula:  f* = (b*p - q) / b
-  b = decimal odds - 1
-  p = model win probability
-  q = 1 - p
-Half-Kelly: f*/2  (standard conservative practice — protects against noisy probs)
-Cap: $30/bet maximum regardless of Kelly output
+Kelly:  f* = (b*p - q) / b   (b = net profit per $1, p = model win prob)
+Stakes are flat off a fixed bankroll (non-compounding), capped at
+cap-pct * bankroll — same math as _kelly_stake() in Main/app.py; keep in sync.
+
+Data source: SQLite betting_log (deviation from the pseudocode's
+betting_log.json — the DB is authoritative). Value bets only (bet_rating='good').
+This script only reports; it changes nothing.
 """
+import argparse
+import os
+import sqlite3
+import sys
+from statistics import mean, stdev
 
-# TODO (July 10): implement the following logic
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DB   = os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db")
 
-# --- PSEUDOCODE ---
-#
-# STEP 1: Load resolved value bets from betting_log.json
-#   data     = json.load(open("Databases_and_logs/betting_log.json"))
-#   all_entries = [e for day in data.values() for e in day]
-#   resolved = [e for e in all_entries
-#               if e.get("correct") is not None
-#               and e.get("predicted_team_ml") is not None
-#               and e.get("away_ml") is not None
-#               and e.get("bet_rating") == "good"]  # value bets only
-#   print(f"Resolved value bets: {len(resolved)}")
-#
-# STEP 2: Simulate both strategies chronologically
-#   BANKROLL   = 100.0
-#   FLAT_STAKE = 10.0
-#   MAX_KELLY  = 30.0
-#
-#   flat_cumulative   = []  # running P/L for flat betting
-#   kelly_cumulative  = []  # running P/L for Kelly sizing
-#   flat_running  = 0.0
-#   kelly_running = 0.0
-#   kelly_stakes  = []  # for distribution analysis
-#
-#   for entry in sorted(resolved, key=lambda e: e["date"]):
-#       ml    = entry["predicted_team_ml"]
-#       won   = entry["correct"]
-#       p     = entry.get("home_win_prob") if entry["predicted_winner"] == "Home"
-#               else entry.get("away_win_prob")
-#
-#       # Flat $10
-#       flat_pl = FLAT_STAKE * (ml/100 if ml>=0 else 100/abs(ml)) if won else -FLAT_STAKE
-#       flat_running += flat_pl
-#       flat_cumulative.append((entry["date"], flat_running))
-#
-#       # Half-Kelly capped at $30
-#       dec_odds = ml/100 + 1 if ml >= 0 else 100/abs(ml) + 1
-#       b        = dec_odds - 1
-#       q        = 1 - p
-#       f_star   = (b * p - q) / b if b > 0 else 0
-#       stake    = min(max(f_star / 2, 0) * BANKROLL, MAX_KELLY)
-#       kelly_pl = stake * (ml/100 if ml>=0 else 100/abs(ml)) if won else -stake
-#       kelly_running += kelly_pl
-#       kelly_cumulative.append((entry["date"], kelly_running))
-#       kelly_stakes.append(stake)
-#
-# STEP 3: Print summary
-#   print(f"Flat $10:     net P/L = ${flat_running:.2f}  "
-#         f"ROI = {flat_running/(len(resolved)*FLAT_STAKE):.1%}")
-#   print(f"Half-Kelly:   net P/L = ${kelly_running:.2f}  "
-#         f"avg stake = ${mean(kelly_stakes):.2f}  max stake used = ${max(kelly_stakes):.2f}")
-#
-# STEP 4: Plot side-by-side cumulative P/L
-#   import matplotlib.pyplot as plt
-#   fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-#   axes[0].plot([x[0] for x in flat_cumulative],  [x[1] for x in flat_cumulative],
-#                "b-", label="Flat $10")
-#   axes[0].plot([x[0] for x in kelly_cumulative], [x[1] for x in kelly_cumulative],
-#                "g-", label="Half-Kelly (max $30)")
-#   axes[0].axhline(0, color="gray", linestyle="--")
-#   axes[0].set_title("Cumulative P/L — Flat vs Kelly")
-#   axes[0].legend()
-#   axes[1].hist(kelly_stakes, bins=15, color="green", alpha=0.7)
-#   axes[1].axvline(FLAT_STAKE, color="blue", linestyle="--", label="Flat $10")
-#   axes[1].set_title("Kelly Stake Distribution")
-#   axes[1].set_xlabel("Stake ($)")
-#   axes[1].legend()
-#   plt.tight_layout()
-#   plt.savefig("scripts/kelly_comparison.png", dpi=150)
-#   print("Saved: scripts/kelly_comparison.png")
-#
-# STEP 5: If Kelly shows better risk-adjusted return, implement in betting.html:
-#   Add to openBetModal() JS function:
-#     const kellyStake = Math.min(Math.max(f_star/2, 0) * 100, 30).toFixed(2);
-#     document.getElementById("modal-kelly").textContent = `$${kellyStake} (on $100 bankroll)`;
-# --- END PSEUDOCODE ---
+DECISION_GRADE_N = 200
 
-print("This script is a pseudocode skeleton — implement fully in July after data accumulates.")
-print("Run 'python3 scripts/download_logs.py' first to get the latest data.")
+
+def load_value_bets():
+    conn = sqlite3.connect(_DB)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT date, predicted_team_ml, correct, predicted_winner, home_win_prob "
+        "FROM betting_log WHERE bet_rating = 'good' AND correct IS NOT NULL "
+        "AND predicted_team_ml IS NOT NULL AND game_type != 'S' ORDER BY date")]
+    conn.close()
+    return rows
+
+
+def kelly_stake(win_prob, ml, bankroll, fraction, max_stake_pct):
+    # mirror of Main/app.py _kelly_stake — keep in sync
+    if win_prob is None or ml is None:
+        return None
+    b = (ml / 100) if ml >= 0 else (100 / abs(ml))
+    f = (win_prob * b - (1 - win_prob)) / b
+    if f <= 0:
+        return 0.0
+    return round(bankroll * min(f * fraction, max_stake_pct), 2)
+
+
+def simulate(bets, stake_fn):
+    """Run one strategy; returns (net, stakes, max_drawdown, pl_list)."""
+    running, peak, max_dd = 0.0, 0.0, 0.0
+    stakes, pl_list = [], []
+    for e in bets:
+        stake = stake_fn(e)
+        if not stake:            # None (missing prob) or 0.0 (Kelly passes)
+            continue
+        ml = e["predicted_team_ml"]
+        pl = stake * (ml / 100 if ml >= 0 else 100 / abs(ml)) if e["correct"] else -stake
+        running += pl
+        peak = max(peak, running)
+        max_dd = max(max_dd, peak - running)
+        stakes.append(stake)
+        pl_list.append(pl)
+    return running, stakes, max_dd, pl_list
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bankroll", type=float, default=100.0)
+    ap.add_argument("--cap-pct", type=float, default=0.05,
+                    help="max stake as fraction of bankroll (default 0.05)")
+    args = ap.parse_args()
+
+    bets = load_value_bets()
+    print(f"Resolved value bets: {len(bets)}")
+    if not bets:
+        print("\nNo usable data yet. Odds+result pairs only start accumulating once "
+              "GITHUB_TOKEN-backed log persistence is live (see OPERATIONS.md).")
+        return 1
+    if len(bets) < DECISION_GRADE_N:
+        print(f"[!] Below the ~{DECISION_GRADE_N}-bet bar for a decision-grade result — "
+              "directional only.\n")
+
+    def win_p(e):
+        hwp = e.get("home_win_prob")
+        if hwp is None:
+            return None
+        return hwp if e["predicted_winner"] == "Home" else 1 - hwp
+
+    strategies = [
+        ("Flat $10",       lambda e: 10.0),
+        ("Quarter-Kelly",  lambda e: kelly_stake(win_p(e), e["predicted_team_ml"],
+                                                 args.bankroll, 0.25, args.cap_pct)),
+        ("Half-Kelly",     lambda e: kelly_stake(win_p(e), e["predicted_team_ml"],
+                                                 args.bankroll, 0.50, args.cap_pct)),
+    ]
+
+    print(f"{'Strategy':<15} {'Bets':>5} {'Staked':>9} {'Net P/L':>9} {'ROI':>7} "
+          f"{'Sharpe':>7} {'MaxDD':>8} {'AvgStake':>9}")
+    curves = {}
+    for name, fn in strategies:
+        net, stakes, max_dd, pl_list = simulate(bets, fn)
+        if not stakes:
+            print(f"{name:<15} {'—':>5}   (no bets placed — Kelly passed on everything)")
+            continue
+        total = sum(stakes)
+        sharpe = (mean(pl_list) / stdev(pl_list)) if len(pl_list) > 1 and stdev(pl_list) > 0 else 0.0
+        print(f"{name:<15} {len(stakes):>5} ${total:>8.2f} ${net:>8.2f} {net/total:>7.1%} "
+              f"{sharpe:>7.2f} ${max_dd:>7.2f} ${mean(stakes):>8.2f}")
+        curves[name] = (net, stakes, pl_list)
+
+    print("\nRead MaxDD (worst peak-to-trough) against Net P/L: Kelly earns its keep "
+          "only if it improves risk-adjusted return (Sharpe), not just raw P/L.")
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        for name, fn in strategies:
+            if name not in curves:
+                continue
+            _, _, pl_list = curves[name]
+            run, series = 0.0, []
+            for pl in pl_list:
+                run += pl
+                series.append(run)
+            axes[0].plot(series, label=name)
+        axes[0].axhline(0, color="gray", linestyle="--")
+        axes[0].set_title("Cumulative P/L by strategy (bet #)")
+        axes[0].legend()
+        if "Quarter-Kelly" in curves:
+            axes[1].hist(curves["Quarter-Kelly"][1], bins=15, color="green", alpha=0.7)
+            axes[1].axvline(10.0, color="blue", linestyle="--", label="Flat $10")
+            axes[1].set_title("Quarter-Kelly stake distribution")
+            axes[1].set_xlabel("Stake ($)")
+            axes[1].legend()
+        plt.tight_layout()
+        out = os.path.join(_ROOT, "scripts", "kelly_comparison.png")
+        plt.savefig(out, dpi=150)
+        print(f"Saved: {out}")
+    except Exception as e:
+        print(f"[plot skipped: {e}]")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

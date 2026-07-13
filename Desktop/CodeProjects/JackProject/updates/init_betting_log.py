@@ -57,16 +57,18 @@ def init_betting_log_table():
 
     # Create indexes for fast queries
     indexes = [
-        "CREATE INDEX idx_betting_date ON betting_log(date);",
-        "CREATE INDEX idx_betting_correct ON betting_log(correct);",
-        "CREATE INDEX idx_betting_rating ON betting_log(bet_rating);",
+        "CREATE INDEX IF NOT EXISTS idx_betting_date ON betting_log(date);",
+        "CREATE INDEX IF NOT EXISTS idx_betting_correct ON betting_log(correct);",
+        "CREATE INDEX IF NOT EXISTS idx_betting_rating ON betting_log(bet_rating);",
     ]
 
     for idx_sql in indexes:
         try:
             cur.execute(idx_sql)
-        except sqlite3.OperationalError:
-            pass  # Index might already exist
+        except sqlite3.OperationalError as e:
+            # IF NOT EXISTS makes "already exists" impossible — anything caught here is
+            # a real problem (locked DB, corrupt index) and must be visible.
+            print(f"[init] index creation failed ({idx_sql.split()[5]}): {e}", flush=True)
 
     conn.commit()
     conn.close()
