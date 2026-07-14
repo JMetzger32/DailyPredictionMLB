@@ -990,20 +990,24 @@ def _restore_file_from_github(filepath):
     if not GITHUB_TOKEN:
         print(f"[github] GITHUB_TOKEN not set — cannot restore {filepath}")
         return
-    import base64
     try:
+        # Raw media type is REQUIRED here: the default JSON response returns EMPTY
+        # content for files over 1 MB (predictions_log.json crossed that in July 2026,
+        # silently breaking every restore — each fresh instance then re-pushed its
+        # stale deploy-snapshot log, clobbering the odds-bearing backup). Raw returns
+        # the actual bytes for files up to 100 MB.
         headers = {
             "Authorization": f"token {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github+json",
+            "Accept": "application/vnd.github.raw",
         }
         r = requests.get(
             f"https://api.github.com/repos/{GITHUB_REPO}/contents/{_github_path(filepath)}",
-            headers=headers, timeout=10,
+            headers=headers, timeout=15,
         )
         if r.status_code != 200:
             print(f"[github] restore {filepath}: GitHub returned {r.status_code} (path: {_github_path(filepath)})", flush=True)
             return
-        remote_bytes = base64.b64decode(r.json().get("content") or "")
+        remote_bytes = r.content
         ok, reason = _should_restore(filepath, remote_bytes)
         if ok:
             with open(filepath, "wb") as f:
@@ -1282,10 +1286,16 @@ try:
                       "interval", minutes=30, id="resolve_games")
     scheduler.add_job(_track_job("closing_odds", lambda: _betting_row_count("closing_home_ml IS NOT NULL"))(_store_closing_odds),
                       "cron", hour=18, minute=45, timezone="America/New_York", id="closing_odds")
+    # Fixed ET clock times, NOT an interval: an interval counts from process boot, and
+    # on a spin-down host the process rarely lives 3h, so the job effectively never
+    # fired. Cron times target when books actually have lines up (mid-morning through
+    # early evening); page views of /predictions also patch odds as a safety net.
     scheduler.add_job(_track_job("odds_refresh")(_refresh_today_odds),
-                      "interval", hours=3, id="odds_refresh")
+                      "cron", hour="10,13,16,18", minute=15,
+                      timezone="America/New_York", misfire_grace_time=3600,
+                      id="odds_refresh")
     scheduler.start()
-    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh every 3h")
+    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh 10:15/13:15/16:15/18:15 ET")
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
@@ -2317,10 +2327,18 @@ def betting_stats():
         "rows_qualifying":  len(all_entries),
     }
     if diagnostics["rows_total"] > 0 and diagnostics["rows_qualifying"] == 0:
+        # data_gap_note is shown to site visitors — keep it friendly and generic.
+        # ops_note carries the technical pointer for whoever operates the site.
         diagnostics["data_gap_note"] = (
-            "Rows exist but none have BOTH odds and a result. Odds captured pre-game are "
-            "being lost before games resolve — check that GITHUB_TOKEN is set on the host "
-            "so log backups persist across restarts (see OPERATIONS.md)."
+            "Bet tracking is warming up. A game shows up here only after two things "
+            "happen: sportsbook odds are recorded before first pitch, and the game "
+            "finishes. Results appear within a day of games being played — check back "
+            "after today's slate wraps up."
+        )
+        diagnostics["ops_note"] = (
+            "Operator: zero rows have both bet_rating and a result. Check "
+            "/api/status -> jobs.odds_refresh and github_backup, and OPERATIONS.md "
+            "('betting page is empty' checklist)."
         )
 
     categories = {"good": [], "unsure": [], "bad": []}

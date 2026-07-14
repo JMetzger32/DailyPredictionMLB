@@ -469,16 +469,13 @@
       if (totalGames === 0) {
         const noData = document.getElementById("no-data");
         noData.classList.remove("d-none");
-        // Server-side diagnostics: distinguish "no data yet" from "data exists but
-        // odds and results never coexist" (the persistence failure mode).
+        // Visitor-friendly empty state; technical detail lives in the API's
+        // diagnostics.ops_note and /api/status, not on the page.
         const diag = data.diagnostics;
         if (diag && diag.data_gap_note) {
           noData.innerHTML =
-            `<p class="text-muted fs-5">Betting history is incomplete.</p>` +
-            `<p class="text-muted small">${diag.rows_total} tracked games, ` +
-            `${diag.rows_with_rating} with odds, ${diag.rows_resolved} resolved — ` +
-            `but none with both.</p>` +
-            `<p class="text-warning small">${diag.data_gap_note}</p>`;
+            `<p class="text-muted fs-5">No completed bets to show yet.</p>` +
+            `<p class="text-muted small mx-auto" style="max-width:34rem;">${diag.data_gap_note}</p>`;
         }
         return;
       }

@@ -21,10 +21,22 @@ One page. If something breaks, start at the top and work down.
 ## If the betting page is empty
 
 - `GET /api/betting` → read `diagnostics`. If `rows_total > 0` but
-  `rows_qualifying == 0`, odds are being captured but lost before games resolve.
-  Almost always: backups aren't landing. Check `/api/status → github_token_set`
-  and recent `[github] PUSH FAIL` lines in Render logs. Set/repair `GITHUB_TOKEN`
-  in Render → Environment (needs repo `contents:write` permission).
+  `rows_qualifying == 0`, odds and results are never coexisting on a row. The
+  three causes found in July 2026, in the order to check them:
+  1. **Restore silently broken** — GitHub's contents API returns EMPTY content for
+     files > 1 MB unless requested with `Accept: application/vnd.github.raw`
+     (fixed 2026-07-14). Symptom: `[github] Skipping restore ... empty remote` in
+     logs while the repo shows recent Auto-backup commits; each restart then boots
+     from the stale deploy snapshot and its next push CLOBBERS the good backup.
+  2. **Odds job never fires** — `odds_refresh` must be a cron at fixed ET times
+     (10:15/13:15/16:15/18:15), never an `interval`: intervals count from process
+     boot and a spin-down host rarely lives that long (fixed 2026-07-14).
+     Check `/api/status → jobs.odds_refresh.last_success`.
+  3. **Backups not landing at all** — `/api/status → github_token_set` +
+     `[github] PUSH FAIL` lines; repair `GITHUB_TOKEN` (repo contents write;
+     rotate before its expiry — current one dies 2026-11-11).
+- Odds also patch on any /predictions page view (request-path safety net), so a
+  single visit while books have lines up is enough for that day.
 - If `rows_total == 0`: the betting_log table didn't initialize — look for
   `[startup] betting_log table init failed` in logs.
 
