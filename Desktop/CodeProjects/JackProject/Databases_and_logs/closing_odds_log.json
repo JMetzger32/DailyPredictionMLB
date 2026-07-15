@@ -1,0 +1,16 @@
+{
+  "2026-07-15": {
+    "NYN|PHI": {
+      "away_ml": 113,
+      "home_ml": -130,
+      "away_implied": 0.4537,
+      "home_implied": 0.5463
+    },
+    "CHA|TOR": {
+      "away_ml": 112,
+      "home_ml": -132,
+      "away_implied": 0.4533,
+      "home_implied": 0.5467
+    }
+  }
+}
