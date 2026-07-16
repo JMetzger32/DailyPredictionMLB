@@ -1,16 +1,28 @@
 {
   "2026-07-15": {
     "NYN|PHI": {
-      "away_ml": 113,
+      "away_ml": 111,
       "home_ml": -130,
-      "away_implied": 0.4537,
-      "home_implied": 0.5463
+      "away_implied": 0.4561,
+      "home_implied": 0.5439
     },
     "CHA|TOR": {
       "away_ml": 112,
       "home_ml": -132,
       "away_implied": 0.4533,
       "home_implied": 0.5467
+    },
+    "PIT|CLE": {
+      "away_ml": 106,
+      "home_ml": -124,
+      "away_implied": 0.4672,
+      "home_implied": 0.5328
+    },
+    "SDN|KCA": {
+      "away_ml": 102,
+      "home_ml": -120,
+      "away_implied": 0.4758,
+      "home_implied": 0.5242
     }
   }
 }
