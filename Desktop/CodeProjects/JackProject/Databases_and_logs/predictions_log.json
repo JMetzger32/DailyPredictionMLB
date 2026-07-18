@@ -45616,11 +45616,11 @@
       "home_win_prob": 0.565,
       "confidence": 0.065,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": 108,
+      "home_ml": -124,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -124,
+      "model_edge": 0.0298,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -45654,7 +45654,37 @@
         -1.4162200199459112
       ],
       "prediction_timestamp": "2026-07-18T10:15:06.925976-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4648,
+      "home_implied": 0.5352,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 114,
+          "home_ml": -134
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 107,
+          "home_ml": -118
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 107,
+          "home_ml": -118
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 107,
+          "home_ml": -126
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 104,
+          "home_ml": -125
+        }
+      ],
+      "arbitrage": null
     },
     {
       "game_pk": 825059,
@@ -45669,11 +45699,11 @@
       "home_win_prob": 0.628,
       "confidence": 0.128,
       "calibration_bucket": "60-70%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": 102,
+      "home_ml": -117,
+      "bet_rating": "good",
+      "predicted_team_ml": -117,
+      "model_edge": 0.1067,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -45707,7 +45737,37 @@
         -1.0062840077697923
       ],
       "prediction_timestamp": "2026-07-18T10:15:07.730063-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4787,
+      "home_implied": 0.5213,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 100,
+          "home_ml": -118
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 104,
+          "home_ml": -115
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 104,
+          "home_ml": -115
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 100,
+          "home_ml": -118
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 100,
+          "home_ml": -120
+        }
+      ],
+      "arbitrage": null
     },
     {
       "game_pk": 824738,
@@ -46032,11 +46092,11 @@
       "home_win_prob": 0.503,
       "confidence": 0.003,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": -117,
+      "home_ml": 102,
+      "bet_rating": "unsure",
+      "predicted_team_ml": 102,
+      "model_edge": 0.0243,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -46070,7 +46130,37 @@
         -0.4468146570254135
       ],
       "prediction_timestamp": "2026-07-18T10:15:13.631326-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.5213,
+      "home_implied": 0.4787,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -118,
+          "home_ml": 100
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -115,
+          "home_ml": 104
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -115,
+          "home_ml": 104
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -118,
+          "home_ml": 100
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -120,
+          "home_ml": 100
+        }
+      ],
+      "arbitrage": null
     },
     {
       "game_pk": 824979,
