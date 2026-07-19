@@ -1,27 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Make Your Picks — DailyPredictionMLB</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>⚾</text></svg>" />
-</head>
-<body>
+{% extends "base.html" %}
 
-<!-- Navbar -->
-<nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
-  <div class="d-flex align-items-center gap-2">
-    <span class="text-white-50 small d-none d-sm-inline">Your Picks</span>
-    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
-    <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
-    <a href="/betting"     class="btn btn-outline-light btn-sm">Betting</a>
-    <a href="/explain"     class="btn btn-outline-light btn-sm">Model</a>
-  </div>
-</nav>
+{% block title %}Make Your Picks — DailyPredictionMLB{% endblock %}
 
+{% block page_label %}Your Picks{% endblock %}
+
+{% block content %}
 <div class="container-xl py-4">
 
   <!-- Email identify -->
@@ -98,8 +81,9 @@
   </table>
 
 </div>
+{% endblock %}
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}
 <script>
   let gamesData   = [];   // full game objects from /api/predictions
   let myPicks     = {};   // {game_pk: "Home"|"Away"}
@@ -162,7 +146,7 @@
     col.dataset.gamePk = pk;
     col.innerHTML = `
       <div class="card border-0 shadow-sm h-100">
-        <div class="card-header d-flex justify-content-between align-items-center" style="background:#1e2329;color:#fff;">
+        <div class="card-header d-flex justify-content-between align-items-center">
           <span class="fw-semibold">${away} @ ${home}</span>
           <span class="badge bg-secondary">${game.game_time_et || ""}</span>
         </div>
@@ -310,7 +294,7 @@
       // Model row first
       const modelAcc = model.total > 0 ? (model.accuracy * 100).toFixed(1) + "%" : "—";
       tbody.innerHTML = `<tr class="table-secondary">
-        <td class="ps-3 fw-bold">🤖</td>
+        <td class="ps-3 fw-bold"><span aria-hidden="true">🤖</span></td>
         <td class="fw-bold">Model (baseline)</td>
         <td class="text-center">${model.correct || 0}</td>
         <td class="text-center">${(model.total || 0) - (model.correct || 0)}</td>
@@ -337,8 +321,4 @@
     }
   }
 </script>
-
-<div class="site-credit">Website made by Jack Metzger</div>
-
-</body>
-</html>
+{% endblock %}

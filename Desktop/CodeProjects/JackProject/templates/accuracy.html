@@ -1,28 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Season Record — DailyPredictionMLB</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>⚾</text></svg>" />
+{% extends "base.html" %}
+
+{% block title %}Season Record — DailyPredictionMLB{% endblock %}
+
+{% block extra_head %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</head>
-<body>
+{% endblock %}
 
-<!-- ── Navbar ────────────────────────────────────────────────────── -->
-<nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
-  <div class="d-flex align-items-center gap-2">
-    <span class="text-white-50 small d-none d-sm-inline">Season Accuracy Record</span>
-    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
-    <a href="/betting"     class="btn btn-outline-light btn-sm">Betting</a>
-    <a href="/picks"       class="btn btn-outline-light btn-sm">Picks</a>
-    <a href="/explain"     class="btn btn-outline-light btn-sm">Model</a>
-  </div>
-</nav>
+{% block page_label %}Season Accuracy Record{% endblock %}
 
+{% block content %}
 <!-- ── Main content ──────────────────────────────────────────────── -->
 <div class="container-xl py-4">
 
@@ -124,7 +110,7 @@
         <p class="text-muted small mb-3">
           Regular season week-by-week accuracy. Dashed line = 57% target. Gray line = home team win % (always-home baseline). Early weeks are lower as the model's team stats blend toward live data.
         </p>
-        <canvas id="weekly-chart" height="80"></canvas>
+        <canvas id="weekly-chart" height="80" role="img" aria-label="Line chart of weekly prediction accuracy versus the 57% target and home-win-rate baseline"></canvas>
       </div>
     </div>
 
@@ -136,7 +122,7 @@
           How well do predicted probabilities match actual win rates?
           The dashed line shows perfect calibration. Points close to the line mean the model's confidence is accurate.
         </p>
-        <canvas id="calibration-chart" height="80"></canvas>
+        <canvas id="calibration-chart" height="80" role="img" aria-label="Bar and line chart comparing predicted win probability buckets to actual win rates"></canvas>
       </div>
     </div>
 
@@ -145,26 +131,15 @@
   <div id="error-box" class="alert alert-danger d-none mt-3" role="alert"></div>
 
 </div>
+{% endblock %}
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}
 <script>
   function showTab(tab) {
     document.getElementById("pane-rs").classList.toggle("d-none", tab !== "rs");
     document.getElementById("pane-st").classList.toggle("d-none", tab !== "st");
     document.getElementById("tab-rs").classList.toggle("active", tab === "rs");
     document.getElementById("tab-st").classList.toggle("active", tab === "st");
-  }
-
-  function accuracyColor(pct) {
-    if (pct >= 0.60) return "text-success";
-    if (pct >= 0.50) return "text-warning";
-    return "text-danger";
-  }
-
-  function barColor(pct) {
-    if (pct >= 0.60) return "bg-success";
-    if (pct >= 0.50) return "bg-warning";
-    return "bg-danger";
   }
 
   function buildTable(tbodyId, teams, noDataId, tableId) {
@@ -427,9 +402,4 @@
 
   loadAccuracy();
 </script>
-
-
-<div class="site-credit">Website made by Jack Metzger</div>
-
-</body>
-</html>
+{% endblock %}

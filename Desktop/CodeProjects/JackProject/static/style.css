@@ -1,13 +1,82 @@
-/* DailyPredictionMLB — custom styles */
+/* DailyPredictionMLB — custom styles
+   ────────────────────────────────────────────────────────────────
+   Design system: scoreboard / box-score. Tabular numerals in mono
+   type (JetBrains Mono) for anything that's a stat, odds, or P/L
+   figure — everything else stays in system-ui. Amber (#d4a017) is
+   the one signature accent, used sparingly, like a stadium-light
+   glow against the scoreboard-black panels.
+
+   NOTE: Bootstrap's success/danger green/red are left untouched —
+   they mean "correct pick" / "incorrect pick" / "profit" / "loss"
+   throughout the app, so this palette does not reuse green or red
+   for anything else (team identity is neutral charcoal + amber). */
+
+:root {
+  --board-black: #0b1210;
+  --paper: #f7f5ef;
+  --amber: #d4a017;
+  --amber-dim: #b8890f;
+  --amber-text: #8f6b0b;  /* darker for use as small/normal-weight text on white — clears WCAG AA 4.5:1, --amber-dim only clears the 3:1 large-text threshold */
+  --charcoal: #3a4048;
+  --ink-muted: #5a5f57;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
 
 body {
-  background-color: #f4f6f9;
+  background-color: var(--paper);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* ── Tabular / numeric type ────────────────────────────────
+   Scoped narrowly to cells/elements that hold a stat, odds, or
+   P/L figure — not blanket utility classes like .fw-bold or
+   table.table, which are also used on prose headings and team-name
+   text elsewhere in the app. */
+.stats-table tbody td, .odds-tag, .progress-bar,
+.away-badge, .home-badge,
+.fs-2, .fs-5:not(.text-muted), #modal-away-bar, #modal-home-bar,
+.market-model-row strong {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+}
+
 /* ── Navbar ───────────────────────────────────────────── */
+.navbar.bg-dark {
+  background-color: var(--board-black) !important;
+  border-bottom: 2px solid var(--amber);
+}
+
 .navbar-brand {
   letter-spacing: -0.5px;
+}
+
+/* ── Buttons — amber replaces Bootstrap primary blue ─────── */
+.btn-primary {
+  background-color: var(--amber);
+  border-color: var(--amber);
+  color: var(--board-black);
+  font-weight: 600;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+  background-color: var(--amber-dim);
+  border-color: var(--amber-dim);
+  color: var(--board-black);
+}
+
+.btn-outline-primary {
+  color: var(--amber-text);
+  border-color: var(--amber);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--amber);
+  border-color: var(--amber);
+  color: var(--board-black);
+}
+
+.text-primary {
+  color: var(--amber-text) !important;
 }
 
 /* ── Game cards ───────────────────────────────────────── */
@@ -23,9 +92,10 @@ body {
 }
 
 .card-header {
-  background-color: #1e2329;
+  background-color: var(--board-black);
   color: #fff;
   padding: 0.6rem 1rem;
+  border-bottom: 2px solid var(--amber);
 }
 
 .matchup-label {
@@ -40,6 +110,7 @@ body {
 
 /* ── Stats table ──────────────────────────────────────── */
 .stats-table thead th {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -58,20 +129,60 @@ body {
   background-color: #f8f9fa;
 }
 
-/* ── Progress bar ─────────────────────────────────────── */
+/* ── Win probability bar — signature scoreboard split-panel ──
+   Sharp corners, mono percentage labels, thin amber divider at
+   the split point. Team sides are neutral (charcoal/board-black)
+   since bg-danger/bg-primary carry "incorrect/correct" meaning
+   elsewhere in the app and must not double as team color. ────── */
 .progress {
-  border-radius: 6px;
-  background-color: #e9ecef;
+  border-radius: 3px;
+  background-color: #e4e1d6;
+  position: relative;
+}
+
+.progress::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: var(--split, 50%);
+  width: 2px;
+  background: var(--amber);
+  transform: translateX(-1px);
+  pointer-events: none;
 }
 
 .progress-bar {
   transition: width 0.6s ease;
+  font-family: var(--mono);
   font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.progress-bar.away-bar {
+  background-color: var(--charcoal) !important;
+}
+
+.progress-bar.home-bar {
+  background-color: var(--board-black) !important;
 }
 
 /* ── Badges ───────────────────────────────────────────── */
 .winner-badge {
   font-size: 0.75rem;
+}
+
+/* "Favored team" badges reuse bg-primary/bg-danger for bold-vs-gray
+   emphasis, not for correct/incorrect — recolor to the neutral team
+   pairing so it doesn't read as a result signal next to the win-prob
+   bar. (Actual correct/incorrect banners use text-success/text-danger
+   directly and are untouched.) */
+.away-badge.bg-primary, .home-badge.bg-primary {
+  background-color: var(--board-black) !important;
+}
+
+.away-badge.bg-danger, .home-badge.bg-danger {
+  background-color: var(--charcoal) !important;
 }
 
 /* ── Date picker ──────────────────────────────────────── */
@@ -80,13 +191,14 @@ body {
   background-color: transparent;
   color: #fff;
   border-color: rgba(255, 255, 255, 0.35);
+  font-family: var(--mono);
 }
 
 .date-input:focus {
   background-color: rgba(255, 255, 255, 0.1);
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: none;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 0.2rem rgba(212, 160, 23, 0.25);
 }
 
 .date-input::-webkit-calendar-picker-indicator {
@@ -103,18 +215,24 @@ body {
   font-weight: 600;
 }
 
+.filter-pill.btn-primary {
+  background-color: var(--amber);
+  border-color: var(--amber);
+  color: var(--board-black);
+}
+
 /* ── Home / landing page ──────────────────────────────── */
 .home-page {
   min-height: 100vh;
   background: url('/static/baseballBackground.webp') center/cover no-repeat fixed;
-  background-color: #1a1a1a;
+  background-color: var(--board-black);
   margin: 0;
   padding: 0;
 }
 
 .hero-overlay {
   min-height: 100vh;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(11, 18, 16, 0.6);
   padding: 2rem;
 }
 
@@ -122,7 +240,7 @@ body {
 .odds-tag {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--ink-muted);
   min-width: 48px;
   text-align: center;
 }
@@ -139,14 +257,27 @@ body {
   bottom: 0.75rem;
   right: 1rem;
   font-size: 0.72rem;
-  color: rgba(0, 0, 0, 0.35);
+  color: #767676;
   pointer-events: none;
   z-index: 1000;
   letter-spacing: 0.2px;
 }
 
 .home-page .site-credit {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ── Focus visibility ──────────────────────────────────── */
+a:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion ────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .card, .progress-bar {
+    transition: none;
+  }
 }
 
 /* ── Responsive tweaks ────────────────────────────────── */

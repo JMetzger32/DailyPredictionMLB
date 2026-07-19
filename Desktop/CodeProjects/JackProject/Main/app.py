@@ -1062,6 +1062,17 @@ def _refresh_today_odds():
         _save_log(log)
         _upsert_betting_entries(log.get(today_str, []))
         _push_log_to_github()
+        # Fold today's odds-bearing entries into betting_log.json BEFORE pushing it —
+        # otherwise the backup only gains them at the next successful startup merge,
+        # and a crash before then leaves the day's rated bets out of the backup.
+        _odds_entries_today = [
+            e for e in log.get(today_str, [])
+            if e.get("bet_rating") is not None and e.get("away_ml") is not None
+        ]
+        if _odds_entries_today:
+            _blog_now = _load_betting_log()
+            _blog_now[today_str] = _odds_entries_today
+            _save_betting_log(_blog_now)
         _push_betting_log_to_github()
         print(f"[app] _refresh_today_odds: patched odds into {changed} entries for {today_str}", flush=True)
     else:
@@ -1142,49 +1153,53 @@ try:
         print(f"[startup] Seeded {len(_startup_log.get(_startup_today, []))} predictions for {_startup_today}", flush=True)
     # Always patch odds — no-op if already set. Runs before betting_log rebuild.
     _refresh_today_odds()
-    # Merge betting_log: start from the GitHub-restored version (has all historical
-    # data), then supplement with anything newly available in predictions_log.
-    # IMPORTANT: do NOT rebuild from scratch — that would erase historical entries
-    # that only live in the betting_log backup (predictions_log only has odds for
-    # the current day; past days' odds are not retroactively available).
-    try:
-        _blog = _load_betting_log()           # what was restored from GitHub
-        _restored_total = sum(len(v) for v in _blog.values())
-        _full_log = _load_log()
-        for _d, _entries in _full_log.items():
-            _odds_entries = [
-                e for e in _entries
-                if e.get("bet_rating") is not None and e.get("away_ml") is not None
-            ]
-            if _odds_entries:
-                _blog[_d] = _odds_entries    # update this day
-        _save_betting_log(_blog)
-        _blog_total = sum(len(v) for v in _blog.values())
-        print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
-        # Write merged entries into the SQLite betting_log table so the betting
-        # page (which reads from the DB, not the JSON) has data after a redeploy.
-        # Feed BOTH sources: the odds-bearing betting_log entries AND the full
-        # predictions_log — _upsert_betting_entries itself keeps only bettable-or-
-        # resolved entries. Previously only the odds-filtered _blog reached the table,
-        # so resolved-but-odds-less games (all 1200+ historical picks) could never
-        # backfill after a redeploy and the table stayed empty.
-        _all_blog_entries = [e for day in _blog.values() for e in day]
-        _all_log_entries  = [e for day in _full_log.values() for e in day]
-        if _all_blog_entries or _all_log_entries:
-            _upsert_betting_entries(_all_log_entries + _all_blog_entries)
-            print(f"[startup] betting_log upserted from {len(_all_log_entries)} log + "
-                  f"{len(_all_blog_entries)} odds entries", flush=True)
-        # Only push if we have at least as many entries as what was restored.
-        # Prevents a failed restore (empty backup) from overwriting a larger
-        # GitHub backup with a smaller merged result on the next deploy.
-        if _blog_total >= _restored_total:
-            _push_betting_log_to_github()
-        else:
-            print(f"[startup] Skipping push — merged ({_blog_total}) < restored ({_restored_total}); keeping larger GitHub backup", flush=True)
-    except Exception as _be:
-        print(f"[startup] betting_log merge failed: {_be}", flush=True)
 except Exception as _e:
     print(f"[startup] Today-seeding failed: {_e}", flush=True)
+
+# Merge betting_log: start from the GitHub-restored version (has all historical
+# data), then supplement with anything newly available in predictions_log.
+# IMPORTANT: do NOT rebuild from scratch — that would erase historical entries
+# that only live in the betting_log backup (predictions_log only has odds for
+# the current day; past days' odds are not retroactively available).
+# Deliberately OUTSIDE the seeding try-block: a transient seeding/odds failure
+# must not skip this merge, or the DB betting_log table stays empty of historical
+# bets until the next restart (observed 2026-07-19: July 16-18 bets invisible).
+try:
+    _blog = _load_betting_log()           # what was restored from GitHub
+    _restored_total = sum(len(v) for v in _blog.values())
+    _full_log = _load_log()
+    for _d, _entries in _full_log.items():
+        _odds_entries = [
+            e for e in _entries
+            if e.get("bet_rating") is not None and e.get("away_ml") is not None
+        ]
+        if _odds_entries:
+            _blog[_d] = _odds_entries    # update this day
+    _save_betting_log(_blog)
+    _blog_total = sum(len(v) for v in _blog.values())
+    print(f"[startup] betting_log merged: {_blog_total} entries across {len(_blog)} dates", flush=True)
+    # Write merged entries into the SQLite betting_log table so the betting
+    # page (which reads from the DB, not the JSON) has data after a redeploy.
+    # Feed BOTH sources: the odds-bearing betting_log entries AND the full
+    # predictions_log — _upsert_betting_entries itself keeps only bettable-or-
+    # resolved entries. Previously only the odds-filtered _blog reached the table,
+    # so resolved-but-odds-less games (all 1200+ historical picks) could never
+    # backfill after a redeploy and the table stayed empty.
+    _all_blog_entries = [e for day in _blog.values() for e in day]
+    _all_log_entries  = [e for day in _full_log.values() for e in day]
+    if _all_blog_entries or _all_log_entries:
+        _upsert_betting_entries(_all_log_entries + _all_blog_entries)
+        print(f"[startup] betting_log upserted from {len(_all_log_entries)} log + "
+              f"{len(_all_blog_entries)} odds entries", flush=True)
+    # Only push if we have at least as many entries as what was restored.
+    # Prevents a failed restore (empty backup) from overwriting a larger
+    # GitHub backup with a smaller merged result on the next deploy.
+    if _blog_total >= _restored_total:
+        _push_betting_log_to_github()
+    else:
+        print(f"[startup] Skipping push — merged ({_blog_total}) < restored ({_restored_total}); keeping larger GitHub backup", flush=True)
+except Exception as _be:
+    print(f"[startup] betting_log merge failed: {_be}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1490,27 +1505,27 @@ def api_status():
 
 @app.route("/")
 def home():
-    return render_template("home.html")
+    return render_template("home.html", current_page="home")
 
 
 @app.route("/predictions")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", current_page="predictions")
 
 
 @app.route("/accuracy")
 def accuracy_page():
-    return render_template("accuracy.html")
+    return render_template("accuracy.html", current_page="accuracy")
 
 
 @app.route("/betting")
 def betting_page():
-    return render_template("betting.html")
+    return render_template("betting.html", current_page="betting")
 
 
 @app.route("/picks")
 def picks_page():
-    return render_template("picks.html")
+    return render_template("picks.html", current_page="picks")
 
 
 # ---------------------------------------------------------------------------
@@ -2706,7 +2721,7 @@ def teams():
 # ---------------------------------------------------------------------------
 @app.route("/explain")
 def explain():
-    return render_template("explain.html")
+    return render_template("explain.html", current_page="explain")
 
 
 @app.route("/api/model/info")

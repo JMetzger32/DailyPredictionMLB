@@ -1,29 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DailyPredictionMLB</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>⚾</text></svg>" />
-</head>
-<body>
+{% extends "base.html" %}
 
-<!-- ── Navbar ────────────────────────────────────────────────────── -->
-<nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
-  <div class="d-flex align-items-center gap-2 flex-wrap">
-    <button id="prev-day" class="btn btn-outline-light btn-sm">&#8249;</button>
+{% block navbar_extra %}
+    <button id="prev-day" class="btn btn-outline-light btn-sm" aria-label="Previous day">&#8249;</button>
     <input type="date" id="date-picker" class="form-control form-control-sm date-input" />
-    <button id="next-day" class="btn btn-outline-light btn-sm">&#8250;</button>
-    <a href="/accuracy" class="btn btn-outline-light btn-sm ms-1">Season Record</a>
-    <a href="/betting"  class="btn btn-outline-light btn-sm">Betting</a>
-    <a href="/picks"    class="btn btn-outline-light btn-sm">Picks</a>
-    <a href="/explain"  class="btn btn-outline-light btn-sm">Model</a>
-  </div>
-</nav>
+    <button id="next-day" class="btn btn-outline-light btn-sm" aria-label="Next day">&#8250;</button>
+{% endblock %}
 
+{% block content %}
 <!-- ── Main content ──────────────────────────────────────────────── -->
 <div class="container-xl py-4">
 
@@ -80,7 +63,7 @@
 </div>
 
 <!-- ── Custom Weights Offcanvas ──────────────────────────────────── -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="weightsOffcanvas" style="width:320px;">
+<div class="offcanvas offcanvas-end" tabindex="-1" id="weightsOffcanvas" style="max-width:320px;">
   <div class="offcanvas-header border-bottom">
     <h6 class="offcanvas-title fw-semibold">Custom Model Weights</h6>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
@@ -221,9 +204,9 @@
             <span class="small fw-semibold away-prob-label"></span>
             <span class="small fw-semibold home-prob-label"></span>
           </div>
-          <div class="progress" style="height: 18px;">
-            <div class="progress-bar bg-primary away-bar" role="progressbar"></div>
-            <div class="progress-bar bg-danger home-bar" role="progressbar"></div>
+          <div class="progress win-prob-progress" style="height: 18px;">
+            <div class="progress-bar away-bar" role="progressbar"></div>
+            <div class="progress-bar home-bar" role="progressbar"></div>
           </div>
           <div class="d-flex justify-content-between mt-2">
             <span class="badge rounded-pill away-badge"></span>
@@ -246,7 +229,71 @@
   </div>
 </template>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- ── Game Detail Modal ────────────────────────────────────────────── -->
+<div class="modal fade" id="gameDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modal-matchup"></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Why the model chose -->
+        <h6 class="fw-bold mb-3">Why the model favors <span id="modal-pick-team" class="text-primary"></span></h6>
+        <div id="modal-contributions" class="mb-4"></div>
+
+        <!-- Feature breakdown table -->
+        <h6 class="fw-bold mb-2">Feature Breakdown <span class="text-muted fw-normal small">(positive diff = favors home)</span></h6>
+        <table class="table table-sm table-hover mb-4">
+          <thead class="table-dark">
+            <tr>
+              <th>Feature</th>
+              <th class="text-center">Home − Away</th>
+              <th class="text-center">Favors</th>
+            </tr>
+          </thead>
+          <tbody id="modal-feature-tbody"></tbody>
+        </table>
+
+        <!-- Est. Total Breakdown -->
+        <div id="modal-est-total-section" class="d-none mb-4">
+          <h6 class="fw-bold mb-2">Estimated Total Breakdown</h6>
+          <div id="modal-est-total-body" class="bg-light rounded p-3 small"></div>
+        </div>
+
+        <!-- Odds by Sportsbook -->
+        <div id="modal-odds-by-book" class="d-none mb-4">
+          <h6 class="fw-bold mb-2">Odds by Sportsbook</h6>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Book</th>
+                  <th class="text-center" id="modal-book-away-hdr"></th>
+                  <th class="text-center" id="modal-book-home-hdr"></th>
+                </tr>
+              </thead>
+              <tbody id="modal-book-odds-body"></tbody>
+            </table>
+          </div>
+          <div id="modal-arb-alert" class="alert alert-success py-1 px-2 small d-none mt-2 mb-0">Arbitrage opportunity detected! Best lines across books guarantee a risk-free profit.</div>
+        </div>
+
+        <!-- Season stats snapshot -->
+        <h6 class="fw-bold mb-2">Season Stats Snapshot</h6>
+        <div class="row g-3">
+          <div class="col-6 p-3 bg-light rounded small" id="modal-away-stats"></div>
+          <div class="col-6 p-3 bg-light rounded small" id="modal-home-stats"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
   // ── Helpers ──────────────────────────────────────────────────────
   function fmt3(v)  { return (v || 0).toFixed(3); }
@@ -331,10 +378,10 @@
     const finalStatuses = ["Final", "Game Over", "Completed Early"];
     const badge = q(".game-time-badge");
     if (liveStatuses.includes(game.status)) {
-      badge.textContent = "🔴 LIVE";
+      badge.innerHTML = '<span aria-hidden="true">🔴</span> LIVE';
       badge.classList.replace("bg-secondary", "bg-danger");
     } else if (finalStatuses.includes(game.status)) {
-      badge.textContent = "✅ Final";
+      badge.innerHTML = '<span aria-hidden="true">✅</span> Final';
       badge.classList.replace("bg-secondary", "bg-dark");
     } else {
       badge.textContent = game.game_time_et || game.status || "";
@@ -364,9 +411,9 @@
       el.innerHTML = "";
 
       if (is_league_avg) {
-        el.innerHTML = `${eraStr} / ${whipStr} / ${fipStr} <span style="color:#aaa;font-size:0.75em;">(Lg Avg)</span>`;
+        el.innerHTML = `${eraStr} / ${whipStr} / ${fipStr} <span style="color:#767676;font-size:0.75em;">(Lg Avg)</span>`;
       } else if (is_prior_year) {
-        el.innerHTML = `${eraStr} / ${whipStr} / ${fipStr} <span style="color:#aaa;font-size:0.75em;">(2025)</span>`;
+        el.innerHTML = `${eraStr} / ${whipStr} / ${fipStr} <span style="color:#767676;font-size:0.75em;">(2025)</span>`;
       } else if (is_blended && era_raw != null) {
         // Show ERA with a clickable star that explains the blending
         const starEl = document.createElement("span");
@@ -451,6 +498,7 @@
     q(".away-bar").setAttribute("aria-valuenow", awayPct);
     q(".home-bar").style.width = homePct + "%";
     q(".home-bar").setAttribute("aria-valuenow", homePct);
+    q(".win-prob-progress").style.setProperty("--split", awayPct + "%");
 
     q(".away-prob-label").textContent = awayName;
     q(".home-prob-label").textContent = homeName;
@@ -769,9 +817,9 @@
       const fip  = fip_raw  != null ? fmt2(fip_raw)  : "—";
       let line = `SP: ${sp_name} &mdash; ERA ${era} / WHIP ${whip} / FIP ${fip}`;
       if (is_league_avg) {
-        line += `<br><span style="color:#aaa;font-size:0.78rem;">No pitcher data found — using league-average stats for this prediction.</span>`;
+        line += `<br><span style="color:#767676;font-size:0.78rem;">No pitcher data found — using league-average stats for this prediction.</span>`;
       } else if (is_prior_year) {
-        line += `<br><span style="color:#aaa;font-size:0.78rem;">No 2026 stats yet — showing 2025 season stats.</span>`;
+        line += `<br><span style="color:#767676;font-size:0.78rem;">No 2026 stats yet — showing 2025 season stats.</span>`;
       } else if (is_blended && gs != null) {
         const pct = Math.min(Math.round(gs / 7 * 100), 100);
         line += `<br><span style="color:#e67e22;font-size:0.78rem;">★ ERA shown is raw 2026 (${gs} GS). Model predictions use ${pct}% current + ${100-pct}% prior-year blend.</span>`;
@@ -1055,71 +1103,4 @@
     }
   });
 </script>
-
-<!-- ── Game Detail Modal ────────────────────────────────────────────── -->
-<div class="modal fade" id="gameDetailModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
-        <h5 class="modal-title" id="modal-matchup"></h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-
-        <!-- Why the model chose -->
-        <h6 class="fw-bold mb-3">Why the model favors <span id="modal-pick-team" class="text-primary"></span></h6>
-        <div id="modal-contributions" class="mb-4"></div>
-
-        <!-- Feature breakdown table -->
-        <h6 class="fw-bold mb-2">Feature Breakdown <span class="text-muted fw-normal small">(positive diff = favors home)</span></h6>
-        <table class="table table-sm table-hover mb-4">
-          <thead class="table-dark">
-            <tr>
-              <th>Feature</th>
-              <th class="text-center">Home − Away</th>
-              <th class="text-center">Favors</th>
-            </tr>
-          </thead>
-          <tbody id="modal-feature-tbody"></tbody>
-        </table>
-
-        <!-- Est. Total Breakdown -->
-        <div id="modal-est-total-section" class="d-none mb-4">
-          <h6 class="fw-bold mb-2">Estimated Total Breakdown</h6>
-          <div id="modal-est-total-body" class="bg-light rounded p-3 small"></div>
-        </div>
-
-        <!-- Odds by Sportsbook -->
-        <div id="modal-odds-by-book" class="d-none mb-4">
-          <h6 class="fw-bold mb-2">Odds by Sportsbook</h6>
-          <div class="table-responsive">
-            <table class="table table-sm mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Book</th>
-                  <th class="text-center" id="modal-book-away-hdr"></th>
-                  <th class="text-center" id="modal-book-home-hdr"></th>
-                </tr>
-              </thead>
-              <tbody id="modal-book-odds-body"></tbody>
-            </table>
-          </div>
-          <div id="modal-arb-alert" class="alert alert-success py-1 px-2 small d-none mt-2 mb-0">Arbitrage opportunity detected! Best lines across books guarantee a risk-free profit.</div>
-        </div>
-
-        <!-- Season stats snapshot -->
-        <h6 class="fw-bold mb-2">Season Stats Snapshot</h6>
-        <div class="row g-3">
-          <div class="col-6 p-3 bg-light rounded small" id="modal-away-stats"></div>
-          <div class="col-6 p-3 bg-light rounded small" id="modal-home-stats"></div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="site-credit">Website made by Jack Metzger</div>
-
-</body>
-</html>
+{% endblock %}

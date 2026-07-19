@@ -1,28 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Explainer — DailyPredictionMLB</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>⚾</text></svg>" />
+{% extends "base.html" %}
+
+{% block title %}Model Explainer — DailyPredictionMLB{% endblock %}
+
+{% block extra_head %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</head>
-<body>
+{% endblock %}
 
-<!-- ── Navbar ────────────────────────────────────────────────────── -->
-<nav class="navbar navbar-dark bg-dark px-3 py-2">
-  <a href="/" class="navbar-brand fw-bold fs-4 text-decoration-none">⚾ DailyPredictionMLB</a>
-  <div class="d-flex align-items-center gap-2">
-    <span class="text-white-50 small d-none d-sm-inline">Model Explainer</span>
-    <a href="/predictions" class="btn btn-outline-light btn-sm">Predictions</a>
-    <a href="/accuracy"    class="btn btn-outline-light btn-sm">Season Record</a>
-    <a href="/betting"     class="btn btn-outline-light btn-sm">Betting</a>
-    <a href="/picks"       class="btn btn-outline-light btn-sm">Picks</a>
-  </div>
-</nav>
+{% block page_label %}Model Explainer{% endblock %}
 
+{% block content %}
 <!-- ── Main content ──────────────────────────────────────────────── -->
 <div class="container-xl py-4">
 
@@ -65,7 +51,7 @@
       <div class="card-body">
         <h5 class="fw-bold mb-1">Feature Importance <span class="text-muted fw-normal small">(Gradient Boosting)</span></h5>
         <p class="text-muted small mb-3">How much each feature contributes to the GBM model's prediction. Higher = model relies on it more.</p>
-        <canvas id="importance-chart" height="200"></canvas>
+        <canvas id="importance-chart" height="200" role="img" aria-label="Horizontal bar chart of gradient boosting feature importances"></canvas>
       </div>
     </div>
 
@@ -74,7 +60,7 @@
       <div class="card-body">
         <h5 class="fw-bold mb-1">Logistic Regression Coefficients</h5>
         <p class="text-muted small mb-3">Direction and magnitude of effect for each feature on the home team's win probability. Positive = favors home; negative = favors away.</p>
-        <canvas id="coef-chart" height="200"></canvas>
+        <canvas id="coef-chart" height="200" role="img" aria-label="Horizontal bar chart of logistic regression coefficients by feature"></canvas>
       </div>
     </div>
 
@@ -83,7 +69,7 @@
       <div class="card-body">
         <h5 class="fw-bold mb-1">Calibration Curve</h5>
         <p class="text-muted small mb-3">How well model confidence aligns with actual win rates. A perfectly calibrated model falls on the dashed diagonal.</p>
-        <canvas id="calibration-chart" height="140"></canvas>
+        <canvas id="calibration-chart" height="140" role="img" aria-label="Scatter plot comparing predicted win probability to actual win rate against a perfect-calibration line"></canvas>
       </div>
     </div>
 
@@ -108,10 +94,9 @@
 
   </div><!-- /content -->
 </div>
+{% endblock %}
 
-<div class="site-credit">Website made by Jack Metzger</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}
 <script>
   async function loadExplainer() {
     const loading = document.getElementById("loading");
@@ -209,7 +194,7 @@
               label: "Perfect calibration",
               data: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
               type: "line",
-              borderColor: "#aaa",
+              borderColor: "#767676",
               borderDash: [6, 4],
               pointRadius: 0,
               fill: false,
@@ -257,5 +242,4 @@
 
   loadExplainer();
 </script>
-</body>
-</html>
+{% endblock %}
