@@ -2275,13 +2275,16 @@ def _bet_row(b, kelly=None):
     row = {
         "game_pk":        b.get("game_pk"),
         "date":           b["date"],
-        "away_team":      b.get("away_team_name", b.get("away_team")),
-        "home_team":      b.get("home_team_name", b.get("home_team")),
-        "pick":           b.get("home_team_name") if pick_is_home else b.get("away_team_name"),
+        "away_team":      b.get("away_team_name") or b.get("away_team"),
+        "home_team":      b.get("home_team_name") or b.get("home_team"),
+        # Fall back to the team code — DB-backed rows have no *_team_name columns
+        "pick":           (b.get("home_team_name") or b.get("home_team")) if pick_is_home
+                          else (b.get("away_team_name") or b.get("away_team")),
         "ml":             ml,
         "edge":           b.get("model_edge"),
         "ev":             ev,
-        "correct":        b["correct"],
+        # SQLite stores booleans as 0/1; the frontend does strict === true/false checks
+        "correct":        None if b["correct"] is None else bool(b["correct"]),
         "pl":             pl,
         "home_win_prob":  hwp,
         "away_win_prob":  b.get("away_win_prob"),

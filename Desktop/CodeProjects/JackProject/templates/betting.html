@@ -454,7 +454,7 @@
 
       // ROI for value bets
       if (vb.games > 0) {
-        const roiSign = vb.net_pl >= 0 ? "+" : "";
+        const roiSign = vb.net_pl >= 0 ? "+" : "−";
         const roiCls  = vb.net_pl >= 0 ? "text-success" : "text-danger";
         document.getElementById("vb-roi").textContent  = `${roiSign}$${Math.abs(vb.net_pl).toFixed(2)} net`;
         document.getElementById("vb-roi").className    = `fw-semibold ${roiCls}`;
@@ -466,7 +466,7 @@
         netEl.className   = `fs-5 fw-bold ${roiCls}`;
         if (vb.roi !== null) {
           const roiPctEl = document.getElementById("roi-pct");
-          roiPctEl.textContent = `${roiSign}${(vb.roi * 100).toFixed(1)}%`;
+          roiPctEl.textContent = `${roiSign}${Math.abs(vb.roi * 100).toFixed(1)}%`;
           roiPctEl.className   = `fs-5 fw-bold ${roiCls}`;
         }
         document.getElementById("roi-bar").classList.remove("d-none");
@@ -534,13 +534,13 @@
       const k = data.kelly;
       if (k && k.bets > 0) {
         const kCls  = k.net_pl >= 0 ? "text-success" : "text-danger";
-        const kSign = k.net_pl >= 0 ? "+" : "";
+        const kSign = k.net_pl >= 0 ? "+" : "−";
         const netEl2 = document.getElementById("kelly-net");
         netEl2.textContent = `${kSign}$${Math.abs(k.net_pl).toFixed(2)}`;
         netEl2.className   = `fs-5 fw-bold ${kCls}`;
         if (k.roi !== null) {
           const roiEl2 = document.getElementById("kelly-roi");
-          roiEl2.textContent = `${kSign}${(k.roi * 100).toFixed(1)}%`;
+          roiEl2.textContent = `${kSign}${Math.abs(k.roi * 100).toFixed(1)}%`;
           roiEl2.className   = `fs-5 fw-bold ${kCls}`;
         }
         document.getElementById("kelly-note").textContent =
