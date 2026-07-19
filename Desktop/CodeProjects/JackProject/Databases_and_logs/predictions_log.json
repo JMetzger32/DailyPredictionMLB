@@ -46189,7 +46189,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0075,
       "predicted_total": 11.7,
       "home_est_score": 7.4,
       "away_est_score": 4.2,
@@ -46246,7 +46246,11 @@
           "home_ml": 100
         }
       ],
-      "arbitrage": null
+      "arbitrage": null,
+      "closing_away_ml": -110,
+      "closing_home_ml": -106,
+      "closing_away_implied": 0.5045,
+      "closing_home_implied": 0.4955
     },
     {
       "game_pk": 824979,
