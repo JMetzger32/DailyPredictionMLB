@@ -47552,11 +47552,11 @@
       "home_win_prob": 0.559,
       "confidence": 0.059,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": -108,
+      "home_ml": -106,
+      "bet_rating": "good",
+      "predicted_team_ml": -106,
+      "model_edge": 0.0613,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -47590,7 +47590,32 @@
         -0.12469593993016514
       ],
       "prediction_timestamp": "2026-07-20T10:15:06.733650-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.5023,
+      "home_implied": 0.4977,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -106,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -112,
+          "home_ml": -108
+        }
+      ],
+      "arbitrage": null
     },
     {
       "game_pk": 823762,
@@ -47976,11 +48001,11 @@
       "home_win_prob": 0.522,
       "confidence": 0.022,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": -111,
+      "home_ml": -103,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -103,
+      "model_edge": 0.031,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -48014,7 +48039,32 @@
         -0.36204657357929504
       ],
       "prediction_timestamp": "2026-07-20T10:15:13.231523-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.509,
+      "home_implied": 0.491,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -112,
+          "home_ml": -104
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -109,
+          "home_ml": -101
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -109,
+          "home_ml": -101
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -114,
+          "home_ml": -105
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
