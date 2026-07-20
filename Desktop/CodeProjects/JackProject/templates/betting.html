@@ -172,7 +172,7 @@
                 <th class="text-center">Odds</th>
                 <th class="text-center">Edge</th>
                 <th class="text-center" title="Expected value per $10 bet based on model probability">EV</th>
-                <th class="text-center" title="Quarter-Kelly stake off a $100 bankroll, capped at 5%">¼K Stake</th>
+                <th class="text-center" title="Quarter-Kelly stake, max $15/game, sized down by edge">¼K Stake</th>
                 <th class="text-center">Result</th>
                 <th class="text-end">P/L</th>
                 <th class="text-end" title="P/L at the quarter-Kelly stake">¼K P/L</th>
@@ -543,10 +543,11 @@
           roiEl2.textContent = `${kSign}${Math.abs(k.roi * 100).toFixed(1)}%`;
           roiEl2.className   = `fs-5 fw-bold ${kCls}`;
         }
+        const kellyCap = (k.bankroll * k.max_stake_pct).toFixed(0);
         document.getElementById("kelly-note").textContent =
-          `¼-Kelly: ${k.bets} bets, $${k.total_staked.toFixed(2)} staked off a fixed ` +
-          `$${k.bankroll.toFixed(0)} bankroll (stakes capped at ${(k.max_stake_pct * 100).toFixed(0)}%). ` +
-          `Fractional Kelly is used because the model's calibration error (ECE ≈ 0.08) makes full Kelly overbet.`;
+          `¼-Kelly: ${k.bets} bets, $${k.total_staked.toFixed(2)} staked, max $${kellyCap}/game — ` +
+          `each stake sized down from the cap on thinner edges. Quarter (not full) Kelly because ` +
+          `the model's calibration error (ECE ≈ 0.08) would make full Kelly overbet.`;
       }
 
       loadWeekly();

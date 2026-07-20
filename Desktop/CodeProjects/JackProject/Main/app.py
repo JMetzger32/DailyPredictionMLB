@@ -2405,6 +2405,8 @@ def betting_stats():
 
     # Kelly sizing params (query-string overridable, clamped). Fraction defaults to
     # 1/4 Kelly: live calibration error (ECE ~ 0.079) means full Kelly would overbet.
+    # max_stake_pct 0.15 of the $100 reference => a $15/game ceiling; quarter-Kelly
+    # sizes each bet below that by edge, so the cap only binds on the strongest edges.
     def _qparam(name, default, lo, hi):
         try:
             v = float(request.args.get(name, default))
@@ -2413,7 +2415,7 @@ def betting_stats():
         return max(lo, min(hi, v))
     kelly_params = (_qparam("bankroll", 100.0, 1.0, 1_000_000.0),
                     _qparam("kelly_fraction", 0.25, 0.0, 1.0),
-                    _qparam("max_stake_pct", 0.05, 0.001, 1.0))
+                    _qparam("max_stake_pct", 0.15, 0.001, 1.0))
 
     # Recent value bets (last 20, most recent first)
     recent_value_bets = [_bet_row(b, kelly=kelly_params) for b in reversed(value_bets[-20:])]
