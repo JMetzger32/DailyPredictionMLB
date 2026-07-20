@@ -3104,6 +3104,84 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824087,
+      "date": "2026-07-20",
+      "game_type": "R",
+      "away_team": "SFN",
+      "away_team_name": "San Francisco Giants",
+      "home_team": "KCA",
+      "home_team_name": "Kansas City Royals",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.441,
+      "home_win_prob": 0.559,
+      "confidence": 0.059,
+      "calibration_bucket": "50-60%",
+      "away_ml": -108,
+      "home_ml": -106,
+      "bet_rating": "good",
+      "predicted_team_ml": -106,
+      "model_edge": 0.0613,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 10.2,
+      "home_est_score": 6.7,
+      "away_est_score": 3.5,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.03864983238912083,
+        -0.8254708287167226,
+        -0.8033343347900309,
+        1.047854973040033,
+        -1.3180913175895177,
+        -0.8127241538945686,
+        0.543635881802696,
+        -0.5775168281319983,
+        -0.5555791401304055,
+        0.4118943649528926,
+        0.45823304909724116,
+        1.1187023016933881,
+        -0.019012238314300642,
+        -1.2215746820316538,
+        -0.0702769223889982,
+        0.6350568337250633,
+        -0.1680821210707425,
+        -0.12469593993016514
+      ],
+      "prediction_timestamp": "2026-07-20T10:15:06.733650-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.5023,
+      "home_implied": 0.4977,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -106,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -112,
+          "home_ml": -108
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823762,
       "date": "2026-07-20",
       "game_type": "R",
@@ -3420,6 +3498,84 @@
       ],
       "prediction_timestamp": "2026-07-20T10:15:12.524571-04:00",
       "model_version": "b9133b95d2ec"
+    },
+    {
+      "game_pk": 824006,
+      "date": "2026-07-20",
+      "game_type": "R",
+      "away_team": "SLN",
+      "away_team_name": "St. Louis Cardinals",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.478,
+      "home_win_prob": 0.522,
+      "confidence": 0.022,
+      "calibration_bucket": "50-60%",
+      "away_ml": -111,
+      "home_ml": -103,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -103,
+      "model_edge": 0.031,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.5,
+      "home_est_score": 3.3,
+      "away_est_score": 3.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.3467479621787155,
+        -1.1818246919365911,
+        1.2065290661885866,
+        -0.7065455907756512,
+        1.4758152927085741,
+        0.06561478292306497,
+        0.3737369942602233,
+        -0.13225523596266878,
+        0.9696939966098483,
+        -0.7157043375639706,
+        0.8651420853291099,
+        0.9535839111806339,
+        -0.019012238314300642,
+        -1.1606483418345357,
+        -0.08776698908787674,
+        -0.14031277794473154,
+        -0.6824424995596694,
+        -0.36204657357929504
+      ],
+      "prediction_timestamp": "2026-07-20T10:15:13.231523-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.509,
+      "home_implied": 0.491,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -112,
+          "home_ml": -104
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -109,
+          "home_ml": -101
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -109,
+          "home_ml": -101
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -114,
+          "home_ml": -105
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
