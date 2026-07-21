@@ -4272,6 +4272,94 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824005,
+      "date": "2026-07-21",
+      "game_type": "R",
+      "away_team": "SLN",
+      "away_team_name": "St. Louis Cardinals",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.44,
+      "home_win_prob": 0.56,
+      "confidence": 0.06,
+      "calibration_bucket": "50-60%",
+      "away_ml": 102,
+      "home_ml": -119,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -119,
+      "model_edge": 0.0367,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 5.8,
+      "home_est_score": 3.0,
+      "away_est_score": 2.7,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.3467479621787155,
+        -1.1818246919365911,
+        1.2065290661885866,
+        -0.7065455907756512,
+        1.4758152927085741,
+        0.06561478292306497,
+        0.3737369942602233,
+        -0.13225523596266878,
+        0.9696939966098483,
+        -0.7157043375639706,
+        0.8651420853291099,
+        0.9535839111806339,
+        -0.019012238314300642,
+        -1.3176086372283127,
+        -1.9282863975804763,
+        -0.7473850666211959,
+        -2.0656533060559163,
+        -1.8909212872441725
+      ],
+      "prediction_timestamp": "2026-07-21T10:15:11.362351-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4767,
+      "home_implied": 0.5233,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 102,
+          "home_ml": -120
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 104,
+          "home_ml": -115
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 104,
+          "home_ml": -115
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 103,
+          "home_ml": -121
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 100,
+          "home_ml": -120
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 101,
+          "home_ml": -121
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823114,
       "date": "2026-07-21",
       "game_type": "R",
