@@ -353,10 +353,10 @@
   },
   "2026-07-20": {
     "MIN|CLE": {
-      "away_ml": 126,
-      "home_ml": -149,
-      "away_implied": 0.4251,
-      "home_implied": 0.5749
+      "away_ml": 125,
+      "home_ml": -148,
+      "away_implied": 0.4269,
+      "home_implied": 0.5731
     },
     "TBA|TOR": {
       "away_ml": 150,
@@ -365,34 +365,34 @@
       "home_implied": 0.614
     },
     "BAL|BOS": {
-      "away_ml": 139,
-      "home_ml": -163,
-      "away_implied": 0.403,
-      "home_implied": 0.597
+      "away_ml": 587,
+      "home_ml": -1147,
+      "away_implied": 0.1366,
+      "home_implied": 0.8634
     },
     "LAN|PHI": {
-      "away_ml": 115,
-      "home_ml": -137,
-      "away_implied": 0.4459,
-      "home_implied": 0.5541
+      "away_ml": 116,
+      "home_ml": -135,
+      "away_implied": 0.4463,
+      "home_implied": 0.5537
     },
     "SDN|ATL": {
-      "away_ml": 121,
-      "home_ml": -141,
-      "away_implied": 0.4361,
-      "home_implied": 0.5639
+      "away_ml": 124,
+      "home_ml": -145,
+      "away_implied": 0.43,
+      "home_implied": 0.57
     },
     "SFN|KCA": {
       "away_ml": -105,
-      "home_ml": -112,
-      "away_implied": 0.4923,
-      "home_implied": 0.5077
+      "home_ml": -111,
+      "away_implied": 0.4933,
+      "home_implied": 0.5067
     },
     "NYN|MIL": {
-      "away_ml": 122,
-      "home_ml": -142,
-      "away_implied": 0.4343,
-      "home_implied": 0.5657
+      "away_ml": 123,
+      "home_ml": -143,
+      "away_implied": 0.4325,
+      "home_implied": 0.5675
     },
     "DET|CHN": {
       "away_ml": -109,
@@ -401,16 +401,16 @@
       "home_implied": 0.5
     },
     "CHA|TEX": {
-      "away_ml": 143,
-      "home_ml": -166,
-      "away_implied": 0.3974,
-      "home_implied": 0.6026
+      "away_ml": -823,
+      "home_ml": 483,
+      "away_implied": 0.8387,
+      "home_implied": 0.1613
     },
     "MIA|HOU": {
-      "away_ml": 113,
-      "home_ml": -131,
-      "away_implied": 0.4529,
-      "home_implied": 0.5471
+      "away_ml": 112,
+      "home_ml": -129,
+      "away_implied": 0.4557,
+      "home_implied": 0.5443
     },
     "WAS|COL": {
       "away_ml": -103,
