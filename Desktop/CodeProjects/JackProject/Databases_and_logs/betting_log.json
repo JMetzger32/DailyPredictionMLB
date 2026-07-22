@@ -5154,6 +5154,104 @@
       ],
       "prediction_timestamp": "2026-07-22T10:15:12.276294-04:00",
       "model_version": "b9133b95d2ec"
+    },
+    {
+      "game_pk": 824650,
+      "date": "2026-07-22",
+      "game_type": "R",
+      "away_team": "DET",
+      "away_team_name": "Detroit Tigers",
+      "home_team": "CHN",
+      "home_team_name": "Chicago Cubs",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.374,
+      "home_win_prob": 0.626,
+      "confidence": 0.126,
+      "calibration_bucket": "60-70%",
+      "away_ml": 104,
+      "home_ml": -121,
+      "bet_rating": "good",
+      "predicted_team_ml": -121,
+      "model_edge": 0.0984,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 8.9,
+      "home_est_score": 6.7,
+      "away_est_score": 2.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.28309337317927075,
+        0.9274795778995533,
+        1.489064393699441,
+        2.282433147576996,
+        -0.9793136894800116,
+        -1.435313067181428,
+        0.30318627566363965,
+        0.06254671061141302,
+        -0.830128304743652,
+        0.7877605991251805,
+        0.692797400475491,
+        -0.33632030627910187,
+        -0.019012238314300642,
+        -0.40371353427153706,
+        0.008761575105785208,
+        0.43478215368749784,
+        0.1525258261775819,
+        -0.2633740850787069
+      ],
+      "prediction_timestamp": "2026-07-22T10:15:13.076485-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4724,
+      "home_implied": 0.5276,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 102,
+          "home_ml": -120
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 107,
+          "home_ml": -118
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 107,
+          "home_ml": -118
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 104,
+          "home_ml": -122
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 104,
+          "home_ml": -125
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 105,
+          "home_ml": -125
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 100,
+          "home_ml": -120
+        },
+        {
+          "name": "BetUS",
+          "away_ml": 108,
+          "home_ml": -118
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
