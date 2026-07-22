@@ -5103,6 +5103,84 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824896,
+      "date": "2026-07-22",
+      "game_type": "R",
+      "away_team": "SDN",
+      "away_team_name": "San Diego Padres",
+      "home_team": "ATL",
+      "home_team_name": "Atlanta Braves",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.463,
+      "home_win_prob": 0.537,
+      "confidence": 0.037,
+      "calibration_bucket": "50-60%",
+      "away_ml": 190,
+      "home_ml": -220,
+      "bet_rating": "bad",
+      "predicted_team_ml": -220,
+      "model_edge": -0.129,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 10.0,
+      "home_est_score": 4.1,
+      "away_est_score": 5.9,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.36201124431395726,
+        0.16315770156686266,
+        0.7129313219907683,
+        0.7229659797408327,
+        -0.30513960814908714,
+        0.28843323693718276,
+        -0.2427181009457053,
+        -0.41054373106849956,
+        0.4205956673833571,
+        0.03602813078060493,
+        -0.8892557906763875,
+        0.14627234208282663,
+        -0.019012238314300642,
+        1.963709970530775,
+        -0.13092155391559293,
+        -0.8485968433627676,
+        1.5830906288499116,
+        1.7201990675604544
+      ],
+      "prediction_timestamp": "2026-07-22T10:15:11.477398-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.334,
+      "home_implied": 0.666,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 188,
+          "home_ml": -225
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 193,
+          "home_ml": -215
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 193,
+          "home_ml": -215
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 188,
+          "home_ml": -224
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 822873,
       "date": "2026-07-22",
       "game_type": "R",
