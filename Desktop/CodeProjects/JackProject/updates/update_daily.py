@@ -630,9 +630,43 @@ def fetch_sp_baselines(season, games_played):
             "losses": int(safe(row, "L", 0)),
             "ip_gs":  round(ip_val / gs_val, 2) if gs_val > 0 else 5.8,
             "k_bb":   round(so9_val / bb9_val, 3) if bb9_val > 0.5 else round(so9_val / 0.5, 3),
+            "gs":     int(gs_val),
         }
 
     return sp_baselines
+
+
+# ---------------------------------------------------------------------------
+# Blend current-season SP baselines toward prior-season, weighted by GS
+# ---------------------------------------------------------------------------
+def blend_sp_baselines(prior_sp, new_sp_baselines):
+    """
+    Merge current-season (new_sp_baselines) with prior-season (prior_sp) SP stats,
+    shrinking each pitcher's current-season stat toward their prior-season value
+    based on games started this season — same alpha=min(gs/10, 1.0) ramp already
+    used by fetch_sp_baselines_from_mlb_api's blend() (line ~729), which exists
+    specifically to stop a 3-start ERA from overwhelming a full prior season.
+    Previously this path did a hard dict-merge overwrite instead (new entirely
+    replaces prior once GS >= min_gs), feeding the model — trained on stable,
+    full prior-season SP stats — a high-variance small-sample input at exactly
+    the same magnitude it was trained to trust, which is the leading suspect
+    for the live-vs-holdout calibration gap (scripts/calibration_live_check.py).
+    """
+    merged = dict(prior_sp) if prior_sp else {}
+    stat_fields = ["era", "whip", "xfip", "siera", "so9", "bb9", "hr9", "ip_gs", "k_bb"]
+    for key, cur in new_sp_baselines.items():
+        prior = merged.get(key)
+        gs = cur.get("gs", 0)
+        if not prior or gs <= 0:
+            merged[key] = cur
+            continue
+        alpha = min(gs / 10.0, 1.0)
+        blended = dict(cur)
+        for field in stat_fields:
+            if field in cur and field in prior:
+                blended[field] = round(alpha * cur[field] + (1 - alpha) * prior[field], 4)
+        merged[key] = blended
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -967,11 +1001,11 @@ def main():
         # Fetch prior-year data as fallback for pitchers not yet in 2026
         prior_sp = fetch_sp_baselines(SEASON - 1, games_played=162)
         if prior_sp:
-            merged_sp = {**prior_sp, **new_sp_baselines}
-            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data + {SEASON-1} fallback)")
+            merged_sp = blend_sp_baselines(prior_sp, new_sp_baselines)
+            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data blended toward {SEASON-1}, alpha=min(gs/10,1))")
         else:
-            merged_sp = {**old_sp_baselines, **new_sp_baselines}
-            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data + prior fallback)")
+            merged_sp = blend_sp_baselines(old_sp_baselines, new_sp_baselines)
+            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data blended toward prior artifact)")
         new_sp_baselines = merged_sp
     else:
         print(f"  FanGraphs unavailable — trying MLB Stats API for pitcher stats...")

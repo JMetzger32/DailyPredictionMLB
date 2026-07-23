@@ -1449,7 +1449,16 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
         edge = model_prob - market_prob
         model_edge = round(edge, 4)
         predicted_team_ml = home_ml if predicted == "Home" else away_ml
-        if edge > 0.05:
+        # Edge > EXTREME_EDGE gets its own category rather than "good": live evidence
+        # (2026-07-16 to 07-22, n=38 value bets, model_version b9133b95d2ec) shows win%/ROI
+        # by edge bucket is INVERTED — 0.05-0.08: 64.3% win/+15.0% ROI; 0.08-0.12: 50.0%/-4.2%;
+        # 0.12-0.20: 28.6%/-46.3%; 0.20+: 33.3%/-35.5%. A large edge is currently a sign the
+        # model is overconfident (it disagrees hardest with the market exactly where it's
+        # least reliable), not a stronger signal — so it must not be labeled "good".
+        EXTREME_EDGE = 0.12
+        if edge > EXTREME_EDGE:
+            bet_rating = "extreme"
+        elif edge > 0.05:
             bet_rating = "good"
         elif edge < -0.05:
             bet_rating = "bad"
@@ -2245,12 +2254,26 @@ def _qualifying_bets(entries):
     ]
 
 
-def _kelly_stake(win_prob, ml, bankroll, fraction, max_stake_pct):
+def _kelly_stake(win_prob, ml, bankroll, fraction, max_stake_pct, edge=None, max_edge_for_sizing=0.10):
     """Fractional-Kelly stake in dollars for an American-odds moneyline bet.
     None when inputs are missing; 0.0 when Kelly says no bet (f* <= 0).
-    Stake = bankroll * min(f* x fraction, max_stake_pct) — flat, non-compounding."""
+    Stake = bankroll * min(f* x fraction, max_stake_pct) — flat, non-compounding.
+
+    `edge` (model_prob - market_prob), when given, is capped at max_edge_for_sizing (default
+    0.10) for sizing purposes only — win_prob itself (and the displayed edge/bet_rating) are
+    unchanged; only the probability fed to Kelly is pulled back toward the market when the raw
+    edge is more extreme than that, so a large edge no longer buys a bigger stake.
+
+    Evidence for the 0.10 default (2026-07-16 to 07-22 live value bets, n=38, model_version
+    b9133b95d2ec): win%/ROI by edge bucket is INVERTED — 0.05-0.08 edge: 64.3% win, +15.0% ROI;
+    0.08-0.12: 50.0%, -4.2%; 0.12-0.20: 28.6%, -46.3%; 0.20+: 33.3%, -35.5%. Bigger claimed edge
+    currently means WORSE outcomes (the model is most overconfident exactly where it disagrees
+    with the market most), so Kelly must not keep sizing up past where the data stops supporting it."""
     if win_prob is None or ml is None:
         return None
+    if edge is not None and abs(edge) > max_edge_for_sizing:
+        capped_edge = max_edge_for_sizing if edge > 0 else -max_edge_for_sizing
+        win_prob = win_prob - edge + capped_edge
     b = (ml / 100) if ml >= 0 else (100 / abs(ml))  # net profit per $1 staked
     f = (win_prob * b - (1 - win_prob)) / b
     if f <= 0:
@@ -2293,7 +2316,7 @@ def _bet_row(b, kelly=None):
         "home_score":     b.get("home_score"),
     }
     if kelly is not None:
-        stake = _kelly_stake(win_p, ml, *kelly)
+        stake = _kelly_stake(win_p, ml, *kelly, edge=b.get("model_edge"))
         row["kelly_stake"] = stake
         row["kelly_pl"] = _pl_for_bet(b, stake=stake) if stake else (0.0 if stake == 0 else None)
     return row
@@ -2359,7 +2382,7 @@ def betting_stats():
             "('betting page is empty' checklist)."
         )
 
-    categories = {"good": [], "unsure": [], "bad": []}
+    categories = {"good": [], "unsure": [], "bad": [], "extreme": []}
     for e in all_entries:
         rating = e.get("bet_rating")
         if rating in categories:
@@ -2427,7 +2450,7 @@ def betting_stats():
     for b in value_bets:
         hwp = b.get("home_win_prob")
         win_p = hwp if b["predicted_winner"] == "Home" else (1 - hwp) if hwp is not None else None
-        stake = _kelly_stake(win_p, b.get("predicted_team_ml"), *kelly_params)
+        stake = _kelly_stake(win_p, b.get("predicted_team_ml"), *kelly_params, edge=b.get("model_edge"))
         if not stake:  # None (no odds) or 0.0 (Kelly passes) -> no bet placed
             continue
         kelly_summary["bets"] += 1
@@ -2493,6 +2516,7 @@ def betting_stats():
         "value_bets":      cat_stats(categories["good"]),
         "toss_ups":        cat_stats(categories["unsure"]),
         "no_value":        cat_stats(categories["bad"]),
+        "extreme_edge":    cat_stats(categories["extreme"]),
         "cumulative_pl":   cumulative_pl,
         "recent_bets":     recent_value_bets,
         "team_stats":      team_stats,
