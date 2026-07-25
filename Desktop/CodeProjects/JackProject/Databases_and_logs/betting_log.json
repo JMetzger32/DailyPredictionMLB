@@ -6777,6 +6777,89 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 822948,
+      "date": "2026-07-25",
+      "game_type": "R",
+      "away_team": "CLE",
+      "away_team_name": "Cleveland Guardians",
+      "home_team": "TBA",
+      "home_team_name": "Tampa Bay Rays",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.533,
+      "home_win_prob": 0.467,
+      "confidence": 0.033,
+      "calibration_bucket": "50-60%",
+      "away_ml": 116,
+      "home_ml": -133,
+      "bet_rating": "good",
+      "predicted_team_ml": 116,
+      "model_edge": 0.0852,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.0,
+      "home_est_score": 2.9,
+      "away_est_score": 3.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.1918244147298765,
+        0.24781841053795528,
+        -0.3983925947180384,
+        -0.38165659747645037,
+        0.15054414565834268,
+        0.8816730089994189,
+        0.1403781375981481,
+        -0.048768687430919,
+        1.152726773018679,
+        -1.091570571736258,
+        1.1997886010613459,
+        -0.4838005988867076,
+        -0.019012238314300642,
+        -0.3166759054185112,
+        0.7065148237836115,
+        1.6828820523140742,
+        0.28111592079981385,
+        0.38086334911178976
+      ],
+      "prediction_timestamp": "2026-07-25T10:15:06.296135-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4478,
+      "home_implied": 0.5522,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 116,
+          "home_ml": -134
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 118,
+          "home_ml": -130
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 118,
+          "home_ml": -130
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 115,
+          "home_ml": -135
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 113,
+          "home_ml": -136
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823355,
       "date": "2026-07-25",
       "game_type": "R",
@@ -6828,6 +6911,89 @@
       ],
       "prediction_timestamp": "2026-07-25T10:15:06.993965-04:00",
       "model_version": "b9133b95d2ec"
+    },
+    {
+      "game_pk": 824811,
+      "date": "2026-07-25",
+      "game_type": "R",
+      "away_team": "ATL",
+      "away_team_name": "Atlanta Braves",
+      "home_team": "BAL",
+      "home_team_name": "Baltimore Orioles",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.611,
+      "home_win_prob": 0.389,
+      "confidence": 0.111,
+      "calibration_bucket": "60-70%",
+      "away_ml": -104,
+      "home_ml": -111,
+      "bet_rating": "good",
+      "predicted_team_ml": -104,
+      "model_edge": 0.1188,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 11.0,
+      "home_est_score": 4.4,
+      "away_est_score": 6.6,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.3698288938211302,
+        -0.8182248039435647,
+        -1.2829682466783336,
+        -1.8761459666527747,
+        2.4721304188622844,
+        0.013778546167751916,
+        -0.3024952631126099,
+        -0.32705718253675053,
+        0.05453011456569572,
+        -1.091570571736258,
+        0.9315112379105754,
+        0.13953410451529039,
+        -0.019012238314300642,
+        -1.5267915099339042,
+        0.23636985075966907,
+        -0.24580300774453734,
+        0.489207535253685,
+        0.2252315872740248
+      ],
+      "prediction_timestamp": "2026-07-25T10:15:07.796712-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4922,
+      "home_implied": 0.5078,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -106,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -101,
+          "home_ml": -109
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -101,
+          "home_ml": -109
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -104,
+          "home_ml": -113
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -106,
+          "home_ml": -114
+        }
+      ],
+      "arbitrage": null
     },
     {
       "game_pk": 824571,
@@ -7082,6 +7248,84 @@
           "name": "BetUS",
           "away_ml": -104,
           "home_ml": -106
+        }
+      ],
+      "arbitrage": null
+    },
+    {
+      "game_pk": 822869,
+      "date": "2026-07-25",
+      "game_type": "R",
+      "away_team": "SEA",
+      "away_team_name": "Seattle Mariners",
+      "home_team": "TEX",
+      "home_team_name": "Texas Rangers",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.523,
+      "home_win_prob": 0.477,
+      "confidence": 0.023,
+      "calibration_bucket": "50-60%",
+      "away_ml": -105,
+      "home_ml": -108,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -105,
+      "model_edge": 0.0264,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.7,
+      "home_est_score": 2.1,
+      "away_est_score": 4.5,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.05417465305621651,
+        -1.2807262941042499,
+        -1.7555575370396888,
+        -1.1613901813945324,
+        -0.21273113773378535,
+        0.3330967076424431,
+        -0.05596394422961458,
+        -1.0506072698119118,
+        -0.006480810903914246,
+        -1.8433030400808335,
+        0.5762327193726422,
+        0.22887040598289796,
+        -0.019012238314300642,
+        0.7974057439002239,
+        0.07417626014578811,
+        -2.4475700983893485,
+        -0.4422033614502396,
+        -0.17860600163258844
+      ],
+      "prediction_timestamp": "2026-07-25T10:15:12.302258-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4966,
+      "home_implied": 0.5034,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -108,
+          "home_ml": -108
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -102,
+          "home_ml": -108
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -102,
+          "home_ml": -108
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -108,
+          "home_ml": -109
         }
       ],
       "arbitrage": null
