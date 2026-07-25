@@ -6573,6 +6573,104 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824734,
+      "date": "2026-07-25",
+      "game_type": "R",
+      "away_team": "TOR",
+      "away_team_name": "Toronto Blue Jays",
+      "home_team": "BOS",
+      "home_team_name": "Boston Red Sox",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.429,
+      "home_win_prob": 0.571,
+      "confidence": 0.071,
+      "calibration_bucket": "50-60%",
+      "away_ml": -107,
+      "home_ml": -108,
+      "bet_rating": "good",
+      "predicted_team_ml": -108,
+      "model_edge": 0.0699,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.7,
+      "home_est_score": 3.9,
+      "away_est_score": 2.7,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.16349187451074487,
+        0.09737751223465882,
+        -0.4676902278678601,
+        1.1128327716998736,
+        0.9278600291207858,
+        -0.3461240524557354,
+        -0.7797169617287906,
+        0.6469525503336576,
+        -0.3725463637215757,
+        0.7877605991251803,
+        -0.7117789441657665,
+        0.3290676991444224,
+        -0.019012238314300642,
+        0.3274025480938824,
+        0.03908577678313472,
+        1.2640206118502806,
+        -0.9887112635947252,
+        -0.7211217356877442
+      ],
+      "prediction_timestamp": "2026-07-25T10:15:04.092265-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4989,
+      "home_implied": 0.5011,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -108,
+          "home_ml": -108
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -106,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -108,
+          "home_ml": -111
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -105,
+          "home_ml": -115
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "BetUS",
+          "away_ml": -105,
+          "home_ml": -105
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823841,
       "date": "2026-07-25",
       "game_type": "R",
@@ -6889,6 +6987,104 @@
       ],
       "prediction_timestamp": "2026-07-25T10:15:10.792445-04:00",
       "model_version": "b9133b95d2ec"
+    },
+    {
+      "game_pk": 823027,
+      "date": "2026-07-25",
+      "game_type": "R",
+      "away_team": "CIN",
+      "away_team_name": "Cincinnati Reds",
+      "home_team": "SLN",
+      "home_team_name": "St. Louis Cardinals",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.518,
+      "home_win_prob": 0.482,
+      "confidence": 0.018,
+      "calibration_bucket": "50-60%",
+      "away_ml": -105,
+      "home_ml": -111,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -105,
+      "model_edge": 0.0247,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.0,
+      "home_est_score": 2.7,
+      "away_est_score": 3.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.39316567063419156,
+        -0.009087848698843359,
+        -0.9684386337820615,
+        0.2031435904621108,
+        0.21613114168906677,
+        1.3932481292529126,
+        -0.7480366753308646,
+        -0.7166610756849141,
+        0.4511011301181621,
+        -1.0915705717362585,
+        -1.8655229715201522,
+        -1.7598794746649113,
+        -0.019012238314300642,
+        0.9018508985238556,
+        0.05637053430532707,
+        -0.7212324629951286,
+        -0.47435088510579826,
+        0.6012603660716979
+      ],
+      "prediction_timestamp": "2026-07-25T10:15:11.593737-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4933,
+      "home_implied": 0.5067,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -104,
+          "home_ml": -112
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -105,
+          "home_ml": -112
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -103,
+          "home_ml": -107
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -103,
+          "home_ml": -107
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -107,
+          "home_ml": -112
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -109,
+          "home_ml": -111
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -105,
+          "home_ml": -115
+        },
+        {
+          "name": "BetUS",
+          "away_ml": -104,
+          "home_ml": -106
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
