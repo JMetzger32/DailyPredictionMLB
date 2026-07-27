@@ -8208,6 +8208,99 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824245,
+      "date": "2026-07-27",
+      "game_type": "R",
+      "away_team": "BAL",
+      "away_team_name": "Baltimore Orioles",
+      "home_team": "DET",
+      "home_team_name": "Detroit Tigers",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.529,
+      "home_win_prob": 0.471,
+      "confidence": 0.029,
+      "calibration_bucket": "50-60%",
+      "away_ml": 122,
+      "home_ml": -142,
+      "bet_rating": "good",
+      "predicted_team_ml": 122,
+      "model_edge": 0.0947,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 4.5,
+      "home_est_score": 1.4,
+      "away_est_score": 3.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.6814442122862855,
+        0.19833293672063776,
+        0.08802356615668394,
+        -0.44663439613629063,
+        -0.7088966870233981,
+        0.17066519112167416,
+        0.26662041955218646,
+        -0.271399483515583,
+        0.3595847419137471,
+        -0.7157043375639706,
+        -0.701642194300841,
+        0.29160887632060006,
+        -0.019012238314300642,
+        1.754819661283512,
+        0.2639663190220883,
+        -0.7440374515736518,
+        2.274262387444407,
+        2.381390118440176
+      ],
+      "prediction_timestamp": "2026-07-27T10:15:02.221990-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.4343,
+      "home_implied": 0.5657,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 120,
+          "home_ml": -142
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 127,
+          "home_ml": -140
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 127,
+          "home_ml": -140
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 118,
+          "home_ml": -145
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 121,
+          "home_ml": -142
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 119,
+          "home_ml": -144
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 119,
+          "home_ml": -142
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823839,
       "date": "2026-07-27",
       "game_type": "R",
