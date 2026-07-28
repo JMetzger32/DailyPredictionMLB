@@ -1103,7 +1103,11 @@ try:
     print("[startup] Refreshing SP baselines from MLB Stats API...", flush=True)
     _fresh_sp = _ud.fetch_sp_baselines_from_mlb_api(_ud.SEASON, games_played=70, prior_sp=_prior_sp)
     if _fresh_sp and len(_fresh_sp) >= 5:
-        _artifacts["sp_baselines"] = {**_prior_sp, **_fresh_sp}
+        # Dedup by normalized name (NOT a plain dict-spread) — the committed pkl
+        # keys pitchers by Retrosheet ID while the fresh fetch keys by name-slug, so
+        # a plain merge leaves two entries per pitcher and the stale (prior-season)
+        # one shadows the fresh one in find_pitcher_by_name. See merge_sp_baselines_dedup.
+        _artifacts["sp_baselines"] = _ud.merge_sp_baselines_dedup(_prior_sp, _fresh_sp)
         print(f"[startup] SP baselines refreshed: {len(_fresh_sp)} pitchers with live {_ud.SEASON} data", flush=True)
     else:
         print("[startup] SP refresh returned no data — using pkl baselines", flush=True)

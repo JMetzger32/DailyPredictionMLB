@@ -669,6 +669,52 @@ def blend_sp_baselines(prior_sp, new_sp_baselines):
     return merged
 
 
+def merge_sp_baselines_dedup(old_sp, fresh_sp):
+    """
+    Merge freshly-fetched current-season SP baselines (fresh_sp) on top of prior/
+    stale ones (old_sp), dropping any old entry whose pitcher NAME is already
+    covered by a fresh entry.
+
+    Why this exists: old_sp and fresh_sp key their entries differently — old_sp may
+    key by Retrosheet ID (e.g. "kikuy001") from the committed artifact, or by an
+    older name-slug, while fresh_sp keys by the current name-slug. A plain
+    {**old_sp, **fresh_sp} therefore leaves BOTH entries for the same real pitcher
+    in the dict under different keys. find_pitcher_by_name() returns the FIRST
+    exact-name match in iteration order, and dict-spread puts old keys first, so the
+    stale (usually prior-season) entry shadows the fresh one and the game card shows
+    last year's ERA/WHIP/FIP as if it were live. Dedup here uses the SAME
+    normalization (_normalize_name) the lookup uses, so the two can never disagree —
+    unlike the earlier local NFKD-only strip, which missed punctuation/suffixes and
+    let duplicates survive.
+
+    Any old entry with no fresh counterpart is a genuinely prior-season pitcher (no
+    current-season starts): populate its raw display fields if missing and flag it
+    is_prior_year so the UI labels it, instead of presenting it as current.
+    """
+    from schedule_fetcher import _normalize_name
+    fresh_names = {_normalize_name(v.get("name", "")) for v in fresh_sp.values()}
+    fresh_names.discard("")
+    filtered_old = {k: v for k, v in old_sp.items()
+                    if _normalize_name(v.get("name", "")) not in fresh_names}
+    for entry in filtered_old.values():
+        # Populate raw display fields only if missing, so we never clobber real
+        # prior-season values (xfip is the best FIP proxy without raw pitch counts).
+        if entry.get("era_raw") is None:
+            entry["era_raw"]  = round(entry.get("era",  4.20), 2)
+            entry["whip_raw"] = round(entry.get("whip", 1.30), 2)
+            entry["fip_raw"]  = round(entry.get("xfip", 4.00), 2)
+            entry["gs"]       = 0
+        # These survivors have no fresh entry, so they ARE prior-season by
+        # construction — flag them unconditionally (the committed artifact ships
+        # them mislabeled is_prior_year=False; this corrects that).
+        entry["is_blended"]    = False
+        entry["is_league_avg"] = False
+        entry["is_prior_year"] = True
+        # pitch_hand intentionally left unset for prior-only entries (handedness
+        # unknown — the card only shows the LHP badge when pitch_hand is explicitly L)
+    return {**filtered_old, **fresh_sp}
+
+
 # ---------------------------------------------------------------------------
 # Fetch starting pitcher stats from MLB Stats API (fallback when FanGraphs 403)
 # ---------------------------------------------------------------------------
@@ -1017,32 +1063,13 @@ def main():
             SEASON, games_played=avg_games, prior_sp=prior_sp_for_adv
         )
         if mlb_api_sp and len(mlb_api_sp) >= 5:
-            # Merge: old baselines as base (has xFIP/SIERA), MLB API current-year on top.
-            # Remove old entries whose pitcher name is now covered by the MLB API data
-            # (avoids duplicate "Chase Burns" entries under different key formats).
-            import unicodedata as _ud
-            def _strip(n):
-                n = _ud.normalize("NFKD", str(n))
-                return "".join(c for c in n if not _ud.combining(c)).lower().strip()
-            api_names = {_strip(v["name"]) for v in mlb_api_sp.values()}
-            filtered_old = {k: v for k, v in old_sp_baselines.items()
-                            if _strip(v.get("name", "")) not in api_names}
-            # Populate raw display fields for prior-only entries so the card
-            # never shows dashes. Use xfip as fip proxy (best we have without
-            # raw pitch counts). Mark as prior-year so the UI can label them.
-            for entry in filtered_old.values():
-                if entry.get("era_raw") is None:
-                    entry["era_raw"]       = round(entry.get("era",  4.20), 2)
-                    entry["whip_raw"]      = round(entry.get("whip", 1.30), 2)
-                    entry["fip_raw"]       = round(entry.get("xfip", 4.00), 2)
-                    entry["gs"]            = 0
-                    entry["is_blended"]    = False
-                    entry["is_league_avg"] = False
-                    entry["is_prior_year"] = True
-                # pitch_hand is intentionally left unset for prior-only entries
-                # (we don't know the handedness — card only shows LHP badge when explicitly L)
-            merged_sp = {**filtered_old, **mlb_api_sp}
-            print(f"  MLB API: {len(mlb_api_sp)} current starters + {len(filtered_old)} prior-only pitchers "
+            # Merge current-season MLB API data on top of prior baselines,
+            # de-duplicating by normalized name so a stale prior-season entry
+            # (keyed by Retrosheet ID or an older slug) can't linger alongside the
+            # fresh one and shadow it in find_pitcher_by_name.
+            merged_sp = merge_sp_baselines_dedup(old_sp_baselines, mlb_api_sp)
+            n_prior_only = len(merged_sp) - len(mlb_api_sp)
+            print(f"  MLB API: {len(mlb_api_sp)} current starters + {n_prior_only} prior-only pitchers "
                   f"= {len(merged_sp)} total")
             new_sp_baselines = merged_sp
         else:

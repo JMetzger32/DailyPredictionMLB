@@ -126,10 +126,18 @@ def find_pitcher_by_name(pitcher_name, sp_baselines):
     if not query_norm:
         return None
 
-    # Pass 1: exact full-name match
-    for pid, info in sp_baselines.items():
-        if _normalize_name(info.get("name", "")) == query_norm:
-            return pid
+    # Pass 1: exact full-name match. If more than one entry shares the same
+    # normalized name (a stale prior-season duplicate lingering under a different
+    # key alongside a fresh current-season entry — see merge_sp_baselines_dedup),
+    # prefer the freshest: current-season starts (higher gs) and not flagged
+    # prior-year, so a leftover duplicate can never shadow live data.
+    exact = [(pid, info) for pid, info in sp_baselines.items()
+             if _normalize_name(info.get("name", "")) == query_norm]
+    if exact:
+        def _freshness(item):
+            info = item[1]
+            return (0 if info.get("is_prior_year") else 1, info.get("gs") or 0)
+        return max(exact, key=_freshness)[0]
 
     # Pass 2: last-name match with first-initial verification
     query_tokens = query_norm.split()
