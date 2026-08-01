@@ -10217,6 +10217,79 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824649,
+      "date": "2026-08-01",
+      "game_type": "R",
+      "away_team": "NYA",
+      "away_team_name": "New York Yankees",
+      "home_team": "CHN",
+      "home_team_name": "Chicago Cubs",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.491,
+      "home_win_prob": 0.509,
+      "confidence": 0.009,
+      "calibration_bucket": "50-60%",
+      "away_ml": -123,
+      "home_ml": 112,
+      "bet_rating": "unsure",
+      "predicted_team_ml": 112,
+      "model_edge": 0.048,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 13.5,
+      "home_est_score": 4.5,
+      "away_est_score": 9.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.04428094303664878,
+        -0.5545834246373398,
+        -0.4317077818549796,
+        -0.381656597476451,
+        -1.3035616640358076,
+        -0.46009649426494625,
+        1.496196849191295,
+        -0.32705718253675053,
+        0.4205956673833571,
+        -1.843303040080834,
+        0.8076552340732664,
+        0.01628862576916056,
+        -0.019012238314300642,
+        2.2422303828604586,
+        0.31279895737443675,
+        -0.5976157419063848,
+        1.2455416304665516,
+        1.2963586503298652
+      ],
+      "prediction_timestamp": "2026-08-01T10:15:10.844219-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.539,
+      "home_implied": 0.461,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -128,
+          "home_ml": 118
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -120,
+          "home_ml": 109
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -120,
+          "home_ml": 109
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 824326,
       "date": "2026-08-01",
       "game_type": "R",
@@ -10419,6 +10492,79 @@
       ],
       "prediction_timestamp": "2026-08-01T10:15:13.537150-04:00",
       "model_version": "b9133b95d2ec"
+    },
+    {
+      "game_pk": 824000,
+      "date": "2026-08-01",
+      "game_type": "R",
+      "away_team": "MIL",
+      "away_team_name": "Milwaukee Brewers",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.592,
+      "home_win_prob": 0.408,
+      "confidence": 0.092,
+      "calibration_bucket": "50-60%",
+      "away_ml": -222,
+      "home_ml": 200,
+      "bet_rating": "bad",
+      "predicted_team_ml": -222,
+      "model_edge": -0.0821,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 5.6,
+      "home_est_score": 3.3,
+      "away_est_score": 2.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -1.245852603946411,
+        -2.310655915644187,
+        0.8022831599616326,
+        -0.05676760417724982,
+        3.2553944108860873,
+        1.103556129160791,
+        1.5848621853628642,
+        -1.2175803668754104,
+        1.6408141767755604,
+        -0.3398381033916829,
+        1.6765704432147062,
+        0.03402742895052098,
+        -0.019012238314300642,
+        -1.2305710083752859,
+        0.07753895382058217,
+        -1.0386459770241638,
+        -0.5707934560724715,
+        -0.5176783354170601
+      ],
+      "prediction_timestamp": "2026-08-01T10:15:14.431208-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.6741,
+      "home_implied": 0.3259,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -215,
+          "home_ml": 198
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -225,
+          "home_ml": 201
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -225,
+          "home_ml": 201
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
