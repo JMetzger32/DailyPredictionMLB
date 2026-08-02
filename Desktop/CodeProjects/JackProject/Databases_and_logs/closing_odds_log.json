@@ -1062,9 +1062,9 @@
     },
     "PIT|CIN": {
       "away_ml": 129,
-      "home_ml": -147,
-      "away_implied": 0.4232,
-      "home_implied": 0.5768
+      "home_ml": -148,
+      "away_implied": 0.4225,
+      "home_implied": 0.5775
     },
     "PHI|BAL": {
       "away_ml": -131,
@@ -1079,46 +1079,46 @@
       "home_implied": 0.5352
     },
     "ARI|CLE": {
-      "away_ml": 123,
-      "home_ml": -139,
-      "away_implied": 0.4354,
-      "home_implied": 0.5646
+      "away_ml": 122,
+      "home_ml": -140,
+      "away_implied": 0.4357,
+      "home_implied": 0.5643
     },
     "WAS|ATL": {
       "away_ml": 107,
-      "home_ml": -123,
-      "away_implied": 0.4669,
-      "home_implied": 0.5331
+      "home_ml": -126,
+      "away_implied": 0.4642,
+      "home_implied": 0.5358
     },
     "NYA|CHN": {
-      "away_ml": -125,
-      "home_ml": 110,
-      "away_implied": 0.5385,
-      "home_implied": 0.4615
+      "away_ml": -126,
+      "home_ml": 109,
+      "away_implied": 0.5382,
+      "home_implied": 0.4618
     },
     "KCA|COL": {
-      "away_ml": 110,
-      "home_ml": -125,
-      "away_implied": 0.4615,
-      "home_implied": 0.5385
+      "away_ml": 438,
+      "home_ml": -705,
+      "away_implied": 0.1751,
+      "home_implied": 0.8249
     },
     "SFN|SDN": {
-      "away_ml": 123,
-      "home_ml": -142,
-      "away_implied": 0.4332,
-      "home_implied": 0.5668
+      "away_ml": 125,
+      "home_ml": -144,
+      "away_implied": 0.4296,
+      "home_implied": 0.5704
     },
     "BOS|LAN": {
-      "away_ml": 134,
-      "home_ml": -153,
-      "away_implied": 0.4141,
-      "home_implied": 0.5859
+      "away_ml": 138,
+      "home_ml": -160,
+      "away_implied": 0.4057,
+      "home_implied": 0.5943
     },
     "MIL|ANA": {
-      "away_ml": -227,
-      "home_ml": 197,
-      "away_implied": 0.6734,
-      "home_implied": 0.3266
+      "away_ml": -229,
+      "home_ml": 195,
+      "away_implied": 0.6725,
+      "home_implied": 0.3275
     },
     "CHA|TBA": {
       "away_ml": 127,
@@ -1128,9 +1128,9 @@
     },
     "MIN|SEA": {
       "away_ml": 119,
-      "home_ml": -136,
-      "away_implied": 0.4421,
-      "home_implied": 0.5579
+      "home_ml": -137,
+      "away_implied": 0.4413,
+      "home_implied": 0.5587
     }
   }
 }
