@@ -11840,7 +11840,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.029,
       "predicted_total": 7.6,
       "home_est_score": 3.0,
       "away_est_score": 4.6,
@@ -11892,7 +11892,11 @@
           "home_ml": -120
         }
       ],
-      "arbitrage": null
+      "arbitrage": null,
+      "closing_away_ml": 107,
+      "closing_home_ml": -124,
+      "closing_away_implied": 0.466,
+      "closing_home_implied": 0.534
     }
   ]
 }
