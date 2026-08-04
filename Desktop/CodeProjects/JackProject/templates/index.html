@@ -553,11 +553,20 @@
         banner.textContent = `${scoreStr}  ·  Tie (not counted in accuracy)`;
         banner.classList.add("text-secondary");
         q(".card").style.borderLeft = "4px solid #6c757d";
+      } else if (game.correct === true) {
+        banner.textContent = `${scoreStr}  ·  ✅ Model correct`;
+        banner.classList.add("text-success");
+        q(".card").style.borderLeft = "4px solid #198754";
+      } else if (game.correct === false) {
+        banner.textContent = `${scoreStr}  ·  ❌ Model incorrect`;
+        banner.classList.add("text-danger");
+        q(".card").style.borderLeft = "4px solid #dc3545";
       } else {
-        const verdict = game.correct ? "✅ Model correct" : "❌ Model incorrect";
-        banner.textContent = `${scoreStr}  ·  ${verdict}`;
-        banner.classList.add(game.correct ? "text-success" : "text-danger");
-        q(".card").style.borderLeft = `4px solid ${game.correct ? "#198754" : "#dc3545"}`;
+        // correct is null/undefined — a score exists (e.g. a resumed/suspended game)
+        // but resolution hasn't finished yet. Must not render as "incorrect".
+        banner.textContent = `${scoreStr}  ·  ⏳ Result pending`;
+        banner.classList.add("text-secondary");
+        q(".card").style.borderLeft = "4px solid #6c757d";
       }
     }
 
