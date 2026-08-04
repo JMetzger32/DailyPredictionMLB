@@ -11815,6 +11815,84 @@
       "closing_home_ml": 156,
       "closing_away_implied": 0.6225,
       "closing_home_implied": 0.3775
+    },
+    {
+      "game_pk": 825095,
+      "date": "2026-08-03",
+      "game_type": "R",
+      "away_team": "SDN",
+      "away_team_name": "San Diego Padres",
+      "home_team": "ARI",
+      "home_team_name": "Arizona Diamondbacks",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.495,
+      "home_win_prob": 0.505,
+      "confidence": 0.005,
+      "calibration_bucket": "50-60%",
+      "away_ml": 107,
+      "home_ml": -124,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -124,
+      "model_edge": -0.029,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.6,
+      "home_est_score": 3.0,
+      "away_est_score": 4.6,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.2618813845684645,
+        0.45057735119966996,
+        -0.16354266964662853,
+        -0.641567792115811,
+        0.5427912597846329,
+        -0.049527977151350704,
+        -0.5860188071386884,
+        -1.5515265610024065,
+        0.35958474191374634,
+        -1.091570571736258,
+        -0.25109834933340186,
+        0.9425473758612115,
+        -0.019012238314300642,
+        0.6067933367120967,
+        0.4414365372992964,
+        0.24257476929900493,
+        0.13645206434980328,
+        0.0417910153273182
+      ],
+      "prediction_timestamp": "2026-08-03T10:15:07.721033-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.466,
+      "home_implied": 0.534,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 112,
+          "home_ml": -122
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 108,
+          "home_ml": -127
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 107,
+          "home_ml": -128
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": 100,
+          "home_ml": -120
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
