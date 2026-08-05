@@ -1354,5 +1354,67 @@
       "away_implied": 0.5,
       "home_implied": 0.5
     }
+  },
+  "2026-08-05": {
+    "ANA|BAL": {
+      "away_ml": 142,
+      "home_ml": -168,
+      "away_implied": 0.3973,
+      "home_implied": 0.6027
+    },
+    "WAS|PHI": {
+      "away_ml": 270,
+      "home_ml": -335,
+      "away_implied": 0.2598,
+      "home_implied": 0.7402
+    },
+    "SLN|NYA": {
+      "away_ml": 134,
+      "home_ml": -152,
+      "away_implied": 0.4147,
+      "home_implied": 0.5853
+    },
+    "CHA|BOS": {
+      "away_ml": 155,
+      "home_ml": -183,
+      "away_implied": 0.3775,
+      "home_implied": 0.6225
+    },
+    "MIA|ATL": {
+      "away_ml": 134,
+      "home_ml": -157,
+      "away_implied": 0.4116,
+      "home_implied": 0.5884
+    },
+    "PIT|MIL": {
+      "away_ml": 120,
+      "home_ml": -139,
+      "away_implied": 0.4387,
+      "home_implied": 0.5613
+    },
+    "MIN|KCA": {
+      "away_ml": 104,
+      "home_ml": -117,
+      "away_implied": 0.4762,
+      "home_implied": 0.5238
+    },
+    "SDN|ARI": {
+      "away_ml": -104,
+      "home_ml": -113,
+      "away_implied": 0.49,
+      "home_implied": 0.51
+    },
+    "DET|SEA": {
+      "away_ml": 108,
+      "home_ml": -126,
+      "away_implied": 0.463,
+      "home_implied": 0.537
+    },
+    "NYN|CLE": {
+      "away_ml": -109,
+      "home_ml": -106,
+      "away_implied": 0.5034,
+      "home_implied": 0.4966
+    }
   }
 }
