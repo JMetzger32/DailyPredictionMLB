@@ -13722,6 +13722,97 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 824664,
+      "date": "2026-08-06",
+      "game_type": "R",
+      "away_team": "TOR",
+      "away_team_name": "Toronto Blue Jays",
+      "home_team": "CHN",
+      "home_team_name": "Chicago Cubs",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.407,
+      "home_win_prob": 0.593,
+      "confidence": 0.093,
+      "calibration_bucket": "50-60%",
+      "away_ml": -182,
+      "home_ml": 145,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 145,
+      "model_edge": 0.2056,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.2,
+      "home_est_score": 3.4,
+      "away_est_score": 3.9,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.2935662498276975,
+        0.4555205683047471,
+        0.9663089461612087,
+        1.8275885569581152,
+        1.0868685950296864,
+        -1.2661616830146942,
+        0.6949539106925289,
+        0.00688901159024701,
+        -0.15900812457793995,
+        0.03602813078060493,
+        -0.3868784528353199,
+        -0.024990971859026413,
+        -0.019012238314300642,
+        2.7122335786667997,
+        0.2631569382759169,
+        -0.8997772795741037,
+        1.0687302503609832,
+        1.550662900668219
+      ],
+      "prediction_timestamp": "2026-08-06T10:15:04.286761-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.6126,
+      "home_implied": 0.3874,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -175,
+          "home_ml": 155
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -183,
+          "home_ml": 158
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -143,
+          "home_ml": 110
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -170,
+          "home_ml": 135
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -215,
+          "home_ml": 155
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -205,
+          "home_ml": 155
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 2.39
+      }
+    },
+    {
       "game_pk": 823105,
       "date": "2026-08-06",
       "game_type": "R",
