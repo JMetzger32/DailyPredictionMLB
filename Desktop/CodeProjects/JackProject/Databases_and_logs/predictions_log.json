@@ -61200,11 +61200,11 @@
       "home_win_prob": 0.593,
       "confidence": 0.093,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": -182,
+      "home_ml": 145,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 145,
+      "model_edge": 0.2056,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -61238,7 +61238,45 @@
         1.550662900668219
       ],
       "prediction_timestamp": "2026-08-06T10:15:04.286761-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.6126,
+      "home_implied": 0.3874,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -175,
+          "home_ml": 155
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -183,
+          "home_ml": 158
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -143,
+          "home_ml": 110
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -170,
+          "home_ml": 135
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -215,
+          "home_ml": 155
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -205,
+          "home_ml": 155
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 2.39
+      }
     },
     {
       "game_pk": 823105,
