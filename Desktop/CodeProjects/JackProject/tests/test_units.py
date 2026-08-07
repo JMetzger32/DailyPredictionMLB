@@ -50,7 +50,7 @@ def test_calibration_bucket():
 
 
 def test_compute_odds_fields():
-    ns = _extract("_compute_odds_fields")
+    ns = _extract("_rate_edge", "_compute_odds_fields")
     f = ns["_compute_odds_fields"]
     pred = {"predicted_winner": "Home", "home_win_prob": 0.62, "away_win_prob": 0.38}
     odds = {("NYA", "BOS"): {"away_ml": 120, "home_ml": -140,
@@ -67,6 +67,41 @@ def test_compute_odds_fields():
     pred_bad = {"predicted_winner": "Away", "home_win_prob": 0.62, "away_win_prob": 0.38}
     r3 = f("NYA", "BOS", pred_bad, odds)
     assert r3["bet_rating"] == "bad"                 # 0.38-0.44 = -0.06 < -0.05
+
+
+def test_rate_edge():
+    """Single source of truth for bet_rating thresholds — must match
+    _compute_odds_fields's persisted values AND be safe to call at READ time on
+    old model_edge values from before the 'extreme' tier existed (2026-07-23),
+    since betting_stats/betting_weekly re-derive the category this way instead of
+    trusting the frozen bet_rating column. See CLAUDE.md's frozen-vintage note."""
+    ns = _extract("_rate_edge")
+    f = ns["_rate_edge"]
+    assert f(None) is None
+    assert f(0.13) == "extreme"      # > 0.12
+    assert f(0.12) == "good"         # boundary is exclusive on the extreme side
+    assert f(0.06) == "good"         # 0.05 < edge <= 0.12
+    assert f(0.05) == "unsure"       # boundary is exclusive on the good side
+    assert f(0.0) == "unsure"
+    assert f(-0.05) == "unsure"      # boundary is exclusive on the bad side
+    assert f(-0.06) == "bad"
+    # a pre-07-23 row stored bet_rating='good' despite edge=0.20 (extreme didn't exist
+    # yet) -- re-rating it under today's rules must reclassify it, that's the whole point
+    assert f(0.20) == "extreme"
+
+
+def test_implied_probs():
+    ns = _extract("_implied_probs")
+    f = ns["_implied_probs"]
+    # de-vigged pair must sum to exactly 1.0
+    a, h = f(120, -140)
+    assert abs((a + h) - 1.0) < 1e-9
+    assert a < h                    # -140 (home favorite) implies the higher probability
+    assert f(None, -140) == (None, None)
+    assert f(120, None) == (None, None)
+    # even-money both sides -> 50/50 regardless of vig
+    a2, h2 = f(100, 100)
+    assert abs(a2 - 0.5) < 1e-9 and abs(h2 - 0.5) < 1e-9
 
 
 def test_find_pitcher_by_name():

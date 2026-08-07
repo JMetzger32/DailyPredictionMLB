@@ -78,29 +78,37 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
      significant.** Do not treat it as an established model property.
   3. Model AUC 0.598 vs market AUC 0.594 — **the model does not demonstrably beat the
      market.** That (discrimination/features), not calibration, is the real open problem.
-- **`bet_rating` is frozen at odds-attach time, so the betting page mixes rating
-  vintages.** Values: `good` (edge 0.05–0.12), `extreme` (>0.12, excluded from value-bet
-  lists and Kelly sizing), `bad` (< −0.05), `unsure`. `_kelly_stake` caps the probability
-  used for sizing at `market_prob ± 0.10`. Because `extreme` only came into existence
-  2026-07-23 and ratings are never recomputed, **10 pre-07-23 rows with edge ≥ 0.12 still
-  sit in the page's `good` bucket** — which is where most of the apparent inversion comes
-  from. Rating every row by today's thresholds moves Value Bets 54.5%→**58.2%** (vs
-  Toss-Ups 59.4%, a 1.2pp gap) and Quarter-Kelly net **$0.04→$14.04**. Re-rating on read
-  is the single highest-value fix identified so far and needs no model change.
+- **FIXED 2026-08-07** (`fix/edge-calibration`): `bet_rating` is still written once at
+  odds-attach time and frozen (values `good` edge 0.05–0.12, `extreme` >0.12 — excluded
+  from value-bet lists and Kelly sizing, `bad` < −0.05, `unsure`; `_kelly_stake` still
+  caps the sizing probability at `market_prob ± 0.10`), but the stored column is **no
+  longer trusted for display bucketing**. `/api/betting` and `/api/betting/weekly` now
+  call `_rate_edge(model_edge)` (`Main/app.py`, single source of truth also used inside
+  `_compute_odds_fields` when first persisting the column) so every row is classified
+  under TODAY's thresholds regardless of when odds attached. This fixed the vintage-mix
+  bug where 10 pre-07-23 rows with edge ≥0.12 stayed misfiled as `good` (before the
+  `extreme` tier existed) — that mixing was where most of the apparent Value-Bet/Toss-Up
+  inversion came from. Betting page now reads Value Bets **58.2%** (vs Toss-Ups 59.4%, a
+  1.2pp gap, not the old 54.5%/4.9pp) and Quarter-Kelly net **$14.04** (not $0.04). No
+  historical `bet_rating` values were rewritten — this is read-time-only, matching the
+  precedent at `_calibration_bucket`'s docstring (old rows intentionally not migrated).
 - **De-vig is already correct — don't re-investigate it.** `away_implied`/`home_implied`
   are normalized by their sum in `updates/schedule_fetcher.py` (verified: all stored pairs
   sum to exactly 1.0). Edge also reconstructs exactly from `away_ml`/`home_ml` (222/222
   rows, max diff 0.0), so offline analysis isn't limited to rows storing implied probs.
-- **The `clv` field is MISLABELED and is not closing line value.** `Main/app.py:1306`
-  stores `model_prob − closing_implied` — the model's own edge measured against a later
-  line, never a comparison of two prices. True CLV is `closing_implied − bet_implied` for
-  the picked side. The difference is decisive: stored "CLV" reads **+4.67%** (looks like
-  the model crushes the close) while **true CLV is −0.52%, p=0.59 — indistinguishable
-  from zero**, beating the close on 50.6% of bets. They even correlate with *winning* in
-  opposite directions (true +0.19, stored −0.16), because the stored field is just
-  re-measuring overconfidence. **Never cite the `clv` field as evidence the model beats
-  the market.** See `scripts/results/clv_and_home_skew.md`,
-  `scripts/clv_and_skew_diagnostics.py`.
+- **FIXED 2026-08-07** (`fix/edge-calibration`): the `clv` field used to be mislabeled —
+  `model_prob − closing_implied` (the model's own edge re-measured against a later line,
+  never a comparison of two prices; stored "CLV" read +4.67% and looked like the model
+  crushes the close, while true CLV was −0.52%, indistinguishable from zero). `clv` now
+  means real closing line value (`closing_implied − bet_implied` for the picked side,
+  computed in `_store_closing_odds`, `bet_implied` from `away_implied`/`home_implied`
+  when persisted else recomputed from `away_ml`/`home_ml` via the new `_implied_probs`
+  helper). The old quantity is preserved under its honest name, `edge_vs_close` — still
+  useful as an overconfidence diagnostic, but **never cite it as evidence the model beats
+  the market.** 158 already-resolved rows in both JSON logs were backfilled in place
+  (`scripts/migrate_clv_field.py`, pure recomputation from already-stored fields, no
+  refetching) so `clv_stats`/`avg_clv` on the betting page are correct immediately, not
+  just for new entries. See `scripts/results/clv_and_home_skew.md`.
 - **Value bets skew home (64 vs 30) and the cause is NOT the `_HOME_PRIOR` blend** — an
   earlier version of this file blamed the blend; that was wrong. The blend pulls toward
   0.53, *below* the model's own 0.5432 mean, so it slightly REDUCES home lean. The real

@@ -1299,12 +1299,32 @@ def _store_closing_odds():
             entry["closing_home_ml"]      = game_odds.get("home_ml")
             entry["closing_away_implied"] = closing_away_impl
             entry["closing_home_implied"] = closing_home_impl
-            # CLV = model's implied prob - closing line's implied prob for predicted team
             predicted = entry.get("predicted_winner")
-            model_prob = entry.get("home_win_prob") if predicted == "Home" else entry.get("away_win_prob")
             closing_impl = closing_home_impl if predicted == "Home" else closing_away_impl
+
+            # edge_vs_close: model's OWN probability minus the closing line's implied prob.
+            # This is NOT closing line value — it re-measures the model's claimed edge
+            # against a later line, so it's large whenever the model is confident. Verified
+            # (2026-08-06, n=154) to correlate NEGATIVELY with winning (-0.16) because it's
+            # really an overconfidence readout. Kept for diagnostic continuity only — never
+            # read this as evidence the model beats the market. See
+            # scripts/results/clv_and_home_skew.md.
+            model_prob = entry.get("home_win_prob") if predicted == "Home" else entry.get("away_win_prob")
             if model_prob is not None and closing_impl is not None:
-                entry["clv"] = round(model_prob - closing_impl, 4)
+                entry["edge_vs_close"] = round(model_prob - closing_impl, 4)
+
+            # clv: TRUE closing line value — did we get a better price than the close, on
+            # the side we actually bet? bet_impl is the de-vigged price at bet time
+            # (away_implied/home_implied when persisted, else recomputed from away_ml/
+            # home_ml via _implied_probs — most rows only have the moneylines). Positive
+            # means the market moved toward our side after we bet.
+            bet_away_impl = entry.get("away_implied")
+            bet_home_impl = entry.get("home_implied")
+            if bet_away_impl is None or bet_home_impl is None:
+                bet_away_impl, bet_home_impl = _implied_probs(entry.get("away_ml"), entry.get("home_ml"))
+            bet_impl = bet_home_impl if predicted == "Home" else bet_away_impl
+            if bet_impl is not None and closing_impl is not None:
+                entry["clv"] = round(closing_impl - bet_impl, 4)
             changed = True
         if changed:
             _save_log(log)
@@ -1451,6 +1471,50 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
 # ---------------------------------------------------------------------------
 # Odds helpers
 # ---------------------------------------------------------------------------
+def _rate_edge(edge):
+    """Classify a model_edge value under CURRENT thresholds — single source of truth,
+    used both when bet_rating is first persisted below (at odds-attach time) AND when
+    re-deriving today's category from a stored model_edge (see betting_stats/
+    betting_weekly). bet_rating itself is frozen at whatever thresholds existed when
+    odds attached to that row and is never recomputed (the 'extreme' tier didn't exist
+    before 2026-07-23), so anything that needs the CURRENT rules must call
+    _rate_edge(model_edge) — never trust bet_rating alone for display bucketing. See
+    CLAUDE.md and scripts/results/value_bet_segmentation.md ("2a-bis"). None in, None out.
+
+    Evidence for these thresholds (2026-07-16 to 07-22, n=38 value bets, model_version
+    b9133b95d2ec): win%/ROI by edge bucket was INVERTED — 0.05-0.08: 64.3% win/+15.0% ROI;
+    0.08-0.12: 50.0%/-4.2%; 0.12-0.20: 28.6%/-46.3%; 0.20+: 33.3%/-35.5%. A large edge was a
+    sign of model overconfidence, not a stronger signal — so it isn't labeled "good". Note
+    (2026-08-06, n=222): the >0.12 penalty has since narrowed to roughly break-even; edge
+    still doesn't discriminate above ~0.08 but isn't reliably a loser anymore — see
+    scripts/results/value_bet_segmentation.md and calibrated_edge_comparison.md."""
+    EXTREME_EDGE = 0.12
+    GOOD_EDGE = 0.05
+    if edge is None:
+        return None
+    if edge > EXTREME_EDGE:
+        return "extreme"
+    if edge > GOOD_EDGE:
+        return "good"
+    if edge < -GOOD_EDGE:
+        return "bad"
+    return "unsure"
+
+
+def _implied_probs(away_ml, home_ml):
+    """De-vigged (away, home) implied win probabilities from American moneylines.
+    Mirrors updates/schedule_fetcher.py's get_mlb_odds de-vig exactly (verified in
+    Phase 1 audit to reproduce stored model_edge on all 222 historical rows, diff 0.0).
+    (None, None) if either moneyline is missing."""
+    if away_ml is None or home_ml is None:
+        return None, None
+    def _raw(ml):
+        return abs(ml) / (abs(ml) + 100) if ml < 0 else 100 / (ml + 100)
+    a, h = _raw(away_ml), _raw(home_ml)
+    t = a + h
+    return round(a / t, 4), round(h / t, 4)
+
+
 def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
     """
     Look up odds for (away_retro, home_retro) and compute bet rating.
@@ -1473,21 +1537,7 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
         edge = model_prob - market_prob
         model_edge = round(edge, 4)
         predicted_team_ml = home_ml if predicted == "Home" else away_ml
-        # Edge > EXTREME_EDGE gets its own category rather than "good": live evidence
-        # (2026-07-16 to 07-22, n=38 value bets, model_version b9133b95d2ec) shows win%/ROI
-        # by edge bucket is INVERTED — 0.05-0.08: 64.3% win/+15.0% ROI; 0.08-0.12: 50.0%/-4.2%;
-        # 0.12-0.20: 28.6%/-46.3%; 0.20+: 33.3%/-35.5%. A large edge is currently a sign the
-        # model is overconfident (it disagrees hardest with the market exactly where it's
-        # least reliable), not a stronger signal — so it must not be labeled "good".
-        EXTREME_EDGE = 0.12
-        if edge > EXTREME_EDGE:
-            bet_rating = "extreme"
-        elif edge > 0.05:
-            bet_rating = "good"
-        elif edge < -0.05:
-            bet_rating = "bad"
-        else:
-            bet_rating = "unsure"
+        bet_rating = _rate_edge(edge)
 
     return {
         "away_ml":           away_ml,
@@ -2417,9 +2467,12 @@ def betting_stats():
             "('betting page is empty' checklist)."
         )
 
+    # Re-derive the category from model_edge under TODAY'S thresholds rather than trusting
+    # the stored bet_rating, which is frozen at whatever thresholds existed when odds
+    # attached to that row — see _rate_edge's docstring.
     categories = {"good": [], "unsure": [], "bad": [], "extreme": []}
     for e in all_entries:
-        rating = e.get("bet_rating")
+        rating = _rate_edge(e.get("model_edge"))
         if rating in categories:
             categories[rating].append(e)
 
@@ -2568,7 +2621,7 @@ def betting_stats():
 def betting_weekly():
     """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows."""
     value_bets = [e for e in _qualifying_bets(_load_betting_log_from_db())
-                  if e.get("bet_rating") == "good"]
+                  if _rate_edge(e.get("model_edge")) == "good"]
     value_bets.sort(key=lambda e: (e["date"], e.get("game_pk", 0)))
 
     week_param = request.args.get("week")
