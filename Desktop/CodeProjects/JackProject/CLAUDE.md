@@ -118,6 +118,24 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   edge on nearly every game and roughly doubles home value-bet flagging. Overconfidence
   itself is symmetric (+1.6pp on both sides), so this is a home-feature problem, not a
   calibration one.
+- **Home-lean root cause (2026-08-07, `scripts/results/home_lean_feature_analysis.md`):
+  feature-weighting, not a stale home-field prior.** LR intercept (52.98%) matches the
+  actual 2026 home rate (53.15%) almost exactly — ruled out. The real mechanism: the
+  model's probability moves with `diff_sp_xfip`/`diff_sp_siera` (SP defense-independent
+  quality) and `diff_roll10_win_pct`/`diff_roll10_runs_scored` (10-game recent form) **~2-4x
+  more than the market's does** (e.g. siera: model corr 0.62 vs market 0.15) — the
+  classic signature of overfitting to features an efficient market discounts more
+  heavily. `diff_sp_xfip`/`diff_sp_siera` are 98.8% correlated (near-duplicate signal)
+  but the LR already weights `xfip` far more than `siera`, so that redundancy is a
+  simplification opportunity, **not** the cause. This is a general
+  overfit-to-noisy-features issue that happens to net home-leaning on the current
+  sample because home teams currently look marginally better on exactly those
+  over-weighted features — **not** a home/away-specific bug (no home indicator exists
+  anywhere in `FEATURE_COLS`; every feature is a symmetric `home_X − away_X` diff).
+  Deliberately NOT fixed by patching model weights ad hoc — needs a proper retrain +
+  validation cycle (new CV holdout, leak checks vs `b9133b95d2ec`) before touching
+  `Main/MLBModel.py`. If retraining, start by shrinking/reconsidering `diff_roll10_*`
+  and re-checking how much weight `diff_sp_xfip`/`diff_sp_siera` should carry.
 - **Don't re-bin edge hunting for a profitable band — the sample can't support it.**
   Bands of n≈20-30 produce a sawtooth (66%/50%/73%/58%/42%/55%) with every 95% CI
   overlapping every other. Detecting a 10pp win-rate gap needs ~400 bets *per bucket*;
