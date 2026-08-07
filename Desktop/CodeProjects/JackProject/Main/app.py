@@ -50,7 +50,7 @@ def _today_et():
 from flask import Flask, jsonify, render_template, request
 
 from MLBModel import predict_game, predict_games_batch, _default_sp_stats
-from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
+from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_last_odds_quota, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
@@ -159,6 +159,26 @@ def _get_odds_cached():
     print(f"[odds] Fetched {len(odds)} games from The Odds API for {today}", flush=True)
     _odds_cache[today] = {"ts": time.monotonic(), "odds": odds}
     return odds
+
+
+def _odds_map_from_log_entries(entries):
+    """Rebuild the odds_map (keyed by (away_retro, home_retro)) that
+    _compute_odds_fields expects, from odds already stored on log entries. Lets the
+    page-view path serve already-captured odds WITHOUT spending an Odds-API credit —
+    see the credit-saving gate in /api/predictions."""
+    m = {}
+    for e in entries:
+        if e.get("away_ml") is None:
+            continue
+        m[(e.get("away_team"), e.get("home_team"))] = {
+            "away_ml":      e.get("away_ml"),
+            "home_ml":      e.get("home_ml"),
+            "away_implied": e.get("away_implied"),
+            "home_implied": e.get("home_implied"),
+            "books":        e.get("odds_books", []),
+            "arbitrage":    e.get("arbitrage"),
+        }
+    return m
 
 
 # ---------------------------------------------------------------------------
@@ -1510,6 +1530,7 @@ def api_status():
         "next_runs":         next_runs,
         "github_token_set":  bool(GITHUB_TOKEN),
         "odds_api_key_set":  bool(ODDS_API_KEY),
+        "odds_quota":        get_last_odds_quota(),   # last-seen credits; remaining==0/status 401 == exhausted
         "model_version":     _artifacts.get("model_version"),
         "now":               datetime.now(_ET).isoformat(),
         "note":              "job state persists across restarts on the same instance; resets on redeploy",
@@ -1713,7 +1734,17 @@ def predictions():
 
     # Fetch live odds for today/future; use closing odds archive for past dates
     if target_date >= _today_et():
-        odds_map = _get_odds_cached()
+        # Credit-saving gate: if every real game today already has odds attached in
+        # the log (restored from GitHub on boot), reuse those instead of spending an
+        # Odds-API credit on this view. Render free-tier spins down every ~15 min, so
+        # without this EVERY cold-boot page view re-fetches odds we already have — the
+        # leak that burned through the 500/month budget. Only hit the API when
+        # something is still missing (books not posted yet, or a newly added game).
+        _today_entries = [e for e in log.get(date_str, []) if e.get("game_type") != "S"]
+        if _today_entries and all(e.get("away_ml") is not None for e in _today_entries):
+            odds_map = _odds_map_from_log_entries(_today_entries)
+        else:
+            odds_map = _get_odds_cached()
     else:
         # For past dates, try to get from closing odds archive
         closing_archive = _get_closing_odds_archive()
@@ -2637,6 +2668,7 @@ def debug_odds():
         "odds_api_key_set":       key_set,
         "games_from_api_now":     games_returned,
         "api_error":              error,
+        "odds_quota":             get_last_odds_quota(),  # fresh: this route just called the API
         "sample_games":           sample,
         "betting_log_entries":    blog_entries,
         "predictions_with_odds":  entries_with_odds,

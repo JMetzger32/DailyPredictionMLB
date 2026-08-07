@@ -476,10 +476,26 @@ def get_team_standings():
     return standings
 
 
+# Last-seen quota from The Odds API response headers. Populated on every
+# get_mlb_odds call — INCLUDING 401 "out of credits" responses — so the app can
+# surface quota exhaustion instead of a silent empty odds map. Read via
+# get_last_odds_quota() (imported by app.py for /api/status and /api/debug/odds).
+LAST_ODDS_QUOTA = {"remaining": None, "used": None, "status": None, "checked_at": None}
+
+
+def get_last_odds_quota():
+    """Return a copy of the most recent Odds-API quota snapshot (all None until the
+    first call this process). remaining==0 with status==401 means the monthly
+    credits ran out — no odds will attach until the plan's cycle resets."""
+    return dict(LAST_ODDS_QUOTA)
+
+
 def get_mlb_odds(api_key):
     """
     Fetch current MLB moneyline odds from The Odds API.
-    Costs 1 credit per call. Returns {} on error or missing data.
+    Costs 1 credit per successful (200) call; a 401/429 costs nothing. Returns {}
+    on error or missing data — check get_last_odds_quota() to tell "out of credits"
+    (status 401, remaining 0) apart from "no games returned".
 
     Returns dict keyed by (away_retro, home_retro):
       { ("NYA", "BOS"): {"away_ml": +125, "home_ml": -145,
@@ -499,6 +515,27 @@ def get_mlb_odds(api_key):
             },
             timeout=10,
         )
+    except Exception as e:
+        print(f"[odds] API request failed: {e}")
+        return {}
+
+    # Record quota from response headers. The Odds API returns x-requests-remaining
+    # / x-requests-used on BOTH a 200 AND a 401 quota-exhausted response, so this is
+    # how the app learns it's out of credits rather than silently seeing 0 games.
+    _rem, _used = resp.headers.get("x-requests-remaining"), resp.headers.get("x-requests-used")
+    LAST_ODDS_QUOTA.update({
+        "remaining":  int(_rem)  if _rem  not in (None, "") else None,
+        "used":       int(_used) if _used not in (None, "") else None,
+        "status":     resp.status_code,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if resp.status_code == 401:
+        print(f"[odds] API 401 — key rejected or monthly quota exhausted "
+              f"(used={LAST_ODDS_QUOTA['used']}, remaining={LAST_ODDS_QUOTA['remaining']})",
+              flush=True)
+        return {}
+    try:
         resp.raise_for_status()
         events = resp.json()
     except Exception as e:
