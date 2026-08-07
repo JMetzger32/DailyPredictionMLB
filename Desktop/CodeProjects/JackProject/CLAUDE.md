@@ -57,24 +57,91 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   quarter-Kelly (changes to the 0.05 edge threshold require backtest evidence:
   `scripts/backtest_threshold.py`, ~200+ resolved bets).
 - **Calibration (ECE)**: was ~0.08 under the pre-leak-fix model. The current
-  `model_version` (`b9133b95d2ec`, live since 2026-07-16) runs ~0.05 live
-  (n=91 as of 07-22) — better, but still worse than the ~0.02 ECE of a clean
-  architecture-matched offline holdout, so part of the gap is live-serving-specific
-  (train/serve skew), not inherent to the model. Run
-  `scripts/calibration_live_check.py` to check current live ECE against the
-  currently-deployed `model_version` and see whether a fitted Platt/isotonic
-  calibrator now beats the flat 4%-blend via cross-validation — it only recommends
-  shipping one once it actually does (at n<100 it typically doesn't; don't force it).
-- **Edge is NOT monotonic with bet quality right now.** Live data (n=38 value bets,
-  2026-07-16 to 07-22) showed edge 0.05–0.08 winning 64.3% / +15.0% ROI, but edge
-  >0.12 winning only ~30% / -40% ROI — a bigger claimed edge is currently a symptom
-  of model overconfidence (the model disagrees hardest with the market exactly where
-  it's least reliable), not a stronger signal. `bet_rating` has 4 values: `good`
-  (edge 0.05–0.12), `extreme` (edge >0.12 — excluded from value-bet lists and Kelly
-  sizing), `bad` (edge < -0.05), `unsure`. `_kelly_stake` also caps the probability
-  used for sizing at `market_prob + 0.10` regardless of rating. Note `bet_rating` is
-  computed once when odds attach to a game and persisted — the `good`/`extreme` split
-  only applies going forward, not retroactively to already-tagged rows.
+  `model_version` (`b9133b95d2ec`, live since 2026-07-16) measured **0.024 live at
+  n=283 (2026-08-06)** — better than the ~0.05 seen at n=91, and close to the ~0.02 of
+  a clean offline holdout, so the train/serve-skew gap has largely closed. A fitted
+  Platt calibrator gets ECE to 0.0097 out-of-fold (slope **0.772 < 1 — the model IS
+  overconfident**), but **it was tested and deliberately NOT shipped** (2026-08-06,
+  `scripts/results/calibrated_edge_comparison.md`): better calibration did not produce
+  better betting — Brier got slightly worse (0.2426→0.2452), value-bet win% fell
+  54.5%→53.1%, and flat-bet ROI fell +10.3%→+0.8%. Recalibration fixes the confidence
+  *scale* but adds no *discrimination*. Don't re-propose it without new evidence.
+- **Edge does NOT reliably predict winning — and the reasons are subtler than they look.**
+  Current numbers (n=222 rated bets, 2026-07-16→08-06, `scripts/segment_value_bets.py`):
+  edge 0.05–0.08 wins 63.9%/+20.2% ROI, 0.08–0.12 wins 51.6%/−1.1%, 0.12+ wins
+  51.9%/**+5.8%**. Edge is non-monotonic (it stops discriminating above ~8pp), but the
+  older CLAUDE.md claim that >0.12 loses ~40% is **stale — that was n=38**. Three
+  statistical caveats that should stop over-reading any of this:
+  1. `logit(win) ~ edge` gives **p=0.42** — edge has no *demonstrable* relationship with
+     winning at this n. Neither the bullish nor bearish reading is supported.
+  2. The famous Value-Bet-vs-Toss-Up "inversion" (54.5% vs 59.4%) is **p=0.51 — not
+     significant.** Do not treat it as an established model property.
+  3. Model AUC 0.598 vs market AUC 0.594 — **the model does not demonstrably beat the
+     market.** That (discrimination/features), not calibration, is the real open problem.
+- **FIXED 2026-08-07** (`fix/edge-calibration`): `bet_rating` is still written once at
+  odds-attach time and frozen (values `good` edge 0.05–0.12, `extreme` >0.12 — excluded
+  from value-bet lists and Kelly sizing, `bad` < −0.05, `unsure`; `_kelly_stake` still
+  caps the sizing probability at `market_prob ± 0.10`), but the stored column is **no
+  longer trusted for display bucketing**. `/api/betting` and `/api/betting/weekly` now
+  call `_rate_edge(model_edge)` (`Main/app.py`, single source of truth also used inside
+  `_compute_odds_fields` when first persisting the column) so every row is classified
+  under TODAY's thresholds regardless of when odds attached. This fixed the vintage-mix
+  bug where 10 pre-07-23 rows with edge ≥0.12 stayed misfiled as `good` (before the
+  `extreme` tier existed) — that mixing was where most of the apparent Value-Bet/Toss-Up
+  inversion came from. Betting page now reads Value Bets **58.2%** (vs Toss-Ups 59.4%, a
+  1.2pp gap, not the old 54.5%/4.9pp) and Quarter-Kelly net **$14.04** (not $0.04). No
+  historical `bet_rating` values were rewritten — this is read-time-only, matching the
+  precedent at `_calibration_bucket`'s docstring (old rows intentionally not migrated).
+- **De-vig is already correct — don't re-investigate it.** `away_implied`/`home_implied`
+  are normalized by their sum in `updates/schedule_fetcher.py` (verified: all stored pairs
+  sum to exactly 1.0). Edge also reconstructs exactly from `away_ml`/`home_ml` (222/222
+  rows, max diff 0.0), so offline analysis isn't limited to rows storing implied probs.
+- **FIXED 2026-08-07** (`fix/edge-calibration`): the `clv` field used to be mislabeled —
+  `model_prob − closing_implied` (the model's own edge re-measured against a later line,
+  never a comparison of two prices; stored "CLV" read +4.67% and looked like the model
+  crushes the close, while true CLV was −0.52%, indistinguishable from zero). `clv` now
+  means real closing line value (`closing_implied − bet_implied` for the picked side,
+  computed in `_store_closing_odds`, `bet_implied` from `away_implied`/`home_implied`
+  when persisted else recomputed from `away_ml`/`home_ml` via the new `_implied_probs`
+  helper). The old quantity is preserved under its honest name, `edge_vs_close` — still
+  useful as an overconfidence diagnostic, but **never cite it as evidence the model beats
+  the market.** 158 already-resolved rows in both JSON logs were backfilled in place
+  (`scripts/migrate_clv_field.py`, pure recomputation from already-stored fields, no
+  refetching) so `clv_stats`/`avg_clv` on the betting page are correct immediately, not
+  just for new entries. See `scripts/results/clv_and_home_skew.md`.
+- **Value bets skew home (64 vs 30) and the cause is NOT the `_HOME_PRIOR` blend** — an
+  earlier version of this file blamed the blend; that was wrong. The blend pulls toward
+  0.53, *below* the model's own 0.5432 mean, so it slightly REDUCES home lean. The real
+  mechanism: the model runs **+1.37pp more home-leaning than the market** (model 0.5483,
+  market 0.5346, actual 0.5315 — the market is closer to truth), paired t-test
+  **p=0.027**, one of the few significant findings. That excess lean inflates home-side
+  edge on nearly every game and roughly doubles home value-bet flagging. Overconfidence
+  itself is symmetric (+1.6pp on both sides), so this is a home-feature problem, not a
+  calibration one.
+- **Home-lean root cause (2026-08-07, `scripts/results/home_lean_feature_analysis.md`):
+  feature-weighting, not a stale home-field prior.** LR intercept (52.98%) matches the
+  actual 2026 home rate (53.15%) almost exactly — ruled out. The real mechanism: the
+  model's probability moves with `diff_sp_xfip`/`diff_sp_siera` (SP defense-independent
+  quality) and `diff_roll10_win_pct`/`diff_roll10_runs_scored` (10-game recent form) **~2-4x
+  more than the market's does** (e.g. siera: model corr 0.62 vs market 0.15) — the
+  classic signature of overfitting to features an efficient market discounts more
+  heavily. `diff_sp_xfip`/`diff_sp_siera` are 98.8% correlated (near-duplicate signal)
+  but the LR already weights `xfip` far more than `siera`, so that redundancy is a
+  simplification opportunity, **not** the cause. This is a general
+  overfit-to-noisy-features issue that happens to net home-leaning on the current
+  sample because home teams currently look marginally better on exactly those
+  over-weighted features — **not** a home/away-specific bug (no home indicator exists
+  anywhere in `FEATURE_COLS`; every feature is a symmetric `home_X − away_X` diff).
+  Deliberately NOT fixed by patching model weights ad hoc — needs a proper retrain +
+  validation cycle (new CV holdout, leak checks vs `b9133b95d2ec`) before touching
+  `Main/MLBModel.py`. If retraining, start by shrinking/reconsidering `diff_roll10_*`
+  and re-checking how much weight `diff_sp_xfip`/`diff_sp_siera` should carry.
+- **Don't re-bin edge hunting for a profitable band — the sample can't support it.**
+  Bands of n≈20-30 produce a sawtooth (66%/50%/73%/58%/42%/55%) with every 95% CI
+  overlapping every other. Detecting a 10pp win-rate gap needs ~400 bets *per bucket*;
+  5pp needs ~1,600. No threshold beats betting every positive-edge game. **Prefer true
+  CLV as the tuning target**: sd 0.12 vs 0.50 for a win/loss, so one CLV reading is worth
+  ~17 win/loss readings, and it's known the same evening instead of waiting on outcomes.
 - **FanGraphs scraping is currently dead.** `pybaseball.pitching_stats()` (used by
   `update_daily.py`'s `fetch_sp_baselines`) 403s unconditionally (confirmed 2026-07,
   reproduces off-Render too — not an IP block specific to Render). Production always
@@ -114,4 +181,14 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   `Auto-backup` commits stop landing in the repo, runtime state silently dies.
 - 0.1 vCPU: inference is ~30x slower than local; anything per-request must be
   batched/cached. `/api/status` shows job health, token presence, model version.
+- **The Odds API budget is 500 credits/month and it HAS run out before.** 2026-07-29→
+  07-31 has zero rated bets (~41 games): predictions ran and games resolved, but odds
+  never attached, and the blackout ended exactly on 08-01 when the month rolled over.
+  Because spin-downs are frequent, every cold-boot page view used to re-fetch odds
+  already in the log — the leak that drained it. Fixed 2026-08-06 (`bef2049`): a gate in
+  `/api/predictions` reuses odds already on log entries, and `get_last_odds_quota()`
+  surfaces `odds_quota` in `/api/status` + `/api/debug/odds` (a 401 with remaining 0
+  means exhausted). **If odds stop attaching, check `odds_quota` FIRST** — an empty odds
+  map otherwise looks identical to "no games today". Gaps like this drop games from
+  betting analyses entirely, so check date continuity before trusting an n.
 - Env vars: `ODDS_API_KEY`, `GITHUB_TOKEN`, `TRIGGER_SECRET` (gates /api/retrain-model etc.).
