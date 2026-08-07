@@ -47,7 +47,7 @@ def _extract(*func_names):
 
 
 NS = _extract("_calibration_bucket", "_compute_error_metrics", "_build_prediction_entry",
-              "_compute_odds_fields", "_pl_for_bet", "_qualifying_bets",
+              "_rate_edge", "_compute_odds_fields", "_pl_for_bet", "_qualifying_bets",
               "_kelly_stake", "_bet_row", "_week_key", "_synth_results_from_log")
 
 GAME = {
