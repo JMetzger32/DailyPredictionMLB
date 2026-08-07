@@ -57,24 +57,40 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   quarter-Kelly (changes to the 0.05 edge threshold require backtest evidence:
   `scripts/backtest_threshold.py`, ~200+ resolved bets).
 - **Calibration (ECE)**: was ~0.08 under the pre-leak-fix model. The current
-  `model_version` (`b9133b95d2ec`, live since 2026-07-16) runs ~0.05 live
-  (n=91 as of 07-22) — better, but still worse than the ~0.02 ECE of a clean
-  architecture-matched offline holdout, so part of the gap is live-serving-specific
-  (train/serve skew), not inherent to the model. Run
-  `scripts/calibration_live_check.py` to check current live ECE against the
-  currently-deployed `model_version` and see whether a fitted Platt/isotonic
-  calibrator now beats the flat 4%-blend via cross-validation — it only recommends
-  shipping one once it actually does (at n<100 it typically doesn't; don't force it).
-- **Edge is NOT monotonic with bet quality right now.** Live data (n=38 value bets,
-  2026-07-16 to 07-22) showed edge 0.05–0.08 winning 64.3% / +15.0% ROI, but edge
-  >0.12 winning only ~30% / -40% ROI — a bigger claimed edge is currently a symptom
-  of model overconfidence (the model disagrees hardest with the market exactly where
-  it's least reliable), not a stronger signal. `bet_rating` has 4 values: `good`
-  (edge 0.05–0.12), `extreme` (edge >0.12 — excluded from value-bet lists and Kelly
-  sizing), `bad` (edge < -0.05), `unsure`. `_kelly_stake` also caps the probability
-  used for sizing at `market_prob + 0.10` regardless of rating. Note `bet_rating` is
-  computed once when odds attach to a game and persisted — the `good`/`extreme` split
-  only applies going forward, not retroactively to already-tagged rows.
+  `model_version` (`b9133b95d2ec`, live since 2026-07-16) measured **0.024 live at
+  n=283 (2026-08-06)** — better than the ~0.05 seen at n=91, and close to the ~0.02 of
+  a clean offline holdout, so the train/serve-skew gap has largely closed. A fitted
+  Platt calibrator gets ECE to 0.0097 out-of-fold (slope **0.772 < 1 — the model IS
+  overconfident**), but **it was tested and deliberately NOT shipped** (2026-08-06,
+  `scripts/results/calibrated_edge_comparison.md`): better calibration did not produce
+  better betting — Brier got slightly worse (0.2426→0.2452), value-bet win% fell
+  54.5%→53.1%, and flat-bet ROI fell +10.3%→+0.8%. Recalibration fixes the confidence
+  *scale* but adds no *discrimination*. Don't re-propose it without new evidence.
+- **Edge does NOT reliably predict winning — and the reasons are subtler than they look.**
+  Current numbers (n=222 rated bets, 2026-07-16→08-06, `scripts/segment_value_bets.py`):
+  edge 0.05–0.08 wins 63.9%/+20.2% ROI, 0.08–0.12 wins 51.6%/−1.1%, 0.12+ wins
+  51.9%/**+5.8%**. Edge is non-monotonic (it stops discriminating above ~8pp), but the
+  older CLAUDE.md claim that >0.12 loses ~40% is **stale — that was n=38**. Three
+  statistical caveats that should stop over-reading any of this:
+  1. `logit(win) ~ edge` gives **p=0.42** — edge has no *demonstrable* relationship with
+     winning at this n. Neither the bullish nor bearish reading is supported.
+  2. The famous Value-Bet-vs-Toss-Up "inversion" (54.5% vs 59.4%) is **p=0.51 — not
+     significant.** Do not treat it as an established model property.
+  3. Model AUC 0.598 vs market AUC 0.594 — **the model does not demonstrably beat the
+     market.** That (discrimination/features), not calibration, is the real open problem.
+- **`bet_rating` is frozen at odds-attach time, so the betting page mixes rating
+  vintages.** Values: `good` (edge 0.05–0.12), `extreme` (>0.12, excluded from value-bet
+  lists and Kelly sizing), `bad` (< −0.05), `unsure`. `_kelly_stake` caps the probability
+  used for sizing at `market_prob ± 0.10`. Because `extreme` only came into existence
+  2026-07-23 and ratings are never recomputed, **10 pre-07-23 rows with edge ≥ 0.12 still
+  sit in the page's `good` bucket** — which is where most of the apparent inversion comes
+  from. Rating every row by today's thresholds moves Value Bets 54.5%→**58.2%** (vs
+  Toss-Ups 59.4%, a 1.2pp gap) and Quarter-Kelly net **$0.04→$14.04**. Re-rating on read
+  is the single highest-value fix identified so far and needs no model change.
+- **De-vig is already correct — don't re-investigate it.** `away_implied`/`home_implied`
+  are normalized by their sum in `updates/schedule_fetcher.py` (verified: all stored pairs
+  sum to exactly 1.0). Edge also reconstructs exactly from `away_ml`/`home_ml` (222/222
+  rows, max diff 0.0), so offline analysis isn't limited to rows storing implied probs.
 - **FanGraphs scraping is currently dead.** `pybaseball.pitching_stats()` (used by
   `update_daily.py`'s `fetch_sp_baselines`) 403s unconditionally (confirmed 2026-07,
   reproduces off-Render too — not an IP block specific to Render). Production always
@@ -114,4 +130,14 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   `Auto-backup` commits stop landing in the repo, runtime state silently dies.
 - 0.1 vCPU: inference is ~30x slower than local; anything per-request must be
   batched/cached. `/api/status` shows job health, token presence, model version.
+- **The Odds API budget is 500 credits/month and it HAS run out before.** 2026-07-29→
+  07-31 has zero rated bets (~41 games): predictions ran and games resolved, but odds
+  never attached, and the blackout ended exactly on 08-01 when the month rolled over.
+  Because spin-downs are frequent, every cold-boot page view used to re-fetch odds
+  already in the log — the leak that drained it. Fixed 2026-08-06 (`bef2049`): a gate in
+  `/api/predictions` reuses odds already on log entries, and `get_last_odds_quota()`
+  surfaces `odds_quota` in `/api/status` + `/api/debug/odds` (a 401 with remaining 0
+  means exhausted). **If odds stop attaching, check `odds_quota` FIRST** — an empty odds
+  map otherwise looks identical to "no games today". Gaps like this drop games from
+  betting analyses entirely, so check date continuity before trusting an n.
 - Env vars: `ODDS_API_KEY`, `GITHUB_TOKEN`, `TRIGGER_SECRET` (gates /api/retrain-model etc.).
