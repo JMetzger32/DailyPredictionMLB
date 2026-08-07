@@ -84,10 +84,18 @@ Favorite/underdog split of ALL resolved rated bets: 181 fav / 41 dog.
 value at a similar rate (41% of Home picks vs 47% of Away picks) despite performing far
 worse, so the flag is not selecting well on the home side.
 
-This is consistent with the `_HOME_PRIOR = 0.53` blend in `MLBModel.py:940-944`: nudging
-every probability toward the home team inflates the model's home-side probability, which
-inflates home-side edge, which promotes home games into the value bucket on a bias rather
-than a signal. The favorite/underdog split is much weaker (57.6% vs 54.3%) and runs the
+> **CORRECTION (2026-08-06, same day):** the paragraph below originally blamed the
+> `_HOME_PRIOR = 0.53` blend. **That was wrong.** The blend pulls toward 0.53, which is
+> *below* the model's own mean of 0.5432, so it slightly REDUCES home lean. The real
+> mechanism is that the model is +1.37pp more home-leaning **than the market** (p=0.027),
+> which is what inflates home-side edge. See `scripts/results/clv_and_home_skew.md` §2.
+
+This was initially read as consistent with the `_HOME_PRIOR = 0.53` blend in
+`MLBModel.py:940-944` — nudging every probability toward the home team would inflate the
+model's home-side probability, inflating home-side edge, and promoting home games into
+the value bucket on a bias rather than a signal. The follow-up analysis disproved the
+blend as the cause while confirming the home-lean effect itself.
+The favorite/underdog split is much weaker (57.6% vs 54.3%) and runs the
 opposite way from the P/L (underdogs return more purely because plus-money prices pay
 more), so **home/away is the axis that matters, and it points at the home-prior blend
 specifically** — supporting the user's Phase 2b hypothesis.
@@ -142,8 +150,9 @@ picked twice), too small to call a pattern. Losses are split evenly across the 5
   money-loser the older n=38 sample showed (+5.8% ROI now, vs −40% then); CLAUDE.md's
   "extreme edges lose ~40%" fact is **stale and should be softened**.
 - **2b: home/away skew confirmed and material** — 64/30 home-tilted flagging, with the
-  home side at −3.9% ROI vs away at +36.6%. Points specifically at the `_HOME_PRIOR`
-  0.53 blend.
+  home side at −3.9% ROI vs away at +36.6%. Cause is the model running +1.37pp more
+  home-leaning than the market (p=0.027), **not** the `_HOME_PRIOR` blend — see the
+  correction above and `scripts/results/clv_and_home_skew.md` §2.
 - **2c: no cluster; the recent tail is 11-4, the best stretch in the sample.** The "last
   three games" complaint is one 1-3 day (08-06), within variance.
 - **Biggest finding, unprompted: ~3/4 of the reported inversion is a stale-label

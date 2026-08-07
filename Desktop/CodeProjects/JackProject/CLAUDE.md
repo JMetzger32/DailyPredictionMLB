@@ -91,6 +91,31 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   are normalized by their sum in `updates/schedule_fetcher.py` (verified: all stored pairs
   sum to exactly 1.0). Edge also reconstructs exactly from `away_ml`/`home_ml` (222/222
   rows, max diff 0.0), so offline analysis isn't limited to rows storing implied probs.
+- **The `clv` field is MISLABELED and is not closing line value.** `Main/app.py:1306`
+  stores `model_prob − closing_implied` — the model's own edge measured against a later
+  line, never a comparison of two prices. True CLV is `closing_implied − bet_implied` for
+  the picked side. The difference is decisive: stored "CLV" reads **+4.67%** (looks like
+  the model crushes the close) while **true CLV is −0.52%, p=0.59 — indistinguishable
+  from zero**, beating the close on 50.6% of bets. They even correlate with *winning* in
+  opposite directions (true +0.19, stored −0.16), because the stored field is just
+  re-measuring overconfidence. **Never cite the `clv` field as evidence the model beats
+  the market.** See `scripts/results/clv_and_home_skew.md`,
+  `scripts/clv_and_skew_diagnostics.py`.
+- **Value bets skew home (64 vs 30) and the cause is NOT the `_HOME_PRIOR` blend** — an
+  earlier version of this file blamed the blend; that was wrong. The blend pulls toward
+  0.53, *below* the model's own 0.5432 mean, so it slightly REDUCES home lean. The real
+  mechanism: the model runs **+1.37pp more home-leaning than the market** (model 0.5483,
+  market 0.5346, actual 0.5315 — the market is closer to truth), paired t-test
+  **p=0.027**, one of the few significant findings. That excess lean inflates home-side
+  edge on nearly every game and roughly doubles home value-bet flagging. Overconfidence
+  itself is symmetric (+1.6pp on both sides), so this is a home-feature problem, not a
+  calibration one.
+- **Don't re-bin edge hunting for a profitable band — the sample can't support it.**
+  Bands of n≈20-30 produce a sawtooth (66%/50%/73%/58%/42%/55%) with every 95% CI
+  overlapping every other. Detecting a 10pp win-rate gap needs ~400 bets *per bucket*;
+  5pp needs ~1,600. No threshold beats betting every positive-edge game. **Prefer true
+  CLV as the tuning target**: sd 0.12 vs 0.50 for a win/loss, so one CLV reading is worth
+  ~17 win/loss readings, and it's known the same evening instead of waiting on outcomes.
 - **FanGraphs scraping is currently dead.** `pybaseball.pitching_stats()` (used by
   `update_daily.py`'s `fetch_sp_baselines`) 403s unconditionally (confirmed 2026-07,
   reproduces off-Render too — not an IP block specific to Render). Production always
