@@ -1425,22 +1425,22 @@
       "home_implied": 0.8705
     },
     "CHA|BOS": {
-      "away_ml": 170,
-      "home_ml": -195,
-      "away_implied": 0.3591,
-      "home_implied": 0.6409
+      "away_ml": -284,
+      "home_ml": 213,
+      "away_implied": 0.6983,
+      "home_implied": 0.3017
     },
     "MIA|ATL": {
-      "away_ml": 143,
-      "home_ml": -163,
-      "away_implied": 0.399,
-      "home_implied": 0.601
+      "away_ml": 572,
+      "home_ml": -987,
+      "away_implied": 0.1408,
+      "home_implied": 0.8592
     },
     "MIN|KCA": {
-      "away_ml": 114,
-      "home_ml": -129,
-      "away_implied": 0.4534,
-      "home_implied": 0.5466
+      "away_ml": 768,
+      "home_ml": -1872,
+      "away_implied": 0.1082,
+      "home_implied": 0.8918
     },
     "SDN|ARI": {
       "away_ml": -105,
@@ -1449,34 +1449,34 @@
       "home_implied": 0.5034
     },
     "NYN|PIT": {
-      "away_ml": 119,
-      "home_ml": -142,
-      "away_implied": 0.4376,
-      "home_implied": 0.5624
+      "away_ml": 124,
+      "home_ml": -144,
+      "away_implied": 0.4307,
+      "home_implied": 0.5693
     },
     "TOR|PHI": {
-      "away_ml": 184,
-      "home_ml": -220,
-      "away_implied": 0.3387,
-      "home_implied": 0.6613
+      "away_ml": 181,
+      "home_ml": -214,
+      "away_implied": 0.343,
+      "home_implied": 0.657
     },
     "ATL|NYA": {
       "away_ml": 130,
-      "home_ml": -154,
-      "away_implied": 0.4176,
-      "home_implied": 0.5824
+      "home_ml": -155,
+      "away_implied": 0.417,
+      "home_implied": 0.583
     },
     "ANA|MIA": {
-      "away_ml": 139,
-      "home_ml": -168,
-      "away_implied": 0.4003,
-      "home_implied": 0.5997
+      "away_ml": 142,
+      "home_ml": -167,
+      "away_implied": 0.3978,
+      "home_implied": 0.6022
     },
     "CLE|CHA": {
-      "away_ml": -118,
-      "home_ml": 100,
-      "away_implied": 0.5198,
-      "home_implied": 0.4802
+      "away_ml": -123,
+      "home_ml": 107,
+      "away_implied": 0.5331,
+      "home_implied": 0.4669
     },
     "BAL|TEX": {
       "away_ml": 120,
@@ -1486,9 +1486,15 @@
     },
     "COL|SLN": {
       "away_ml": 130,
-      "home_ml": -152,
-      "away_implied": 0.4189,
-      "home_implied": 0.5811
+      "home_ml": -153,
+      "away_implied": 0.4183,
+      "home_implied": 0.5817
+    },
+    "LAN|ARI": {
+      "away_ml": -166,
+      "home_ml": 140,
+      "away_implied": 0.5996,
+      "home_implied": 0.4004
     }
   }
 }
