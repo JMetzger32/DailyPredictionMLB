@@ -15551,6 +15551,104 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 823188,
+      "date": "2026-08-08",
+      "game_type": "R",
+      "away_team": "DET",
+      "away_team_name": "Detroit Tigers",
+      "home_team": "SFN",
+      "home_team_name": "San Francisco Giants",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.479,
+      "home_win_prob": 0.521,
+      "confidence": 0.021,
+      "calibration_bucket": "50-60%",
+      "away_ml": -118,
+      "home_ml": 104,
+      "bet_rating": "unsure",
+      "predicted_team_ml": 104,
+      "model_edge": 0.0458,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.9,
+      "home_est_score": 4.8,
+      "away_est_score": 2.1,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.1951586723045893,
+        0.7577953130171293,
+        1.0614019911687322,
+        1.5026995636589147,
+        -1.2772512827685676,
+        0.09667909376379254,
+        -1.0781945545303522,
+        -0.020939837920335994,
+        -0.3115354382519657,
+        1.1636268332974682,
+        0.6915884616533803,
+        -0.887368611622857,
+        -0.019012238314300642,
+        -0.35990215638669476,
+        -0.14604240281222608,
+        -0.02020802509708032,
+        -0.11986083558740518,
+        0.24828362723275366
+      ],
+      "prediction_timestamp": "2026-08-08T10:15:09.496964-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.5248,
+      "home_implied": 0.4752,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -112,
+          "home_ml": 104
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -120,
+          "home_ml": 109
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -120,
+          "home_ml": 109
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -119,
+          "home_ml": 101
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -116,
+          "home_ml": 108
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -122,
+          "home_ml": 102
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -120,
+          "home_ml": 100
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -118,
+          "home_ml": 100
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 823021,
       "date": "2026-08-08",
       "game_type": "R",
