@@ -15924,6 +15924,99 @@
       "closing_away_implied": 0.5693,
       "closing_home_implied": 0.4307,
       "edge_vs_close": -0.0143
+    },
+    {
+      "game_pk": 823102,
+      "date": "2026-08-08",
+      "game_type": "R",
+      "away_team": "TBA",
+      "away_team_name": "Tampa Bay Rays",
+      "home_team": "SEA",
+      "home_team_name": "Seattle Mariners",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.344,
+      "home_win_prob": 0.656,
+      "confidence": 0.156,
+      "calibration_bucket": "60-70%",
+      "away_ml": -698,
+      "home_ml": 452,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 452,
+      "model_edge": 0.4844,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.2,
+      "home_est_score": 4.0,
+      "away_est_score": 3.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.13290141512096665,
+        1.1786038910722003,
+        1.643131170969437,
+        0.7229659797408321,
+        -0.24309734185203924,
+        -0.7739651222030584,
+        0.5954834259621401,
+        0.42432175424899354,
+        -0.18951358731274492,
+        1.1636268332974677,
+        0.25391878961290115,
+        0.4941860896571731,
+        -0.019012238314300642,
+        0.11851223884661981,
+        0.2027231758951102,
+        0.6298718903280672,
+        -1.0674726965508414,
+        -1.158525046269713
+      ],
+      "prediction_timestamp": "2026-08-08T10:15:13.502063-04:00",
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 122,
+      "closing_home_ml": -138,
+      "closing_away_implied": 0.4372,
+      "closing_home_implied": 0.5628,
+      "edge_vs_close": 0.0932,
+      "away_implied": 0.8284,
+      "home_implied": 0.1716,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -650,
+          "home_ml": 500
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -625,
+          "home_ml": 400
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -700,
+          "home_ml": 425
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -579,
+          "home_ml": 454
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -800,
+          "home_ml": 500
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -835,
+          "home_ml": 430
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
