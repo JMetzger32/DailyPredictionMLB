@@ -63563,11 +63563,11 @@
       "home_win_prob": 0.656,
       "confidence": 0.156,
       "calibration_bucket": "60-70%",
-      "away_ml": null,
-      "home_ml": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
+      "away_ml": -698,
+      "home_ml": 452,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 452,
+      "model_edge": 0.4844,
       "actual_winner": null,
       "away_score": null,
       "home_score": null,
@@ -63606,7 +63606,42 @@
       "closing_home_ml": -138,
       "closing_away_implied": 0.4372,
       "closing_home_implied": 0.5628,
-      "edge_vs_close": 0.0932
+      "edge_vs_close": 0.0932,
+      "away_implied": 0.8284,
+      "home_implied": 0.1716,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -650,
+          "home_ml": 500
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -625,
+          "home_ml": 400
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -700,
+          "home_ml": 425
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -579,
+          "home_ml": 454
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -800,
+          "home_ml": 500
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -835,
+          "home_ml": 430
+        }
+      ],
+      "arbitrage": null
     }
   ]
 }
