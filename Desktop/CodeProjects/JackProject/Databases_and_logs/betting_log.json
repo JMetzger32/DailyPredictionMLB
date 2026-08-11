@@ -17467,7 +17467,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0074,
       "predicted_total": 6.2,
       "home_est_score": 1.9,
       "away_est_score": 4.2,
@@ -17494,7 +17494,12 @@
         0.7368892995854853
       ],
       "prediction_timestamp": "2026-08-11T10:15:01.381754-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 112,
+      "closing_home_ml": -131,
+      "closing_away_implied": 0.4541,
+      "closing_home_implied": 0.5459,
+      "edge_vs_close": 0.1369
     },
     {
       "game_pk": 823832,
@@ -17618,7 +17623,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0171,
       "predicted_total": 9.4,
       "home_est_score": 3.8,
       "away_est_score": 5.6,
@@ -17645,7 +17650,12 @@
         0.8555646164100511
       ],
       "prediction_timestamp": "2026-08-11T10:15:02.885315-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -178,
+      "closing_home_ml": 155,
+      "closing_away_implied": 0.6202,
+      "closing_home_implied": 0.3798,
+      "edge_vs_close": -0.0102
     },
     {
       "game_pk": 823512,
@@ -17671,7 +17681,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0048,
       "predicted_total": 11.3,
       "home_est_score": 6.7,
       "away_est_score": 4.6,
@@ -17698,7 +17708,12 @@
         0.3978169658010138
       ],
       "prediction_timestamp": "2026-08-11T10:15:03.887814-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 116,
+      "closing_home_ml": -132,
+      "closing_away_implied": 0.4486,
+      "closing_home_implied": 0.5514,
+      "edge_vs_close": 0.0754
     },
     {
       "game_pk": 822778,
@@ -17724,7 +17739,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.1137,
       "predicted_total": 5.0,
       "home_est_score": 2.6,
       "away_est_score": 2.5,
@@ -17751,7 +17766,12 @@
         0.14351271546265992
       ],
       "prediction_timestamp": "2026-08-11T10:15:04.792783-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -128,
+      "closing_home_ml": 110,
+      "closing_away_implied": 0.5411,
+      "closing_home_implied": 0.4589,
+      "edge_vs_close": -0.0291
     },
     {
       "game_pk": 824886,
@@ -17777,7 +17797,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0464,
       "predicted_total": 9.1,
       "home_est_score": 4.9,
       "away_est_score": 4.2,
@@ -17804,7 +17824,12 @@
         0.6724655561664352
       ],
       "prediction_timestamp": "2026-08-11T10:15:05.587008-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 136,
+      "closing_home_ml": -158,
+      "closing_away_implied": 0.409,
+      "closing_home_implied": 0.591,
+      "edge_vs_close": -0.044
     },
     {
       "game_pk": 824563,
@@ -17830,7 +17855,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0225,
       "predicted_total": 6.9,
       "home_est_score": 4.1,
       "away_est_score": 2.8,
@@ -17857,7 +17882,12 @@
         -0.36509578521404784
       ],
       "prediction_timestamp": "2026-08-11T10:15:07.185359-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 124,
+      "closing_home_ml": -145,
+      "closing_away_implied": 0.43,
+      "closing_home_implied": 0.57,
+      "edge_vs_close": 0.072
     },
     {
       "game_pk": 823019,
@@ -17883,7 +17913,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0136,
       "predicted_total": 6.2,
       "home_est_score": 2.6,
       "away_est_score": 3.6,
@@ -17910,7 +17940,12 @@
         0.9742399332346168
       ],
       "prediction_timestamp": "2026-08-11T10:15:08.215423-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -158,
+      "closing_home_ml": 136,
+      "closing_away_implied": 0.591,
+      "closing_home_implied": 0.409,
+      "edge_vs_close": -0.053
     },
     {
       "game_pk": 823997,
@@ -17936,7 +17971,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0144,
       "predicted_total": 7.5,
       "home_est_score": 2.6,
       "away_est_score": 4.9,
@@ -17963,7 +17998,12 @@
         12.061905247986852
       ],
       "prediction_timestamp": "2026-08-11T10:15:09.297200-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -150,
+      "closing_home_ml": 131,
+      "closing_away_implied": 0.5809,
+      "closing_home_implied": 0.4191,
+      "edge_vs_close": 0.1351
     },
     {
       "game_pk": 825046,
@@ -17989,7 +18029,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0071,
       "predicted_total": 7.3,
       "home_est_score": 4.0,
       "away_est_score": 3.4,
@@ -18016,7 +18056,12 @@
         -0.5821020788361109
       ],
       "prediction_timestamp": "2026-08-11T10:15:10.384753-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 149,
+      "closing_home_ml": -175,
+      "closing_away_implied": 0.3869,
+      "closing_home_implied": 0.6131,
+      "edge_vs_close": 0.0399
     },
     {
       "game_pk": 823264,
@@ -18042,7 +18087,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0232,
       "predicted_total": 6.4,
       "home_est_score": 2.9,
       "away_est_score": 3.5,
@@ -18069,7 +18114,12 @@
         0.6182139827609211
       ],
       "prediction_timestamp": "2026-08-11T10:15:11.886914-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -125,
+      "closing_home_ml": 111,
+      "closing_away_implied": 0.5396,
+      "closing_home_implied": 0.4604,
+      "edge_vs_close": 0.0606
     },
     {
       "game_pk": 823186,
@@ -18095,7 +18145,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0049,
       "predicted_total": 7.3,
       "home_est_score": 3.6,
       "away_est_score": 3.7,
@@ -18122,7 +18172,12 @@
         0.4486778158686842
       ],
       "prediction_timestamp": "2026-08-11T10:15:12.586782-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": -185,
+      "closing_home_ml": 160,
+      "closing_away_implied": 0.6279,
+      "closing_home_implied": 0.3721,
+      "edge_vs_close": -0.0989
     },
     {
       "game_pk": 823917,
@@ -18148,7 +18203,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0346,
       "predicted_total": 9.2,
       "home_est_score": 3.7,
       "away_est_score": 5.6,
@@ -18175,7 +18230,12 @@
         -1.7044315036627125
       ],
       "prediction_timestamp": "2026-08-11T10:15:13.284421-04:00",
-      "model_version": "b9133b95d2ec"
+      "model_version": "b9133b95d2ec",
+      "closing_away_ml": 189,
+      "closing_home_ml": -224,
+      "closing_away_implied": 0.3336,
+      "closing_home_implied": 0.6664,
+      "edge_vs_close": 0.0076
     }
   ]
 }
