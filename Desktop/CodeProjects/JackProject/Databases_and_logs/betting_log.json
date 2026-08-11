@@ -17497,6 +17497,104 @@
       "model_version": "b9133b95d2ec"
     },
     {
+      "game_pk": 823832,
+      "date": "2026-08-11",
+      "game_type": "R",
+      "away_team": "PIT",
+      "away_team_name": "Pittsburgh Pirates",
+      "home_team": "MIA",
+      "home_team_name": "Miami Marlins",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.611,
+      "home_win_prob": 0.389,
+      "confidence": 0.111,
+      "calibration_bucket": "60-70%",
+      "away_ml": -109,
+      "home_ml": -104,
+      "bet_rating": "good",
+      "predicted_team_ml": -109,
+      "model_edge": 0.1053,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.4,
+      "home_est_score": 3.9,
+      "away_est_score": 3.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.07634084153539722,
+        0.39676073450792076,
+        0.03354527196746677,
+        0.13816579180227087,
+        -2.0865122592030256,
+        1.069848871084272,
+        2.9626330104465164,
+        -0.8836341727484122,
+        2.037385192328027,
+        0.4118943649528926,
+        0.0856987728110197,
+        -0.4419765220358287,
+        -0.019012238314300642,
+        -0.2992683796479059,
+        0.012788494126860806,
+        -1.13424905014305,
+        2.7548678660949975,
+        2.6153500287514615
+      ],
+      "prediction_timestamp": "2026-08-11T10:15:01.995033-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.5057,
+      "home_implied": 0.4943,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -106,
+          "home_ml": -102
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "BetUS",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -105,
+          "home_ml": -102
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -114,
+          "home_ml": -106
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -110,
+          "home_ml": -104
+        }
+      ],
+      "arbitrage": null
+    },
+    {
       "game_pk": 822697,
       "date": "2026-08-11",
       "game_type": "R",
