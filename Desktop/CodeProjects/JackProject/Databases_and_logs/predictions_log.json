@@ -65586,7 +65586,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.1182,
       "predicted_total": 5.4,
       "home_est_score": 2.4,
       "away_est_score": 3.0,
@@ -65651,7 +65651,12 @@
       "arbitrage": {
         "exists": true,
         "profit_pct": 0.16
-      }
+      },
+      "closing_away_ml": -3500,
+      "closing_home_ml": 1048,
+      "closing_away_implied": 0.9178,
+      "closing_home_implied": 0.0822,
+      "edge_vs_close": 0.5108
     },
     {
       "game_pk": 824563,
