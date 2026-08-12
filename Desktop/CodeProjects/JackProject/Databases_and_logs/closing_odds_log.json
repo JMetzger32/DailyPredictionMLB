@@ -1825,46 +1825,46 @@
       "home_implied": 0.5459
     },
     "CHN|WAS": {
-      "away_ml": -178,
-      "home_ml": 155,
-      "away_implied": 0.6202,
-      "home_implied": 0.3798
+      "away_ml": -3374,
+      "home_ml": 952,
+      "away_implied": 0.9109,
+      "home_implied": 0.0891
     },
     "SEA|NYA": {
-      "away_ml": 116,
-      "home_ml": -132,
-      "away_implied": 0.4486,
-      "home_implied": 0.5514
+      "away_ml": 105,
+      "home_ml": -122,
+      "away_implied": 0.4702,
+      "home_implied": 0.5298
     },
     "BOS|TOR": {
-      "away_ml": -128,
-      "home_ml": 110,
-      "away_implied": 0.5411,
-      "home_implied": 0.4589
+      "away_ml": -127,
+      "home_ml": 109,
+      "away_implied": 0.539,
+      "home_implied": 0.461
     },
     "CIN|CHA": {
       "away_ml": 124,
-      "home_ml": -145,
-      "away_implied": 0.43,
-      "home_implied": 0.57
+      "home_ml": -144,
+      "away_implied": 0.4307,
+      "home_implied": 0.5693
     },
     "NYN|ATL": {
       "away_ml": 136,
-      "home_ml": -158,
-      "away_implied": 0.409,
-      "home_implied": 0.591
+      "home_ml": -157,
+      "away_implied": 0.4095,
+      "home_implied": 0.5905
     },
     "PHI|SLN": {
-      "away_ml": -158,
-      "home_ml": 136,
-      "away_implied": 0.591,
-      "home_implied": 0.409
+      "away_ml": -161,
+      "home_ml": 139,
+      "away_implied": 0.5958,
+      "home_implied": 0.4042
     },
     "TEX|ANA": {
-      "away_ml": -150,
-      "home_ml": 131,
-      "away_implied": 0.5809,
-      "home_implied": 0.4191
+      "away_ml": -128,
+      "home_ml": 111,
+      "away_implied": 0.5422,
+      "home_implied": 0.4578
     },
     "COL|ARI": {
       "away_ml": 149,
@@ -1879,16 +1879,22 @@
       "home_implied": 0.4604
     },
     "HOU|SFN": {
-      "away_ml": -185,
-      "home_ml": 160,
-      "away_implied": 0.6279,
-      "home_implied": 0.3721
+      "away_ml": -191,
+      "home_ml": 167,
+      "away_implied": 0.6367,
+      "home_implied": 0.3633
     },
     "KCA|LAN": {
-      "away_ml": 189,
-      "home_ml": -224,
-      "away_implied": 0.3336,
-      "home_implied": 0.6664
+      "away_ml": 186,
+      "home_ml": -222,
+      "away_implied": 0.3365,
+      "home_implied": 0.6635
+    },
+    "BAL|MIN": {
+      "away_ml": -3500,
+      "home_ml": 1048,
+      "away_implied": 0.9178,
+      "home_implied": 0.0822
     }
   }
 }
