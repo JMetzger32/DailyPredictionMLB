@@ -108,9 +108,9 @@
       <div class="card-body">
         <h6 class="fw-semibold mb-1">Accuracy by Week</h6>
         <p class="text-muted small mb-3">
-          Regular season week-by-week accuracy. Dashed line = 57% target. Gray line = home team win % (always-home baseline). Early weeks are lower as the model's team stats blend toward live data.
+          Regular season week-by-week accuracy (green above target, red below). Gray dashed line = 56.5% target. Blue dashed line = home team win % (always-home baseline). Early weeks are lower as the model's team stats blend toward live data.
         </p>
-        <canvas id="weekly-chart" height="80" role="img" aria-label="Line chart of weekly prediction accuracy versus the 57% target and home-win-rate baseline"></canvas>
+        <canvas id="weekly-chart" height="80" role="img" aria-label="Line chart of weekly prediction accuracy versus the 56.5% target and home-win-rate baseline"></canvas>
       </div>
     </div>
 
@@ -318,7 +318,7 @@
         document.getElementById("weekly-trend-card").classList.remove("d-none");
         const wLabels    = byWeek.map(w => w.label);
         const wAccs      = byWeek.map(w => w.accuracy !== null ? +(w.accuracy * 100).toFixed(1) : null);
-        const target     = byWeek.map(() => 57);
+        const target     = byWeek.map(() => 56.5);
         const homeWinPct = data.home_win_rate != null ? +(data.home_win_rate * 100).toFixed(1) : null;
         const baseline   = homeWinPct != null ? byWeek.map(() => homeWinPct) : null;
 
@@ -326,21 +326,21 @@
           {
             label: "Weekly Accuracy",
             data: wAccs,
-            borderColor: wAccs.map(v => v === null ? null : v >= 57 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
+            borderColor: wAccs.map(v => v === null ? null : v >= 56.5 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
             backgroundColor: "transparent",
             borderWidth: 2.5,
             pointRadius: 5,
-            pointBackgroundColor: wAccs.map(v => v === null ? "transparent" : v >= 57 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
+            pointBackgroundColor: wAccs.map(v => v === null ? "transparent" : v >= 56.5 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)"),
             tension: 0.3,
             segment: {
               borderColor: ctx => {
                 const v = ctx.p1.parsed.y;
-                return v >= 57 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)";
+                return v >= 56.5 ? "rgba(25,135,84,1)" : "rgba(220,53,69,1)";
               }
             },
           },
           {
-            label: "57% Target",
+            label: "56.5% Target",
             data: target,
             borderColor: "rgba(108,117,125,0.55)",
             borderDash: [6, 4],
@@ -372,7 +372,7 @@
               tooltip: {
                 callbacks: {
                   label: ctx => {
-                    if (ctx.datasetIndex === 1) return `Target: 57%`;
+                    if (ctx.datasetIndex === 1) return `Target: 56.5%`;
                     if (ctx.datasetIndex === 2) return `Home Win %: ${homeWinPct.toFixed(1)}%`;
                     const w = byWeek[ctx.dataIndex];
                     return `${ctx.parsed.y.toFixed(1)}%  (${w.correct}/${w.games} games)`;
