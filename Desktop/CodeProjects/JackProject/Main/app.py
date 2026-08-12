@@ -1594,7 +1594,7 @@ def home():
 
 @app.route("/predictions")
 def index():
-    return render_template("index.html", current_page="predictions")
+    return render_template("index.html", current_page="predictions", today_et=_today_et().isoformat())
 
 
 @app.route("/accuracy")
