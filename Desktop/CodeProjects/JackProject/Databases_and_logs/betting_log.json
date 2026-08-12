@@ -17832,6 +17832,97 @@
       "edge_vs_close": -0.044
     },
     {
+      "game_pk": 823673,
+      "date": "2026-08-11",
+      "game_type": "R",
+      "away_team": "BAL",
+      "away_team_name": "Baltimore Orioles",
+      "home_team": "MIN",
+      "home_team_name": "Minnesota Twins",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.407,
+      "home_win_prob": 0.593,
+      "confidence": 0.093,
+      "calibration_bucket": "50-60%",
+      "away_ml": -546,
+      "home_ml": 372,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 372,
+      "model_edge": 0.3926,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 5.4,
+      "home_est_score": 2.4,
+      "away_est_score": 3.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.0568794100196021,
+        0.7556803170019815,
+        0.8844059610253048,
+        0.07318799314243064,
+        -1.3613347960028428,
+        0.32984582222328684,
+        0.2100318990014816,
+        0.09037556012199752,
+        0.7561557574662127,
+        0.03602813078060493,
+        -0.08482939606805331,
+        0.2548749229743709,
+        -0.019012238314300642,
+        0.8931471356385531,
+        -0.04764526825394589,
+        0.19651781436581922,
+        -0.665628650856367,
+        -1.158525046269713
+      ],
+      "prediction_timestamp": "2026-08-11T10:15:06.293661-04:00",
+      "model_version": "b9133b95d2ec",
+      "away_implied": 0.7996,
+      "home_implied": 0.2004,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -500,
+          "home_ml": 410
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -406,
+          "home_ml": 333
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -550,
+          "home_ml": 375
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -650,
+          "home_ml": 400
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -670,
+          "home_ml": 380
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -500,
+          "home_ml": 335
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 0.16
+      }
+    },
+    {
       "game_pk": 824563,
       "date": "2026-08-11",
       "game_type": "R",
