@@ -50,7 +50,7 @@ def test_calibration_bucket():
 
 
 def test_compute_odds_fields():
-    ns = _extract("_rate_edge", "_compute_odds_fields")
+    ns = _extract("_rate_edge", "_implied_probs", "_compute_odds_fields")
     f = ns["_compute_odds_fields"]
     pred = {"predicted_winner": "Home", "home_win_prob": 0.62, "away_win_prob": 0.38}
     odds = {("NYA", "BOS"): {"away_ml": 120, "home_ml": -140,
@@ -67,6 +67,13 @@ def test_compute_odds_fields():
     pred_bad = {"predicted_winner": "Away", "home_win_prob": 0.62, "away_win_prob": 0.38}
     r3 = f("NYA", "BOS", pred_bad, odds)
     assert r3["bet_rating"] == "bad"                 # 0.38-0.44 = -0.06 < -0.05
+    # away_ml/home_ml present but away_implied/home_implied missing (the
+    # _build_prediction_entry storage bug, fixed 2026-08-13) -> must reconstruct
+    # implied probs from the moneylines rather than leaving bet_rating stuck None
+    odds_no_impl = {("NYA", "BOS"): {"away_ml": 120, "home_ml": -140}}
+    r4 = f("NYA", "BOS", pred, odds_no_impl)
+    assert r4["bet_rating"] == "good"
+    assert abs(r4["model_edge"] - 0.058) < 1e-9   # de-vigged from 120/-140, not the odds dict's rounded 0.56
 
 
 def test_rate_edge():

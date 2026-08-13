@@ -314,7 +314,10 @@
   // ── Date picker setup ─────────────────────────────────────────────
   const urlDate = new URLSearchParams(window.location.search).get("date");
   const picker  = document.getElementById("date-picker");
-  const todayStr = toISODate(new Date());
+  // Provisional UTC-based guess; corrected to the server's ET-resolved date
+  // (data.date from /api/predictions) once loadPredictions() resolves below —
+  // toISOString() is UTC, which flips a day early (~8 PM ET in-season).
+  let todayStr = "{{ today_et }}" || toISODate(new Date());
 
   picker.value = urlDate || todayStr;
 
@@ -700,6 +703,14 @@
     try {
       const res  = await fetch(apiUrl);
       const data = await res.json();
+
+      // Sync the picker to the server's authoritative ET-resolved date —
+      // the client's own UTC-based guess (todayStr's initial value) can be
+      // up to a day ahead of ET during the season.
+      if (data.date) {
+        todayStr = data.date;
+        if (!urlDate) picker.value = data.date;
+      }
 
       loading.classList.add("d-none");
 

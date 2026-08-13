@@ -1240,9 +1240,9 @@ if __name__ == "__main__":
     print(f"  Loaded {len(pitcher_stats)} pitcher-season records")
     has_xfip = "xfip" in pitcher_stats.columns
     has_siera = "siera" in pitcher_stats.columns
-    print(f"  Advanced SP metrics: xFIP={'yes' if has_xfip else 'no (run fetch_advanced_pitching.py)'}  "
+    print(f"  Advanced SP metrics: xFIP={'yes' if has_xfip else 'no (FanGraphs source removed — xFIP/SIERA are DB-only)'}  "
           f"SIERA={'yes' if has_siera else 'no'}")
-    print(f"  Bullpen ERA table: {'yes (' + str(len(bullpen_stats)) + ' records)' if len(bullpen_stats) > 0 else 'no (run fetch_advanced_pitching.py)'}")
+    print(f"  Bullpen ERA table: {'yes (' + str(len(bullpen_stats)) + ' records)' if len(bullpen_stats) > 0 else 'no (FanGraphs source removed — bullpen ERA is DB-only)'}")
 
     # Step 2: Build team game log
     print("\n[2/7] Building team game log...")

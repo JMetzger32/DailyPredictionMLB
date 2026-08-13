@@ -7,7 +7,6 @@ The trained model weights are NOT retrained — only the baselines change.
 
 Data sources:
   - team_game_logs()  -> batting + pitching game logs (Baseball Reference)
-  - pitching_stats()  -> season pitcher stats (FanGraphs)
 
 To schedule at 8 AM daily via cron:
   crontab -e
@@ -21,7 +20,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from datetime import datetime, date
-from pybaseball import team_game_logs, pitching_stats, cache
+from pybaseball import team_game_logs, cache
 from schedule_fetcher import get_team_rest_days
 
 warnings.filterwarnings("ignore")
@@ -569,106 +568,6 @@ def compute_team_baseline(games, old_baseline=None):
     }
 
 
-# ---------------------------------------------------------------------------
-# Fetch starting pitcher season stats from FanGraphs
-# ---------------------------------------------------------------------------
-def fetch_sp_baselines(season, games_played):
-    """
-    Pull FanGraphs pitcher stats and return sp_baselines dict.
-    games_played: estimated games per team so far (to set GS threshold).
-    """
-    # Early season: lower GS threshold
-    # Require 3+ GS before trusting 2026 ERA (1-2 start samples too noisy: 0.00/9.00 ERA)
-    # 3 starts ≈ 18 innings, reasonably stable. Switch to 5 after ~1 month.
-    min_gs = 3 if games_played < 20 else 5
-
-    try:
-        sp = pitching_stats(season, qual=1)
-    except Exception as e:
-        print(f"  [WARN] FanGraphs pitcher stats failed: {e}")
-        return None
-
-    if sp is None or len(sp) == 0:
-        return None
-
-    # Filter to starters
-    sp = sp[pd.to_numeric(sp.get("GS", 0), errors="coerce").fillna(0) >= min_gs].copy()
-    if len(sp) == 0:
-        return None
-
-    print(f"  Found {len(sp)} starters (GS >= {min_gs})")
-
-    def safe(row, col, default):
-        v = pd.to_numeric(row.get(col, default), errors="coerce")
-        return float(v) if not pd.isna(v) else default
-
-    sp_baselines = {}
-    for _, row in sp.iterrows():
-        name = str(row.get("Name", "Unknown")).strip()
-        # Build a slug key for name-based lookup (predict.py searches by partial name)
-        key = (name.lower()
-               .replace(" ", "_")
-               .replace(".", "")
-               .replace("'", "")
-               .replace("-", "_"))
-
-        gs_val  = safe(row, "GS", 0)
-        ip_val  = safe(row, "IP", 0)
-        so9_val = safe(row, "K/9",  8.0)
-        bb9_val = safe(row, "BB/9", 3.0)
-
-        sp_baselines[key] = {
-            "name":   name,
-            "era":    safe(row, "ERA",  4.20),
-            "whip":   safe(row, "WHIP", 1.30),
-            "xfip":   safe(row, "xFIP", 4.20),
-            "siera":  safe(row, "SIERA",4.20),
-            "so9":    so9_val,
-            "bb9":    bb9_val,
-            "hr9":    safe(row, "HR/9", 1.2),
-            "wins":   int(safe(row, "W", 0)),
-            "losses": int(safe(row, "L", 0)),
-            "ip_gs":  round(ip_val / gs_val, 2) if gs_val > 0 else 5.8,
-            "k_bb":   round(so9_val / bb9_val, 3) if bb9_val > 0.5 else round(so9_val / 0.5, 3),
-            "gs":     int(gs_val),
-        }
-
-    return sp_baselines
-
-
-# ---------------------------------------------------------------------------
-# Blend current-season SP baselines toward prior-season, weighted by GS
-# ---------------------------------------------------------------------------
-def blend_sp_baselines(prior_sp, new_sp_baselines):
-    """
-    Merge current-season (new_sp_baselines) with prior-season (prior_sp) SP stats,
-    shrinking each pitcher's current-season stat toward their prior-season value
-    based on games started this season — same alpha=min(gs/10, 1.0) ramp already
-    used by fetch_sp_baselines_from_mlb_api's blend() (line ~729), which exists
-    specifically to stop a 3-start ERA from overwhelming a full prior season.
-    Previously this path did a hard dict-merge overwrite instead (new entirely
-    replaces prior once GS >= min_gs), feeding the model — trained on stable,
-    full prior-season SP stats — a high-variance small-sample input at exactly
-    the same magnitude it was trained to trust, which is the leading suspect
-    for the live-vs-holdout calibration gap (scripts/calibration_live_check.py).
-    """
-    merged = dict(prior_sp) if prior_sp else {}
-    stat_fields = ["era", "whip", "xfip", "siera", "so9", "bb9", "hr9", "ip_gs", "k_bb"]
-    for key, cur in new_sp_baselines.items():
-        prior = merged.get(key)
-        gs = cur.get("gs", 0)
-        if not prior or gs <= 0:
-            merged[key] = cur
-            continue
-        alpha = min(gs / 10.0, 1.0)
-        blended = dict(cur)
-        for field in stat_fields:
-            if field in cur and field in prior:
-                blended[field] = round(alpha * cur[field] + (1 - alpha) * prior[field], 4)
-        merged[key] = blended
-    return merged
-
-
 def merge_sp_baselines_dedup(old_sp, fresh_sp):
     """
     Merge freshly-fetched current-season SP baselines (fresh_sp) on top of prior/
@@ -1040,41 +939,25 @@ def main():
 
     # ---- SP baselines --------------------------------------------------
     print()
-    new_sp_baselines = fetch_sp_baselines(SEASON, games_played=avg_games)
-
-    if new_sp_baselines and len(new_sp_baselines) >= 10:
-        print(f"  Built {len(new_sp_baselines)} SP baselines from FanGraphs")
-        # Fetch prior-year data as fallback for pitchers not yet in 2026
-        prior_sp = fetch_sp_baselines(SEASON - 1, games_played=162)
-        if prior_sp:
-            merged_sp = blend_sp_baselines(prior_sp, new_sp_baselines)
-            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data blended toward {SEASON-1}, alpha=min(gs/10,1))")
-        else:
-            merged_sp = blend_sp_baselines(old_sp_baselines, new_sp_baselines)
-            print(f"  Merged to {len(merged_sp)} total pitchers (2026 data blended toward prior artifact)")
+    print("  Fetching SP baselines from MLB Stats API...")
+    # FanGraphs (pitching_stats()) 403s unconditionally as of 2026-07 — removed;
+    # this was already the code path production hit every day via the fallback.
+    mlb_api_sp = fetch_sp_baselines_from_mlb_api(
+        SEASON, games_played=avg_games, prior_sp=old_sp_baselines
+    )
+    if mlb_api_sp and len(mlb_api_sp) >= 5:
+        # Merge current-season MLB API data on top of prior baselines,
+        # de-duplicating by normalized name so a stale prior-season entry
+        # (keyed by Retrosheet ID or an older slug) can't linger alongside the
+        # fresh one and shadow it in find_pitcher_by_name.
+        merged_sp = merge_sp_baselines_dedup(old_sp_baselines, mlb_api_sp)
+        n_prior_only = len(merged_sp) - len(mlb_api_sp)
+        print(f"  MLB API: {len(mlb_api_sp)} current starters + {n_prior_only} prior-only pitchers "
+              f"= {len(merged_sp)} total")
         new_sp_baselines = merged_sp
     else:
-        print(f"  FanGraphs unavailable — trying MLB Stats API for pitcher stats...")
-        # Use prior-saved baselines as the prior for blending (xFIP/SIERA + small-sample smoothing)
-        prior_sp_for_adv = fetch_sp_baselines(SEASON - 1, games_played=162)
-        if prior_sp_for_adv is None:
-            prior_sp_for_adv = old_sp_baselines  # fall back to last saved artifacts
-        mlb_api_sp = fetch_sp_baselines_from_mlb_api(
-            SEASON, games_played=avg_games, prior_sp=prior_sp_for_adv
-        )
-        if mlb_api_sp and len(mlb_api_sp) >= 5:
-            # Merge current-season MLB API data on top of prior baselines,
-            # de-duplicating by normalized name so a stale prior-season entry
-            # (keyed by Retrosheet ID or an older slug) can't linger alongside the
-            # fresh one and shadow it in find_pitcher_by_name.
-            merged_sp = merge_sp_baselines_dedup(old_sp_baselines, mlb_api_sp)
-            n_prior_only = len(merged_sp) - len(mlb_api_sp)
-            print(f"  MLB API: {len(mlb_api_sp)} current starters + {n_prior_only} prior-only pitchers "
-                  f"= {len(merged_sp)} total")
-            new_sp_baselines = merged_sp
-        else:
-            print(f"  Both FanGraphs and MLB API failed — keeping prior SP baselines")
-            new_sp_baselines = old_sp_baselines
+        print(f"  MLB API failed — keeping prior SP baselines")
+        new_sp_baselines = old_sp_baselines
 
     # ---- Save updated artifacts ----------------------------------------
     artifacts["team_baselines"] = new_team_baselines
