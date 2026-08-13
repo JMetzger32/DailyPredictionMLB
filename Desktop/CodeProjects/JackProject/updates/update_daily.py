@@ -806,10 +806,11 @@ def compute_rolling_baselines_from_db():
     try:
         from MLBModel import (load_data, build_team_game_log,
                               compute_rolling_team_features, merge_bullpen_era,
-                              PARK_FACTORS)
+                              PARK_FACTORS, load_boxscore_ip_lookup)
 
         df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
-        tgl = build_team_game_log(df)
+        _boxscore_ip_lookup = load_boxscore_ip_lookup(DB_PATH, df)
+        tgl = build_team_game_log(df, boxscore_ip_lookup=_boxscore_ip_lookup)
         tgl = compute_rolling_team_features(tgl)
         tgl = merge_bullpen_era(tgl, bullpen_stats)
 
@@ -987,7 +988,7 @@ def retrain_model():
             load_data, build_team_game_log, compute_rolling_team_features,
             merge_bullpen_era, merge_sp_stats, assemble_features,
             compute_model_version, FEATURE_COLS, RANDOM_STATE,
-            SCALER_WINDOW_START_SEASON
+            SCALER_WINDOW_START_SEASON, load_boxscore_ip_lookup
         )
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import LogisticRegression
@@ -996,7 +997,8 @@ def retrain_model():
 
         # Load and assemble training data (same pipeline as MLBModel training)
         df, pitcher_stats, bullpen_stats = load_data(DB_PATH)
-        tgl = build_team_game_log(df)
+        _boxscore_ip_lookup = load_boxscore_ip_lookup(DB_PATH, df)
+        tgl = build_team_game_log(df, boxscore_ip_lookup=_boxscore_ip_lookup)
         tgl = compute_rolling_team_features(tgl)
         tgl = merge_bullpen_era(tgl, bullpen_stats)
         tgl = merge_sp_stats(tgl, pitcher_stats)
