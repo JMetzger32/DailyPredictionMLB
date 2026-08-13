@@ -152,7 +152,78 @@ def load_data(db_path):
 # ===========================================================================
 # Section 2: Team Game Log (long format — one row per team per game)
 # ===========================================================================
-def build_team_game_log(df):
+def load_boxscore_ip_lookup(db_path, df):
+    """game_id -> {'home_ip': x, 'away_ip': y}, summed real per-side IP from
+    game_pitcher_lines (see feat/boxscore-ingestion), for games with a
+    backfilled boxscore. Returns {} (safe no-op) if the table doesn't exist
+    yet or has no matching rows — callers treat this as the highest-priority
+    but optional tier of build_team_game_log's IP fallback chain."""
+    conn = sqlite3.connect(db_path)
+    try:
+        lines = pd.read_sql_query(
+            "SELECT game_id, team, SUM(ip) AS total_ip FROM game_pitcher_lines GROUP BY game_id, team", conn)
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+    if lines.empty:
+        return {}
+    team_by_game = df.set_index(df["game_id"].astype(str))[["home_team", "visiting_team"]]
+    lookup = {}
+    for _, row in lines.iterrows():
+        gid_str = str(row["game_id"])
+        if gid_str not in team_by_game.index:
+            continue
+        home_team = team_by_game.at[gid_str, "home_team"]
+        away_team = team_by_game.at[gid_str, "visiting_team"]
+        try:
+            gid = int(row["game_id"])
+        except (TypeError, ValueError):
+            continue
+        entry = lookup.setdefault(gid, {})
+        if row["team"] == home_team:
+            entry["home_ip"] = float(row["total_ip"])
+        elif row["team"] == away_team:
+            entry["away_ip"] = float(row["total_ip"])
+    return lookup
+
+
+def _resolve_total_ip(df, boxscore_ip_lookup=None):
+    """3-tier per-side pitching IP, home and away, aligned to df's index:
+    (1) real per-side IP summed from game_pitcher_lines (boxscore_ip_lookup),
+    (2) the corrected opponent's-outs formula (est_h/est_a from AB-H+SF on
+    each side) where length_outs is populated, (3) the even-split
+    length_outs/6 default — last resort, and today the ONLY option for 2026
+    since length_outs is 100% NULL there. Tier 2 fixes the even-split's bias
+    for 2020-2025; tier 1 (once boxscores are backfilled) replaces the
+    estimate with the real value for any season."""
+    even_split = df.get("length_outs", pd.Series(54, index=df.index)) / 6
+    if "length_outs" in df.columns:
+        est_h = df["home_at_bats"] - df["home_hits"] + df["home_sac_flies"]
+        est_a = df["visitor_at_bats"] - df["visitor_hits"] + df["visitor_sac_flies"]
+        denom = (est_h + est_a).astype(float)
+        denom = denom.where(denom > 0)
+        home_batting_outs = df["length_outs"] * est_h / denom
+        corrected_home = (df["length_outs"] - home_batting_outs) / 3
+        corrected_away = home_batting_outs / 3
+    else:
+        corrected_home = pd.Series(np.nan, index=df.index)
+        corrected_away = pd.Series(np.nan, index=df.index)
+
+    home_ip = corrected_home.combine_first(even_split)
+    away_ip = corrected_away.combine_first(even_split)
+
+    if boxscore_ip_lookup:
+        real_home = df["game_id"].map(lambda gid: boxscore_ip_lookup.get(gid, {}).get("home_ip"))
+        real_away = df["game_id"].map(lambda gid: boxscore_ip_lookup.get(gid, {}).get("away_ip"))
+        home_ip = real_home.combine_first(home_ip)
+        away_ip = real_away.combine_first(away_ip)
+
+    return home_ip, away_ip
+
+
+def build_team_game_log(df, boxscore_ip_lookup=None):
+    _home_total_ip, _away_total_ip = _resolve_total_ip(df, boxscore_ip_lookup)
     home = pd.DataFrame({
         "game_id": df["game_id"],
         "date": df["date"],
@@ -182,8 +253,8 @@ def build_team_game_log(df):
         "triples":     df["home_triples"],
         "hit_by_pitch":df["home_hit_by_pitch"],
         "sac_flies":   df["home_sac_flies"],
-        # Estimated total IP for this team's pitching staff (length_outs / 2 / 3)
-        "total_ip":    df.get("length_outs", pd.Series(54, index=df.index)) / 6,
+        # Per-side pitching IP — see _resolve_total_ip for the 3-tier fallback
+        "total_ip":    _home_total_ip,
     })
     away = pd.DataFrame({
         "game_id": df["game_id"],
@@ -214,8 +285,8 @@ def build_team_game_log(df):
         "triples":     df["visitor_triples"],
         "hit_by_pitch":df["visitor_hit_by_pitch"],
         "sac_flies":   df["visitor_sac_flies"],
-        # Estimated total IP for this team's pitching staff
-        "total_ip":    df.get("length_outs", pd.Series(54, index=df.index)) / 6,
+        # Per-side pitching IP — see _resolve_total_ip for the 3-tier fallback
+        "total_ip":    _away_total_ip,
     })
     tgl = pd.concat([home, away], ignore_index=True)
     tgl = tgl.sort_values(["team", "date", "game_id"]).reset_index(drop=True)
@@ -1276,7 +1347,10 @@ if __name__ == "__main__":
 
     # Step 2: Build team game log
     print("\n[2/7] Building team game log...")
-    tgl = build_team_game_log(df)
+    _boxscore_ip_lookup = load_boxscore_ip_lookup(DB_PATH, df)
+    if _boxscore_ip_lookup:
+        print(f"  Real per-side IP available for {len(_boxscore_ip_lookup)} games (game_pitcher_lines)")
+    tgl = build_team_game_log(df, boxscore_ip_lookup=_boxscore_ip_lookup)
     print(f"  Created {len(tgl)} team-game records")
 
     # Step 3: Team features
