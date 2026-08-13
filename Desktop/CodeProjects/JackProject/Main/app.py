@@ -548,9 +548,13 @@ def _build_prediction_entry(game, result, odds_data=None):
         "calibration_bucket": _calibration_bucket(max(result["home_win_prob"], result["away_win_prob"])),
         "away_ml":           odds_data.get("away_ml"),
         "home_ml":           odds_data.get("home_ml"),
+        "away_implied":      odds_data.get("away_implied"),
+        "home_implied":      odds_data.get("home_implied"),
         "bet_rating":        odds_data.get("bet_rating"),
         "predicted_team_ml": odds_data.get("predicted_team_ml"),
         "model_edge":        odds_data.get("model_edge"),
+        "odds_books":        odds_data.get("odds_books", []),
+        "arbitrage":         odds_data.get("arbitrage"),
         "actual_winner":     None,
         "away_score":        None,
         "home_score":        None,
@@ -1276,6 +1280,16 @@ def _store_closing_odds():
     """Fetch odds near first pitch and store as closing line for CLV tracking."""
     today = _today_et().isoformat()
     try:
+        log = _load_log()
+        _today_entries = [e for e in log.get(today, []) if e.get("game_type") != "S"]
+        # Reuse gate: this job can fire twice on the same day (the internal 6:45 PM
+        # APScheduler cron AND the external cron-job.org /api/trigger-closing-odds hit,
+        # kept as a fallback pair since the free-tier host may be asleep for either
+        # one) — with no gate that's 2 paid credits for one snapshot. If every real
+        # game today already has a closing line, there's nothing left to capture.
+        if _today_entries and all(e.get("closing_away_ml") is not None for e in _today_entries):
+            print(f"[app] _store_closing_odds: {today} already fully captured — skipping fetch", flush=True)
+            return
         # Bypass cache: clear the odds cache entry so we get a fresh fetch
         _odds_cache.pop(today, None)
         odds = get_mlb_odds(ODDS_API_KEY)
@@ -1284,7 +1298,6 @@ def _store_closing_odds():
         _store_closing_odds_to_archive(today, odds)
         _push_closing_odds_to_github()
 
-        log = _load_log()
         changed = False
         for entry in log.get(today, []):
             if entry.get("closing_away_ml") is not None:
@@ -1344,7 +1357,8 @@ try:
     scheduler.add_job(_track_job("resolve_games", lambda: _betting_row_count("correct IS NOT NULL"))(resolve_todays_completed_games),
                       "interval", minutes=30, id="resolve_games")
     scheduler.add_job(_track_job("closing_odds", lambda: _betting_row_count("closing_home_ml IS NOT NULL"))(_store_closing_odds),
-                      "cron", hour=18, minute=45, timezone="America/New_York", id="closing_odds")
+                      "cron", hour=18, minute=45, timezone="America/New_York",
+                      misfire_grace_time=3600, id="closing_odds")
     # Fixed ET clock times, NOT an interval: an interval counts from process boot, and
     # on a spin-down host the process rarely lives 3h, so the job effectively never
     # fired. Cron times target when books actually have lines up (mid-morning through
@@ -1526,6 +1540,12 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
     home_ml    = game_odds.get("home_ml")
     away_impl  = game_odds.get("away_implied")
     home_impl  = game_odds.get("home_implied")
+    if away_impl is None or home_impl is None:
+        # Reconstruct from moneylines — covers entries whose stored away_implied/
+        # home_implied never got persisted (see _build_prediction_entry) so bet_rating/
+        # model_edge/the market row aren't stuck null forever just because that one
+        # field is missing while away_ml/home_ml are fine.
+        away_impl, home_impl = _implied_probs(away_ml, home_ml)
 
     bet_rating       = None
     model_edge       = None
@@ -1782,8 +1802,8 @@ def predictions():
     # One cached API call for both schedule and live scores
     games_raw, live_results = _get_schedule_cached(target_date)
 
-    # Fetch live odds for today/future; use closing odds archive for past dates
-    if target_date >= _today_et():
+    # Fetch live odds for today; use closing odds archive for past dates
+    if target_date == _today_et():
         # Credit-saving gate: if every real game today already has odds attached in
         # the log (restored from GitHub on boot), reuse those instead of spending an
         # Odds-API credit on this view. Render free-tier spins down every ~15 min, so
@@ -1795,6 +1815,13 @@ def predictions():
             odds_map = _odds_map_from_log_entries(_today_entries)
         else:
             odds_map = _get_odds_cached()
+    elif target_date > _today_et():
+        # Future dates are never seeded with odds (books haven't posted final lines,
+        # and _refresh_today_odds only ever patches TODAY), so the "already has odds"
+        # gate above can never pass for them — every view would silently fall through
+        # to a paid fetch for a date with nothing real to show. Just skip odds entirely;
+        # the page still renders model-only predictions with "No Odds Available".
+        odds_map = {}
     else:
         # For past dates, try to get from closing odds archive
         closing_archive = _get_closing_odds_archive()
