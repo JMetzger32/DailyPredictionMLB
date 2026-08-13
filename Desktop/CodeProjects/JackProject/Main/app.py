@@ -930,6 +930,27 @@ def _betting_row_count(where="1=1"):
         return None
 
 
+def _boxscore_lines_count():
+    """Cheap counter against game_pitcher_lines for job rows_delta reporting."""
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        n = conn.execute("SELECT COUNT(DISTINCT game_id) FROM game_pitcher_lines").fetchone()[0]
+        conn.close()
+        return n
+    except Exception:
+        return None
+
+
+def _backfill_boxscores_batch():
+    """Fetch boxscores for a bounded batch of games still missing a
+    game_pitcher_lines row. Bounded (not the whole backlog) so one tick
+    stays well inside Render's request timeout; the interval trigger below
+    clears same-day games with margin at ~15 games/day."""
+    import backfill_boxscores
+    backfill_boxscores.run_batch(limit=25, verbose=False)
+
+
 def _track_job(name, count_fn=None):
     """Wrap a scheduled job so /api/status reflects its outcomes. Jobs that swallow
     exceptions internally also call _job_record_error inside their own except blocks —
@@ -1144,6 +1165,13 @@ try:
     _init_betting.init_betting_log_table()
 except Exception as _e:
     print(f"[startup] betting_log table init failed: {_e}", flush=True)
+
+# Initialize game_pitcher_lines/game_batter_lines tables on startup (no-op if already exist)
+try:
+    import init_boxscore_tables as _init_boxscore
+    _init_boxscore.init_boxscore_tables()
+except Exception as _e:
+    print(f"[startup] boxscore tables init failed: {_e}", flush=True)
 
 # Bootstrap 2026 game data into DB on startup if missing (DB is gitignored, so Render starts empty)
 try:
@@ -1367,8 +1395,10 @@ try:
                       "cron", hour="10,13,16,18", minute=15,
                       timezone="America/New_York", misfire_grace_time=3600,
                       id="odds_refresh")
+    scheduler.add_job(_track_job("backfill_boxscores", _boxscore_lines_count)(_backfill_boxscores_batch),
+                      "interval", minutes=45, id="backfill_boxscores")
     scheduler.start()
-    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh 10:15/13:15/16:15/18:15 ET")
+    print("[app] APScheduler started — daily update at 8:00 AM, results every 30 min, closing odds at 6:45 PM, odds refresh 10:15/13:15/16:15/18:15 ET, boxscore backfill every 45 min")
 except ImportError:
     print("[app] apscheduler not installed — daily auto-refresh disabled")
     scheduler = None
