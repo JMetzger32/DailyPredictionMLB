@@ -986,7 +986,8 @@ def retrain_model():
         from MLBModel import (
             load_data, build_team_game_log, compute_rolling_team_features,
             merge_bullpen_era, merge_sp_stats, assemble_features,
-            compute_model_version, FEATURE_COLS, RANDOM_STATE
+            compute_model_version, FEATURE_COLS, RANDOM_STATE,
+            SCALER_WINDOW_START_SEASON
         )
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import LogisticRegression
@@ -1079,8 +1080,13 @@ def retrain_model():
         # Validation: train 2021-2025, validate 2026
         sw_train = train_data["season"].map(YEAR_WEIGHTS).fillna(1.0).values
 
+        # Scaler fit on the recent-seasons window only, not all of X_train — see
+        # SCALER_WINDOW_START_SEASON in MLBModel.py (EDA section 08 drift finding).
+        # MUST stay identical to MLBModel.py __main__.
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
+        _scaler_fit_mask_val = train_data["season"] >= SCALER_WINDOW_START_SEASON
+        scaler.fit(X_train[_scaler_fit_mask_val.values])
+        X_train_scaled = scaler.transform(X_train)
         X_val_scaled = scaler.transform(X_val)
 
         lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
@@ -1106,7 +1112,9 @@ def retrain_model():
         sw_all  = train_df["season"].map(YEAR_WEIGHTS).fillna(1.0).values
 
         scaler_final   = StandardScaler()
-        X_all_scaled   = scaler_final.fit_transform(X_all)
+        _scaler_fit_mask_all = train_df["season"] >= SCALER_WINDOW_START_SEASON
+        scaler_final.fit(X_all[_scaler_fit_mask_all.values])
+        X_all_scaled   = scaler_final.transform(X_all)
 
         lr_final = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
         gb_final = GradientBoostingClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
@@ -1145,7 +1153,7 @@ def retrain_model():
         _save_ts = datetime.now().isoformat()
         artifacts["retrain_timestamp"] = _save_ts
         artifacts["saved_at"] = _save_ts
-        artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr_final, _save_ts)
+        artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr_final, _save_ts, scaler=scaler_final)
         artifacts["retrain_metrics"] = {
             "accuracy":   float(accuracy),
             "brier_score": float(brier),

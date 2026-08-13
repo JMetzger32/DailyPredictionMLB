@@ -32,6 +32,12 @@ ROLLING_WINDOW = 30
 ROLLING_WINDOW_SHORT = 10
 SP_MIN_STARTS = 3
 PYTH_EXPONENT = 1.83
+# The scaler is fit on this recent-seasons window (inclusive), not the full
+# 2021+ training range: EDA section 08 found 2026-live scaled feature spread
+# drifting past the training-fit spread (diff_sp_xfip 1.94x, diff_sp_siera
+# 2.00x) on a scaler fit over all of 2021-2026. Keep MLBModel.py's __main__
+# and update_daily.py::retrain_model() using this same constant.
+SCALER_WINDOW_START_SEASON = 2023
 
 FEATURE_COLS = [
     # Team quality — Pythagorean strips luck better than actual win% (season_win_pct removed: r≈0.85 with pyth)
@@ -99,15 +105,20 @@ PARK_FACTORS = {
 }
 
 
-def compute_model_version(feature_cols, lr_model, save_ts):
+def compute_model_version(feature_cols, lr_model, save_ts, scaler=None):
     """Short auto content-hash identifying a trained model. Derived from the feature
-    columns, the fitted LR coefficients, and the save timestamp, so it changes exactly
-    when the model changes and distinguishes an MLBModel.py artifact from a weekly-retrain
-    one. Returns a 12-char hex string."""
+    columns, the fitted LR coefficients, the scaler's fitted mean_/scale_, and the save
+    timestamp, so it changes exactly when the model (including its standardization)
+    changes and distinguishes an MLBModel.py artifact from a weekly-retrain one. Returns
+    a 12-char hex string."""
     import hashlib
     coefs = getattr(lr_model, "coef_", None)
+    scaler_mean = getattr(scaler, "mean_", None)
+    scaler_scale = getattr(scaler, "scale_", None)
     payload = (str(list(feature_cols)) +
                str(np.round(coefs, 6) if coefs is not None else "none") +
+               str(np.round(scaler_mean, 6) if scaler_mean is not None else "none") +
+               str(np.round(scaler_scale, 6) if scaler_scale is not None else "none") +
                str(save_ts))
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
@@ -554,8 +565,8 @@ def assemble_features(df, tgl):
 # Section 6: Cross-Validation (Leave-One-Season-Out)
 # ===========================================================================
 def cross_validate_loso(model_df, feature_cols):
-    train_df = model_df[model_df["season"].between(2021, 2024)].dropna(subset=feature_cols)
-    seasons = [2021, 2022, 2023, 2024]
+    train_df = model_df[model_df["season"].between(2021, 2025)].dropna(subset=feature_cols)
+    seasons = [2021, 2022, 2023, 2024, 2025]
     results = []
 
     for hold_out in seasons:
@@ -567,9 +578,17 @@ def cross_validate_loso(model_df, feature_cols):
         X_val = train_df.loc[val_mask, feature_cols]
         y_val = train_df.loc[val_mask, "home_win"]
 
-        # Logistic Regression
+        # Logistic Regression — scaler fit on the recent-seasons window only
+        # (SCALER_WINDOW_START_SEASON), not the full training slice, so LOSO
+        # exercises the same drift-mitigated standardization the live pkl
+        # uses. Falls back to the full training slice if this fold's window
+        # is empty (shouldn't happen with 5 seasons and a 2023 start, but
+        # keeps this safe if the window is ever widened).
+        window_mask = train_df.loc[train_mask, "season"] >= SCALER_WINDOW_START_SEASON
+        X_scaler_fit = X_train[window_mask.values] if window_mask.any() else X_train
         scaler = StandardScaler()
-        X_tr_sc = scaler.fit_transform(X_train)
+        scaler.fit(X_scaler_fit)
+        X_tr_sc = scaler.transform(X_train)
         X_va_sc = scaler.transform(X_val)
 
         lr = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
@@ -595,22 +614,24 @@ def cross_validate_loso(model_df, feature_cols):
             "lr_acc": accuracy_score(y_val, lr_preds),
             "lr_logloss": log_loss(y_val, lr_probs),
             "lr_auc": roc_auc_score(y_val, lr_probs),
+            "lr_brier": brier_score_loss(y_val, lr_probs),
             "gb_acc": accuracy_score(y_val, gb_preds),
             "gb_logloss": log_loss(y_val, gb_probs),
             "gb_auc": roc_auc_score(y_val, gb_probs),
+            "gb_brier": brier_score_loss(y_val, gb_probs),
         }
         results.append(fold)
 
         print(f"\n  Fold: hold out {hold_out}  (train={len(y_train)}, val={len(y_val)})")
         print(f"    Baseline (always home):   {fold['baseline_acc']:.3f}")
-        print(f"    Logistic Regression:      Acc={fold['lr_acc']:.3f}  LogLoss={fold['lr_logloss']:.3f}  AUC={fold['lr_auc']:.3f}")
-        print(f"    Gradient Boosting:        Acc={fold['gb_acc']:.3f}  LogLoss={fold['gb_logloss']:.3f}  AUC={fold['gb_auc']:.3f}")
+        print(f"    Logistic Regression:      Acc={fold['lr_acc']:.3f}  LogLoss={fold['lr_logloss']:.3f}  AUC={fold['lr_auc']:.3f}  Brier={fold['lr_brier']:.3f}")
+        print(f"    Gradient Boosting:        Acc={fold['gb_acc']:.3f}  LogLoss={fold['gb_logloss']:.3f}  AUC={fold['gb_auc']:.3f}  Brier={fold['gb_brier']:.3f}")
 
     results_df = pd.DataFrame(results)
     print("\n  --- Average across folds ---")
     print(f"    Baseline:            {results_df['baseline_acc'].mean():.3f}")
-    print(f"    Logistic Regression: Acc={results_df['lr_acc'].mean():.3f}  AUC={results_df['lr_auc'].mean():.3f}")
-    print(f"    Gradient Boosting:   Acc={results_df['gb_acc'].mean():.3f}  AUC={results_df['gb_auc'].mean():.3f}")
+    print(f"    Logistic Regression: Acc={results_df['lr_acc'].mean():.3f}  AUC={results_df['lr_auc'].mean():.3f}  Brier={results_df['lr_brier'].mean():.3f}")
+    print(f"    Gradient Boosting:   Acc={results_df['gb_acc'].mean():.3f}  AUC={results_df['gb_auc'].mean():.3f}  Brier={results_df['gb_brier'].mean():.3f}")
 
     return results_df
 
@@ -1329,8 +1350,15 @@ if __name__ == "__main__":
     seasons_in = sorted(_final_df["season"].unique())
     print(f"  Training on seasons: {seasons_in}  ({len(_final_df)} games)")
 
+    # Scaler is fit on the recent-seasons window only (SCALER_WINDOW_START_SEASON),
+    # not all of X_final — EDA section 08 found 2026-live scaled feature spread
+    # drifting past a scaler fit over the full 2021-2026 range. LR still trains
+    # on all seasons via sample_weight; only the standardization statistics
+    # come from the recent window. MUST stay identical to update_daily.retrain_model.
     final_scaler = StandardScaler()
-    X_final_sc = final_scaler.fit_transform(X_final)
+    _scaler_fit_mask = _final_df["season"] >= SCALER_WINDOW_START_SEASON
+    final_scaler.fit(X_final[_scaler_fit_mask.values])
+    X_final_sc = final_scaler.transform(X_final)
 
     lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
     lr.fit(X_final_sc, y_final, sample_weight=_sw)
@@ -1470,7 +1498,7 @@ if __name__ == "__main__":
     if xgb_bootstrap_models:
         artifacts["xgb_bootstrap_models"] = xgb_bootstrap_models
     _save_ts = pd.Timestamp.now().isoformat()
-    artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr, _save_ts)
+    artifacts["model_version"] = compute_model_version(FEATURE_COLS, lr, _save_ts, scaler=scaler)
     artifacts["saved_at"] = _save_ts
     with open(_ARTIFACTS_SAVE_PATH, "wb") as f:
         pickle.dump(artifacts, f)
