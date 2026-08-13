@@ -1918,51 +1918,57 @@
     },
     "CHN|WAS": {
       "away_ml": -138,
-      "home_ml": 118,
-      "away_implied": 0.5583,
-      "home_implied": 0.4417
+      "home_ml": 119,
+      "away_implied": 0.5594,
+      "home_implied": 0.4406
     },
     "SEA|NYA": {
-      "away_ml": 128,
-      "home_ml": -150,
-      "away_implied": 0.4223,
-      "home_implied": 0.5777
+      "away_ml": 124,
+      "home_ml": -144,
+      "away_implied": 0.4307,
+      "home_implied": 0.5693
     },
     "BOS|TOR": {
-      "away_ml": -162,
-      "home_ml": 138,
-      "away_implied": 0.5954,
-      "home_implied": 0.4046
+      "away_ml": -165,
+      "home_ml": 142,
+      "away_implied": 0.6011,
+      "home_implied": 0.3989
     },
     "NYN|ATL": {
-      "away_ml": 158,
-      "home_ml": -181,
-      "away_implied": 0.3757,
-      "home_implied": 0.6243
+      "away_ml": 1767,
+      "home_ml": -4467,
+      "away_implied": 0.0519,
+      "home_implied": 0.9481
     },
     "CIN|CHA": {
-      "away_ml": 117,
+      "away_ml": 118,
       "home_ml": -136,
-      "away_implied": 0.4443,
-      "home_implied": 0.5557
+      "away_implied": 0.4432,
+      "home_implied": 0.5568
     },
     "KCA|LAN": {
-      "away_ml": 190,
-      "home_ml": -218,
-      "away_implied": 0.3347,
-      "home_implied": 0.6653
+      "away_ml": 193,
+      "home_ml": -223,
+      "away_implied": 0.3308,
+      "home_implied": 0.6692
     },
     "TEX|ANA": {
-      "away_ml": -141,
-      "home_ml": 124,
-      "away_implied": 0.5672,
-      "home_implied": 0.4328
+      "away_ml": -158,
+      "home_ml": 135,
+      "away_implied": 0.59,
+      "home_implied": 0.41
     },
     "MIL|LAN": {
-      "away_ml": 117,
-      "home_ml": -136,
-      "away_implied": 0.4443,
-      "home_implied": 0.5557
+      "away_ml": 121,
+      "home_ml": -142,
+      "away_implied": 0.4354,
+      "home_implied": 0.5646
+    },
+    "CLE|DET": {
+      "away_ml": -1219,
+      "home_ml": 708,
+      "away_implied": 0.8819,
+      "home_implied": 0.1181
     }
   }
 }
