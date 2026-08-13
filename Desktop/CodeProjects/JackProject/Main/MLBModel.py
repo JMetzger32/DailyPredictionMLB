@@ -124,6 +124,15 @@ def load_data(db_path):
     except Exception:
         bullpen_stats = pd.DataFrame()  # table doesn't exist yet — will use fallback
     conn.close()
+    # The Athletics relocated and their Retrosheet code changed (OAK -> ATH in
+    # 2025), but raw `games` rows were never normalized, so pre-2025 and
+    # post-2025 Athletics games group under two different team labels in every
+    # rolling/cumulative feature (see CLAUDE.md).
+    n_ath_rows_affected = int((df["home_team"] == "OAK").sum() + (df["visiting_team"] == "OAK").sum())
+    if n_ath_rows_affected:
+        print(f"[load_data] normalizing {n_ath_rows_affected} OAK -> ATH rows (Athletics team-code rename)")
+    df["home_team"] = df["home_team"].replace({"OAK": "ATH"})
+    df["visiting_team"] = df["visiting_team"].replace({"OAK": "ATH"})
     df["home_win"] = (df["home_score"] > df["visitor_score"]).astype(int)
     df = df.sort_values(["date", "doubleheader", "game_id"]).reset_index(drop=True)
     return df, pitcher_stats, bullpen_stats
