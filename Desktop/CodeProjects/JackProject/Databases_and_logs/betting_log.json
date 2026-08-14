@@ -20626,6 +20626,84 @@
       "model_version": "2c50e24e590d"
     },
     {
+      "game_pk": 823993,
+      "date": "2026-08-14",
+      "game_type": "R",
+      "away_team": "KCA",
+      "away_team_name": "Kansas City Royals",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.599,
+      "home_win_prob": 0.401,
+      "confidence": 0.099,
+      "calibration_bucket": "50-60%",
+      "away_ml": 133,
+      "home_ml": -152,
+      "away_implied": 0.4157,
+      "home_implied": 0.5843,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 133,
+      "model_edge": 0.1833,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": 129,
+          "home_ml": -156
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 134,
+          "home_ml": -148
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 134,
+          "home_ml": -148
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": 134,
+          "home_ml": -158
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 13.0,
+      "home_est_score": 3.1,
+      "away_est_score": 10.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.6108566035076732,
+        -1.0435400837420343,
+        0.48864997087072776,
+        -1.924496554193316,
+        3.8363802021532094,
+        1.101476000508859,
+        0.5421039394855063,
+        0.18059849547413942,
+        1.621887317682789,
+        -1.1195330038448446,
+        -0.0668951594709444,
+        -0.2399990863389945,
+        -0.033909915571940265,
+        2.009691897868749,
+        -0.19429264640302826,
+        -0.19829714703137707,
+        4.658985797942519,
+        4.7335593512991645
+      ],
+      "prediction_timestamp": "2026-08-14T10:15:09.223773-04:00",
+      "model_version": "2c50e24e590d"
+    },
+    {
       "game_pk": 823913,
       "date": "2026-08-14",
       "game_type": "R",
