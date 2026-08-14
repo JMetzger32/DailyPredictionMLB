@@ -68532,14 +68532,35 @@
       "home_win_prob": 0.401,
       "confidence": 0.099,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": 133,
+      "home_ml": -152,
+      "away_implied": 0.4157,
+      "home_implied": 0.5843,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 133,
+      "model_edge": 0.1833,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": 129,
+          "home_ml": -156
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 134,
+          "home_ml": -148
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 134,
+          "home_ml": -148
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": 134,
+          "home_ml": -158
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
