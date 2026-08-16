@@ -22879,6 +22879,89 @@
       "model_version": "2c50e24e590d"
     },
     {
+      "game_pk": 824397,
+      "date": "2026-08-16",
+      "game_type": "R",
+      "away_team": "SDN",
+      "away_team_name": "San Diego Padres",
+      "home_team": "CLE",
+      "home_team_name": "Cleveland Guardians",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.391,
+      "home_win_prob": 0.609,
+      "confidence": 0.109,
+      "calibration_bucket": "60-70%",
+      "away_ml": -3544,
+      "home_ml": 1010,
+      "away_implied": 0.9152,
+      "home_implied": 0.0848,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 1010,
+      "model_edge": 0.5242,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -1700,
+          "home_ml": 1200
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -1520,
+          "home_ml": 950
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -2000,
+          "home_ml": 900
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -2500,
+          "home_ml": 1000
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -10000,
+          "home_ml": 1000
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.7,
+      "home_est_score": 3.4,
+      "away_est_score": 4.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.33757528456978303,
+        -0.5923183098755118,
+        0.22325765271205375,
+        -0.1866985534961727,
+        0.55366590258527,
+        -1.2490257720167706,
+        -1.8888230212161952,
+        -0.10643799216471603,
+        -1.3870530042457616,
+        0.04104969269165991,
+        -1.7476534897168587,
+        0.6025462432601829,
+        -0.033909915571940265,
+        0.4436495829881883,
+        0.083437323200027,
+        -0.5582679984788016,
+        -0.436424974563881,
+        -1.0790399387879441
+      ],
+      "prediction_timestamp": "2026-08-16T10:15:05.719469-04:00",
+      "model_version": "2c50e24e590d"
+    },
+    {
       "game_pk": 824236,
       "date": "2026-08-16",
       "game_type": "R",
@@ -23346,6 +23429,84 @@
         -1.9661498553797923
       ],
       "prediction_timestamp": "2026-08-16T10:15:10.220215-04:00",
+      "model_version": "2c50e24e590d"
+    },
+    {
+      "game_pk": 823991,
+      "date": "2026-08-16",
+      "game_type": "R",
+      "away_team": "KCA",
+      "away_team_name": "Kansas City Royals",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.583,
+      "home_win_prob": 0.417,
+      "confidence": 0.083,
+      "calibration_bucket": "50-60%",
+      "away_ml": -6183,
+      "home_ml": 2212,
+      "away_implied": 0.9579,
+      "home_implied": 0.0421,
+      "bet_rating": "bad",
+      "predicted_team_ml": -6183,
+      "model_edge": -0.3749,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": -7400,
+          "home_ml": 2000
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": -4000,
+          "home_ml": 3300
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -3333,
+          "home_ml": 1050
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -10000,
+          "home_ml": 2500
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 12.4,
+      "home_est_score": 3.1,
+      "away_est_score": 9.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.6108566035076732,
+        -1.0435400837420343,
+        0.48864997087072776,
+        -1.924496554193316,
+        3.8363802021532094,
+        1.101476000508859,
+        0.5421039394855063,
+        0.18059849547413942,
+        1.621887317682789,
+        -1.1195330038448446,
+        -0.0668951594709444,
+        -0.2399990863389945,
+        -0.033909915571940265,
+        1.6289568396638416,
+        -0.16595285358638986,
+        -0.6917151365543265,
+        3.403774851544601,
+        3.576837597311754
+      ],
+      "prediction_timestamp": "2026-08-16T10:15:12.125236-04:00",
       "model_version": "2c50e24e590d"
     },
     {
