@@ -123,14 +123,21 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   → 57.5%) and flat-bet ROI (+9.2% → +10.9%) also improved, but at n≈115 resolved bets
   that is **not evidence** — CLAUDE.md's own power note says ~400/bucket is needed. Cite
   the counts, not the ROI.
-- **Model version is now `2c50e24e590d`** (confirmed live via `/api/status` 2026-08-16),
-  not `b9133b95d2ec` — that version was retrained/superseded by `fix/scaler-drift`
-  (commit `e2d8572`, 2026-08-13: fit the `StandardScaler` on a recent-seasons window
-  instead of all of 2021+), on top of which `boxscore-ingestion` and
-  `pitching-ip-measurement` also merged. The ECE/calibration/edge-segmentation/home-lean
-  numbers below were all measured against `b9133b95d2ec` and have **not** been
-  re-verified against `2c50e24e590d` — treat them as historical context, not current
-  fact, until re-measured.
+- **Model version is now `24c1e93ac246`** (retrained + deployed 2026-08-17). Version
+  history: `b9133b95d2ec` (live 2026-07-16) → `2c50e24e590d` (`fix/scaler-drift`,
+  `e2d8572`, 2026-08-13: scaler fit on a recent-seasons window instead of all of 2021+)
+  → `24c1e93ac246` (`fix/sp-lookahead-leak`: 2026 SP leak fixed **and** elastic-net
+  penalty, so LR, GB and the 50 bootstrap XGBs were all rebuilt on leak-free features).
+  Retrain holdout improved on all three: accuracy 0.5270 → **0.5418**, Brier 0.25063 →
+  **0.24862**, log loss 0.69465 → **0.69042** — and that understates it, because the old
+  model's 2026 validation was itself scored on leaked features. The flip side: the two
+  aren't strictly comparable, since the validation data changed too.
+  **Everything below this line about calibration, edge segmentation and home-lean was
+  measured against `b9133b95d2ec` or `2c50e24e590d`.** Retraining moved served
+  probabilities by mean 0.0150 (max 0.059, 20/362 winner flips) and churned ~26% of the
+  value-bet slate, so treat those older numbers as historical context, not current fact,
+  until re-measured. `scripts/compare_retrained_artifact.py` regenerates this comparison
+  for any future retrain.
 - **Calibration (ECE)**: was ~0.08 under the pre-leak-fix model. Model version
   `b9133b95d2ec` (live 2026-07-16→2026-08-13) measured **0.024 live at
   n=283 (2026-08-06)** — better than the ~0.05 seen at n=91, and close to the ~0.02 of
