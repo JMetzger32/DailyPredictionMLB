@@ -97,6 +97,32 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   accuracy.** Served-probability impact is small (mean |Δ| 0.0023; predicted winner flips
   on 19/1353 games) because LR is only 1/3 of the ensemble and is then blended 4% toward
   `_HOME_PRIOR`. Run-line (`home_covers`) models deliberately still use L2.
+- **The committed DB is NOT a fresher copy — it's byte-identical to the local working
+  file** (both 14434304 bytes, 2026 games stopping at **20260707**, verified 2026-08-17).
+  `Databases_and_logs/mlb_allseasons.db` was last committed at `a1383d8` and production
+  never re-commits it (only the JSON logs are auto-backed-up). So `git checkout` of the DB
+  buys nothing, and **any analysis needing 2026 game rows after 2026-07-07 has no local
+  source** — the odds-carrying prediction rows all start 2026-07-16, so DB features and
+  stored prices have *zero date overlap*. Refresh the JSON logs instead:
+  `git checkout origin/main -- Databases_and_logs/predictions_log.json ...` (targeted, no
+  merge commit) — that alone took odds rows 313 → 362.
+- **To analyse games the DB doesn't have, invert `x_scaled_features`.** Every
+  `predictions_log.json` entry stores the exact 18-float scaled vector used at predict
+  time, so `raw = scaled * scaler.scale_ + scaler.mean_` recovers the raw features with no
+  DB at all. Rows carry the `model_version` they were scored under, and older scalers are
+  recoverable from git because the pkl is committed (`b9133b95d2ec` lives at commit
+  `83fda83`) — so *all* odds rows are usable, not just the current version's. Verified
+  exact: replaying the shipped ensemble through this path reproduces the logged
+  probability to max abs error **0.00049** (just the log's `round(prob, 3)`). Always gate
+  on that round-trip before trusting the reconstruction — `scripts/validate_true_edge.py`
+  aborts if it fails.
+- **Elastic net does NOT collapse the betting system** (`scripts/results/true_edge_validation.md`,
+  n=362 odds rows). Value bets **120 → 117**, extreme 44 → 43, mean edge 0.0420 → 0.0404;
+  4 games enter the value band and 7 leave. That was the real risk of a 50x regularization
+  increase and it did not materialise, because LR is only 1/3 of the ensemble. Win% (56.5%
+  → 57.5%) and flat-bet ROI (+9.2% → +10.9%) also improved, but at n≈115 resolved bets
+  that is **not evidence** — CLAUDE.md's own power note says ~400/bucket is needed. Cite
+  the counts, not the ROI.
 - **Model version is now `2c50e24e590d`** (confirmed live via `/api/status` 2026-08-16),
   not `b9133b95d2ec` — that version was retrained/superseded by `fix/scaler-drift`
   (commit `e2d8572`, 2026-08-13: fit the `StandardScaler` on a recent-seasons window
