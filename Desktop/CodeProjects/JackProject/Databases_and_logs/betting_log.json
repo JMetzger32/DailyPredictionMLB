@@ -24125,6 +24125,94 @@
       "model_version": "2c50e24e590d"
     },
     {
+      "game_pk": 823343,
+      "date": "2026-08-17",
+      "game_type": "R",
+      "away_team": "DET",
+      "away_team_name": "Detroit Tigers",
+      "home_team": "PIT",
+      "home_team_name": "Pittsburgh Pirates",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.485,
+      "home_win_prob": 0.515,
+      "confidence": 0.015,
+      "calibration_bucket": "50-60%",
+      "away_ml": 118,
+      "home_ml": -137,
+      "away_implied": 0.4424,
+      "home_implied": 0.5576,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -137,
+      "model_edge": -0.0426,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 122,
+          "home_ml": -144
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 118,
+          "home_ml": -130
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 118,
+          "home_ml": -130
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 115,
+          "home_ml": -140
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 121,
+          "home_ml": -144
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 113,
+          "home_ml": -136
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 6.1,
+      "home_est_score": 4.2,
+      "away_est_score": 1.9,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.5240469974422373,
+        0.12274646466939952,
+        -0.32590892512027214,
+        1.3580107804568435,
+        -0.25685923826836315,
+        -0.9620483592843221,
+        -1.4766426372853816,
+        0.9555970120990522,
+        -1.5405703676094635,
+        1.588493288073666,
+        1.5396670191898458,
+        0.900975725729789,
+        -0.033909915571940265,
+        -0.3321878941086033,
+        0.6653477357016668,
+        0.051776061295026744,
+        1.5244106072678494,
+        0.8053438709659809
+      ],
+      "prediction_timestamp": "2026-08-17T10:15:04.699403-04:00",
+      "model_version": "2c50e24e590d"
+    },
+    {
       "game_pk": 824725,
       "date": "2026-08-17",
       "game_type": "R",
