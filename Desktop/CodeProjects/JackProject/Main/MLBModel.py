@@ -1,5 +1,7 @@
 import os
+import re
 import sqlite3
+import unicodedata
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression
@@ -38,6 +40,29 @@ PYTH_EXPONENT = 1.83
 # 2.00x) on a scaler fit over all of 2021-2026. Keep MLBModel.py's __main__
 # and update_daily.py::retrain_model() using this same constant.
 SCALER_WINDOW_START_SEASON = 2023
+
+# Moneyline LR penalty. Switched from pure L2 (C=0.5) to elastic net after
+# EDA/eda_4 found that several features carry no signal their coefficients could
+# support: 7 of 18 had a sign opposite their own univariate direction, and only
+# 4 of 18 had a bootstrap CI excluding zero. Rather than hand-pick features to
+# drop, the L1 component does the selection.
+#
+# Config chosen under a pre-registered rule (log loss neutral-or-better in >= 4/5
+# LOSO folds AND >= 1 coefficient driven to exactly zero), re-run on data with the
+# 2026 SP look-ahead leak fixed — see scripts/results/elasticnet_penalty_validation.md.
+# Zeroes diff_roll30_obp, diff_roll30_runs_allowed, diff_roll10_win_pct,
+# diff_roll7_bullpen_fatigue, diff_sp_ip_gs, diff_sp_k_bb; SP signal is retained
+# through diff_sp_xfip (the largest SP coefficient) and diff_sp_era.
+#
+# saga is required for elasticnet and converges far slower than lbfgs, hence the
+# raised max_iter. MUST stay identical to update_daily.retrain_model.
+LR_PENALTY_KWARGS = {
+    "penalty": "elasticnet",
+    "solver": "saga",
+    "l1_ratio": 0.3,
+    "C": 0.01,
+    "max_iter": 5000,
+}
 
 FEATURE_COLS = [
     # Team quality — Pythagorean strips luck better than actual win% (season_win_pct removed: r≈0.85 with pyth)
@@ -467,8 +492,98 @@ def _load_handedness_map(db_path):
     return {_normalize_pitcher_name(name): hand for name, hand in rows if name and hand}
 
 
-def merge_sp_stats(tgl, pitcher_stats):
-    """Merge real pitcher season stats (ERA, WHIP, xFIP, IP/GS, K/BB) into tgl."""
+def _normalize_pitcher_name(name):
+    """Normalize a pitcher name for cross-source matching.
+
+    `pitcher_stats.player_name` comes from Baseball-Reference and carries two
+    quirks that break a naive match against the `games` table's names:
+      1. Handedness markers — a trailing '*' (LHP) or '#' (switch), so
+         "MacKenzie Gore*" never matches "MacKenzie Gore".
+      2. Mojibake — UTF-8 bytes stored as Latin-1, so "Cristopher Sánchez"
+         is held as "Cristopher SÃ¡nchez". Plain accent folding cannot fix
+         this; the bytes have to be round-tripped first.
+    Repairing both lifts 2026 starter resolution from 53.8% to 70.7% of rows.
+    """
+    s = str(name)
+    try:
+        s = s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass  # already clean, or not round-trippable — use as-is
+    s = re.sub(r"[*#]+$", "", s.strip())
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(ch for ch in s if not unicodedata.combining(ch)).strip().lower()
+
+
+def resolve_missing_pitcher_ids(tgl, pitcher_stats):
+    """Fill a missing `starting_pitcher_id` from `starting_pitcher_name`, using
+    the PRIOR season's pitcher_stats as the name -> retro-ID dictionary.
+
+    Why this exists: 2026 `games` rows store pitcher names but no retro IDs
+    (0 of 2706 populated), so merge_sp_stats's `(pid, season-1)` lookup misses
+    and every 2026 row falls back to league average. update_daily.retrain_model
+    worked around that by injecting a current-season SP snapshot — which
+    reintroduces exactly the look-ahead leak the (pid, season-1) design exists
+    to prevent, since one snapshot is stamped onto every game of the season
+    regardless of date (verified: within-pitcher sd 0.000000 across 217/217
+    pitchers, `scripts/results/sp_leak_verification.md`).
+
+    Resolving the ID instead lets 2026 take the same leak-free prior-season
+    path as every other season. Only rows with a missing ID are touched, so
+    2021-2025 (IDs fully populated) are unaffected.
+
+    Returns (tgl, stats) where stats has attempted/resolved/unresolved counts."""
+    stats = {"attempted": 0, "resolved": 0, "unresolved": 0}
+    if "starting_pitcher_id" not in tgl.columns or "starting_pitcher_name" not in tgl.columns:
+        return tgl, stats
+
+    pid_col = tgl["starting_pitcher_id"]
+    missing = pid_col.isna() | (pid_col.astype(str).str.strip().isin(["", "None", "nan"]))
+    name_col = tgl["starting_pitcher_name"]
+    has_name = name_col.notna() & (name_col.astype(str).str.strip() != "")
+    target = missing & has_name
+    stats["attempted"] = int(target.sum())
+    if stats["attempted"] == 0:
+        return tgl, stats
+
+    ps = pitcher_stats.dropna(subset=["player_name"]).copy()
+    ps["_key"] = ps["player_name"].map(_normalize_pitcher_name)
+    # Same dedup rule merge_sp_stats uses below: a pitcher traded mid-season has
+    # one row per team, so keep the row with the most starts (20 such collisions
+    # in 2025). Without this the lookup would pick an arbitrary partial-season row.
+    ps = ps.sort_values("games_started", ascending=False).drop_duplicates(
+        subset=["season", "_key"], keep="first"
+    )
+    lut = dict(zip(zip(ps["season"], ps["_key"]), ps["retro_pitcher_id"]))
+
+    keys = zip(tgl.loc[target, "season"] - 1,
+               tgl.loc[target, "starting_pitcher_name"].map(_normalize_pitcher_name))
+    resolved = pd.Series([lut.get(k) for k in keys], index=tgl.index[target])
+    stats["resolved"] = int(resolved.notna().sum())
+    stats["unresolved"] = stats["attempted"] - stats["resolved"]
+
+    tgl.loc[resolved.dropna().index, "starting_pitcher_id"] = resolved.dropna()
+    return tgl, stats
+
+
+def merge_sp_stats(tgl, pitcher_stats, resolve_ids=True):
+    """Merge real pitcher season stats (ERA, WHIP, xFIP, IP/GS, K/BB) into tgl.
+
+    resolve_ids=False disables the name -> retro-ID resolution below, reproducing
+    the pre-fix behaviour. Only for before/after analysis
+    (scripts/validate_elasticnet_change.py); production always leaves it True."""
+    # Resolve name-only rows to retro IDs FIRST, so the prior-season lookup below
+    # can succeed for them instead of falling through to league average. Done here
+    # rather than at each call site so MLBModel.__main__ and
+    # update_daily.retrain_model cannot diverge (both files carry "MUST stay
+    # identical" contracts).
+    _id_stats = {"attempted": 0, "resolved": 0, "unresolved": 0}
+    if resolve_ids:
+        tgl, _id_stats = resolve_missing_pitcher_ids(tgl, pitcher_stats)
+    if _id_stats["attempted"]:
+        print(f"  [SP ids] resolved {_id_stats['resolved']}/{_id_stats['attempted']} "
+              f"name-only rows to retro IDs "
+              f"({_id_stats['unresolved']} unresolved -> prior-season league average)")
+
     has_xfip  = "xfip"  in pitcher_stats.columns
     has_siera = "siera" in pitcher_stats.columns
 
@@ -635,7 +750,15 @@ def assemble_features(df, tgl):
 # ===========================================================================
 # Section 6: Cross-Validation (Leave-One-Season-Out)
 # ===========================================================================
-def cross_validate_loso(model_df, feature_cols):
+def cross_validate_loso(model_df, feature_cols, lr_kwargs=None):
+    """Leave-one-season-out CV over 2021-2025.
+
+    lr_kwargs overrides the LR's hyperparameters (e.g. LR_PENALTY_KWARGS) so the
+    same harness can measure the penalty change; the default keeps this function's
+    long-standing behaviour (lbfgs L2 at sklearn's default C=1.0). Note that
+    default is NOT the shipped config — no C and no sample weights — so treat
+    these numbers as a relative comparison, not as the shipped model's."""
+    lr_kwargs = {"max_iter": 1000} if lr_kwargs is None else dict(lr_kwargs)
     train_df = model_df[model_df["season"].between(2021, 2025)].dropna(subset=feature_cols)
     seasons = [2021, 2022, 2023, 2024, 2025]
     results = []
@@ -662,7 +785,7 @@ def cross_validate_loso(model_df, feature_cols):
         X_tr_sc = scaler.transform(X_train)
         X_va_sc = scaler.transform(X_val)
 
-        lr = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+        lr = LogisticRegression(random_state=RANDOM_STATE, **lr_kwargs)
         lr.fit(X_tr_sc, y_train)
         lr_probs = lr.predict_proba(X_va_sc)[:, 1]
         lr_preds = lr.predict(X_va_sc)
@@ -1434,8 +1557,11 @@ if __name__ == "__main__":
     final_scaler.fit(X_final[_scaler_fit_mask.values])
     X_final_sc = final_scaler.transform(X_final)
 
-    lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    lr = LogisticRegression(random_state=RANDOM_STATE, **LR_PENALTY_KWARGS)
     lr.fit(X_final_sc, y_final, sample_weight=_sw)
+    _zeroed = [c for c, w in zip(FEATURE_COLS, lr.coef_[0]) if abs(w) < 1e-6]
+    print(f"  LR penalty: {LR_PENALTY_KWARGS}")
+    print(f"  LR zeroed {len(_zeroed)}/{len(FEATURE_COLS)} coefficients: {_zeroed}")
 
     gb = GradientBoostingClassifier(**_best_params, random_state=RANDOM_STATE)
     gb.fit(X_final, y_final, sample_weight=_sw)

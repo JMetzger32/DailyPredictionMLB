@@ -2935,13 +2935,17 @@ def model_info():
         "training_info": {
             "games":         _n_games,
             "seasons":       "2021–2026",
-            "models":        "Logistic Regression (C=0.5) + Gradient Boosting + XGBoost ensemble",
+            "models":        "Logistic Regression (elastic net, l1_ratio=0.3, C=0.01) + "
+                             "Gradient Boosting + XGBoost ensemble",
             "ensemble_rule": "Final probability = average of LR, GBM, and XGBoost predictions. "
                              "LR uses scaled features; tree models use raw differentials.",
             "rolling_stats": "Team baselines updated daily from 30-game rolling windows "
                              "(10-game for recent form) computed directly from the game database — "
                              "same pipeline as training, no distribution mismatch. Historical SP and "
-                             "bullpen stats use the pitcher's/team's prior-season values (no look-ahead).",
+                             "bullpen stats use the pitcher's/team's prior-season values. Current-season "
+                             "starters are matched to their prior-season record by name where possible "
+                             "(~71% of rows); the remainder — debuts and pitchers absent last season — "
+                             "fall back to a current-season snapshot.",
             "hyperparams":   "GBM/XGBoost: n_estimators=300, max_depth=3, learning_rate=0.05, "
                              "subsample=0.8 (weekly retrain), selected via grid search on the 2025 holdout.",
             "accuracy_note": "See /api/accuracy for live season accuracy",

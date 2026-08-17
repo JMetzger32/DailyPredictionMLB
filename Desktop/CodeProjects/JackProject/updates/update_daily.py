@@ -988,7 +988,8 @@ def retrain_model():
             load_data, build_team_game_log, compute_rolling_team_features,
             merge_bullpen_era, merge_sp_stats, assemble_features,
             compute_model_version, FEATURE_COLS, RANDOM_STATE,
-            SCALER_WINDOW_START_SEASON, load_boxscore_ip_lookup
+            SCALER_WINDOW_START_SEASON, load_boxscore_ip_lookup,
+            LR_PENALTY_KWARGS
         )
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import LogisticRegression
@@ -1003,10 +1004,24 @@ def retrain_model():
         tgl = merge_bullpen_era(tgl, bullpen_stats)
         tgl = merge_sp_stats(tgl, pitcher_stats)
 
-        # Inject live 2026 SP baselines from pkl — the DB pitcher_stats table only has
-        # data through 2025, so merge_sp_stats falls back to league average for every
-        # 2026 game, zeroing out diff_sp_era (the single most predictive feature).
-        # We use name-based lookup because 2026 DB games store pitcher names (not retro IDs).
+        # Fallback-only injection of live 2026 SP baselines.
+        #
+        # merge_sp_stats now calls resolve_missing_pitcher_ids first, which maps
+        # 2026's name-only rows back to retro IDs so they take the normal, leak-free
+        # (pid, season-1) prior-season path (~71% of 2026 rows, in line with the
+        # 63-76% coverage every other season gets).
+        #
+        # This block therefore runs ONLY for rows still unresolved (pitchers with no
+        # prior-season pitcher_stats row: 2026 debuts, or 2025 absences). Injecting
+        # into resolved rows would overwrite correct prior-season stats with a
+        # current-season snapshot — a look-ahead leak, since one snapshot is stamped
+        # onto every game of the season regardless of date. Verified before the fix:
+        # within-pitcher sd 0.000000 across 217/217 pitchers
+        # (scripts/results/sp_leak_verification.md).
+        #
+        # NOTE: the remaining ~29% of 2026 rows handled here DO retain that look-ahead,
+        # at the highest sample weight (1.8). Deliberate trade-off — they would otherwise
+        # get league average — but it is a known residual, not a clean fix.
         try:
             with open(ARTIFACTS_PATH, "rb") as _f:
                 _art = pickle.load(_f)
@@ -1020,19 +1035,24 @@ def retrain_model():
                         _name_lookup[_name.strip().lower()] = _b
 
                 _mask_2026 = tgl["season"] == 2026
+                _pid_col = tgl["starting_pitcher_id"]
+                _unresolved = _mask_2026 & (
+                    _pid_col.isna()
+                    | _pid_col.astype(str).str.strip().isin(["", "None", "nan"])
+                )
                 _col_map = {
                     "sp_era": "era", "sp_whip": "whip", "sp_xfip": "xfip",
                     "sp_siera": "siera", "sp_so9": "so9", "sp_bb9": "bb9",
                     "sp_hr9": "hr9",
                 }
                 _injected = 0
-                _total_2026 = _mask_2026.sum()
-                for idx in tgl[_mask_2026].index:
-                    # Try retro ID first (should be NULL for 2026 but try anyway)
-                    pid = tgl.at[idx, "starting_pitcher_id"]
-                    b = _sp_live.get(pid) if pid else None
-                    # Fall back to name-based lookup
-                    if b is None and "starting_pitcher_name" in tgl.columns:
+                _total_2026 = int(_mask_2026.sum())
+                _n_unresolved = int(_unresolved.sum())
+                _n_resolved = _total_2026 - _n_unresolved
+                for idx in tgl[_unresolved].index:
+                    # Name-based only: these rows have no retro ID by definition.
+                    b = None
+                    if "starting_pitcher_name" in tgl.columns:
                         pname = tgl.at[idx, "starting_pitcher_name"]
                         if pname and isinstance(pname, str):
                             b = _name_lookup.get(pname.strip().lower())
@@ -1045,7 +1065,11 @@ def retrain_model():
                         so9 = b.get("so9", 7)
                         tgl.at[idx, "sp_k_bb"] = so9 / bb9 if bb9 > 0.5 else so9 / 0.5
                         _injected += 1
-                print(f"[retrain] Injected live SP baselines for {_injected}/{_total_2026} 2026 tgl rows")
+                print(f"[retrain] 2026 SP: {_n_resolved}/{_total_2026} rows resolved to "
+                      f"retro IDs (leak-free prior-season stats); "
+                      f"{_injected}/{_n_unresolved} unresolved rows fell back to the live "
+                      f"snapshot (retains look-ahead); "
+                      f"{_n_unresolved - _injected} unresolved with no baseline -> league average")
         except Exception as _sp_err:
             print(f"[retrain] WARNING: Could not inject live SP baselines: {_sp_err} — 2026 SP features will be league avg")
 
@@ -1091,7 +1115,10 @@ def retrain_model():
         X_train_scaled = scaler.transform(X_train)
         X_val_scaled = scaler.transform(X_val)
 
-        lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+        # Elastic-net penalty — MUST stay identical to MLBModel.py's final fit.
+        # See LR_PENALTY_KWARGS in Main/MLBModel.py for why, and
+        # scripts/results/elasticnet_penalty_validation.md for the evidence.
+        lr = LogisticRegression(random_state=RANDOM_STATE, **LR_PENALTY_KWARGS)
         gb = GradientBoostingClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
                                         subsample=0.8, random_state=RANDOM_STATE)
         lr.fit(X_train_scaled, y_train, sample_weight=sw_train)
@@ -1118,7 +1145,7 @@ def retrain_model():
         scaler_final.fit(X_all[_scaler_fit_mask_all.values])
         X_all_scaled   = scaler_final.transform(X_all)
 
-        lr_final = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+        lr_final = LogisticRegression(random_state=RANDOM_STATE, **LR_PENALTY_KWARGS)
         gb_final = GradientBoostingClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
                                               subsample=0.8, random_state=RANDOM_STATE)
         lr_final.fit(X_all_scaled, y_all, sample_weight=sw_all)
