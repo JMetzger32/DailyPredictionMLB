@@ -56,8 +56,83 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   was leak-inflated (prior-season SP stats leak, fixed 2026-07). Betting uses
   quarter-Kelly (changes to the 0.05 edge threshold require backtest evidence:
   `scripts/backtest_threshold.py`, ~200+ resolved bets).
-- **Calibration (ECE)**: was ~0.08 under the pre-leak-fix model. The current
-  `model_version` (`b9133b95d2ec`, live since 2026-07-16) measured **0.024 live at
+- **FIXED 2026-08-17** (`fix/sp-lookahead-leak`): **2026 SP rows had a look-ahead leak.**
+  `merge_sp_stats` uses each pitcher's prior-season (S−1) stats on purpose
+  (`Main/MLBModel.py:495-502`), but `update_daily.py::retrain_model` overwrote every 2026
+  row with a *current* season-to-date snapshot from the pkl. Verified before the fix:
+  within-pitcher sd of `sp_era`/`sp_xfip`/`sp_siera` was **0.000000 across 217/217**
+  pitchers with ≥3 starts — an April game trained on August stats, at the highest sample
+  weight (1.8). Root cause was a key mismatch, not the snapshot itself: 2026 `games` rows
+  store pitcher **names**, never retro IDs (0 of 2706), so the `(pid, season−1)` lookup
+  missed and fell back to league average. Fix: `resolve_missing_pitcher_ids` (called at the
+  top of `merge_sp_stats`, so both training paths get it from one place) maps names →
+  retro IDs. Two data-quality traps make a naive match fail — `pitcher_stats.player_name`
+  carries Baseball-Reference handedness markers (`MacKenzie Gore*`, `*`=LHP, `#`=switch)
+  **and** mojibake (`Cristopher SÃ¡nchez*`, UTF-8 stored as Latin-1, so accent-folding
+  alone won't fix it). Repairing both lifts resolution 53.8% → **70.7% of 2026 rows**,
+  inside the normal 63-76% range every other season gets. Provenance check: 100% of
+  resolved rows now carry completed-2025 stats (was 0%). **Residual: ~290 rows (2026
+  debuts / 2025 absences) still use the snapshot and keep look-ahead** — deliberate, the
+  alternative is league average. Note **within-pitcher sd cannot validate this fix** —
+  prior-season stats are constant within a season by design; the test is *provenance*
+  (which season the constant comes from). See `scripts/results/sp_leak_verification.md`.
+- **Leak fix did NOT uniformly shrink SP weights** (`scripts/results/elasticnet_penalty_validation.md`).
+  The natural hypothesis — leak inflated SP importance, so fixing it shrinks those
+  coefficients — is **wrong as stated**. It redistributed weight *within* the SP cluster:
+  `diff_sp_xfip` −0.1003 → **−0.1537** (grew), `diff_sp_siera` −0.0660 → **+0.0034**
+  (collapsed to zero), `diff_sp_k_bb` −0.0390 → −0.0118. VIF barely moved (xfip 11.55 →
+  11.51, siera 13.04 → 13.08). Consistent with eda_4's finding that xfip/siera are ~95%
+  redundant and the split between them is unstable — the leak was determining *which* of
+  the pair won, not how much the pair mattered in total.
+- **Moneyline LR penalty is elastic net, not L2** (`LR_PENALTY_KWARGS` in
+  `Main/MLBModel.py`, mirrored in `update_daily.retrain_model`): `l1_ratio=0.3, C=0.01,
+  solver='saga', max_iter=5000`. Chosen under a pre-registered rule (log loss
+  neutral-or-better in ≥4/5 LOSO folds AND ≥1 coefficient driven to exactly zero),
+  re-run on leak-fixed data. Zeroes 6 of 18: `diff_roll30_obp`,
+  `diff_roll30_runs_allowed`, `diff_roll10_win_pct`, `diff_roll7_bullpen_fatigue`,
+  `diff_sp_ip_gs`, `diff_sp_k_bb` — matching eda_4's predicted elimination order. SP
+  signal is retained via `diff_sp_xfip` (largest SP coefficient) and `diff_sp_era`.
+  `cross_validate_loso`: AUC 0.59039 → 0.59186, log loss 0.67885 → 0.67848, 4/5 folds
+  neutral-or-better. **These deltas are inside noise — the value is simplification, not
+  accuracy.** Served-probability impact is small (mean |Δ| 0.0023; predicted winner flips
+  on 19/1353 games) because LR is only 1/3 of the ensemble and is then blended 4% toward
+  `_HOME_PRIOR`. Run-line (`home_covers`) models deliberately still use L2.
+- **The committed DB is NOT a fresher copy — it's byte-identical to the local working
+  file** (both 14434304 bytes, 2026 games stopping at **20260707**, verified 2026-08-17).
+  `Databases_and_logs/mlb_allseasons.db` was last committed at `a1383d8` and production
+  never re-commits it (only the JSON logs are auto-backed-up). So `git checkout` of the DB
+  buys nothing, and **any analysis needing 2026 game rows after 2026-07-07 has no local
+  source** — the odds-carrying prediction rows all start 2026-07-16, so DB features and
+  stored prices have *zero date overlap*. Refresh the JSON logs instead:
+  `git checkout origin/main -- Databases_and_logs/predictions_log.json ...` (targeted, no
+  merge commit) — that alone took odds rows 313 → 362.
+- **To analyse games the DB doesn't have, invert `x_scaled_features`.** Every
+  `predictions_log.json` entry stores the exact 18-float scaled vector used at predict
+  time, so `raw = scaled * scaler.scale_ + scaler.mean_` recovers the raw features with no
+  DB at all. Rows carry the `model_version` they were scored under, and older scalers are
+  recoverable from git because the pkl is committed (`b9133b95d2ec` lives at commit
+  `83fda83`) — so *all* odds rows are usable, not just the current version's. Verified
+  exact: replaying the shipped ensemble through this path reproduces the logged
+  probability to max abs error **0.00049** (just the log's `round(prob, 3)`). Always gate
+  on that round-trip before trusting the reconstruction — `scripts/validate_true_edge.py`
+  aborts if it fails.
+- **Elastic net does NOT collapse the betting system** (`scripts/results/true_edge_validation.md`,
+  n=362 odds rows). Value bets **120 → 117**, extreme 44 → 43, mean edge 0.0420 → 0.0404;
+  4 games enter the value band and 7 leave. That was the real risk of a 50x regularization
+  increase and it did not materialise, because LR is only 1/3 of the ensemble. Win% (56.5%
+  → 57.5%) and flat-bet ROI (+9.2% → +10.9%) also improved, but at n≈115 resolved bets
+  that is **not evidence** — CLAUDE.md's own power note says ~400/bucket is needed. Cite
+  the counts, not the ROI.
+- **Model version is now `2c50e24e590d`** (confirmed live via `/api/status` 2026-08-16),
+  not `b9133b95d2ec` — that version was retrained/superseded by `fix/scaler-drift`
+  (commit `e2d8572`, 2026-08-13: fit the `StandardScaler` on a recent-seasons window
+  instead of all of 2021+), on top of which `boxscore-ingestion` and
+  `pitching-ip-measurement` also merged. The ECE/calibration/edge-segmentation/home-lean
+  numbers below were all measured against `b9133b95d2ec` and have **not** been
+  re-verified against `2c50e24e590d` — treat them as historical context, not current
+  fact, until re-measured.
+- **Calibration (ECE)**: was ~0.08 under the pre-leak-fix model. Model version
+  `b9133b95d2ec` (live 2026-07-16→2026-08-13) measured **0.024 live at
   n=283 (2026-08-06)** — better than the ~0.05 seen at n=91, and close to the ~0.02 of
   a clean offline holdout, so the train/serve-skew gap has largely closed. A fitted
   Platt calibrator gets ECE to 0.0097 out-of-fold (slope **0.772 < 1 — the model IS
@@ -133,9 +208,12 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   over-weighted features — **not** a home/away-specific bug (no home indicator exists
   anywhere in `FEATURE_COLS`; every feature is a symmetric `home_X − away_X` diff).
   Deliberately NOT fixed by patching model weights ad hoc — needs a proper retrain +
-  validation cycle (new CV holdout, leak checks vs `b9133b95d2ec`) before touching
+  validation cycle (new CV holdout, leak checks vs the current live artifact —
+  `2c50e24e590d` as of 2026-08-16, see the model-version note above) before touching
   `Main/MLBModel.py`. If retraining, start by shrinking/reconsidering `diff_roll10_*`
-  and re-checking how much weight `diff_sp_xfip`/`diff_sp_siera` should carry.
+  and re-checking how much weight `diff_sp_xfip`/`diff_sp_siera` should carry. Note
+  this analysis's own correlations were measured against `b9133b95d2ec` and are also
+  unverified against `2c50e24e590d`.
 - **Don't re-bin edge hunting for a profitable band — the sample can't support it.**
   Bands of n≈20-30 produce a sawtooth (66%/50%/73%/58%/42%/55%) with every 95% CI
   overlapping every other. Detecting a 10pp win-rate gap needs ~400 bets *per bucket*;
