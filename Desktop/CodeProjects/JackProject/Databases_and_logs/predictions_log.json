@@ -73142,14 +73142,55 @@
       "home_win_prob": 0.564,
       "confidence": 0.064,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": -117,
+      "home_ml": 103,
+      "away_implied": 0.5226,
+      "home_implied": 0.4774,
+      "bet_rating": "good",
+      "predicted_team_ml": 103,
+      "model_edge": 0.0866,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -112,
+          "home_ml": 104
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -117,
+          "home_ml": 106
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -120,
+          "home_ml": 100
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -117,
+          "home_ml": 106
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -121,
+          "home_ml": 101
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -115,
+          "home_ml": 105
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -114,
+          "home_ml": 106
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -120,
+          "home_ml": 100
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
