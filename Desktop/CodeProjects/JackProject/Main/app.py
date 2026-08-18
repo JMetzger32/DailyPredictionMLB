@@ -146,7 +146,25 @@ def _get_schedule_cached(target_date):
     return games, results
 
 
-def _get_odds_cached():
+# Circuit breaker: trips once the last CONFIRMED remaining-credit reading (from real
+# API response headers, never our own guess) drops to or below this floor, and halts
+# ALL further live odds fetches until the account's cycle resets and a fresh call
+# reports a refreshed remaining count. Exists so a plan upgrade can't silently repeat
+# the ~25/day leak that burned the free tier dry mid-month — it stops with margin
+# left instead of discovering exhaustion via a wall of 401s. Unknown (no real call
+# yet this process) is treated as NOT tripped, since a process needs at least one
+# real call to learn where it stands. Default is deliberately small relative to the
+# free tier's 500/month so it doesn't interfere with normal free-tier use; raise it
+# (env var) proportionally to whatever paid plan is active.
+_ODDS_SAFETY_FLOOR = int(os.environ.get("ODDS_SAFETY_FLOOR", "25"))
+
+
+def _odds_budget_exhausted():
+    q = get_last_odds_quota()
+    return q["remaining"] is not None and q["remaining"] <= _ODDS_SAFETY_FLOOR
+
+
+def _get_odds_cached(reason="unspecified"):
     """Return today's odds map from cache or The Odds API (1 credit per call)."""
     today  = _today_et().isoformat()
     cached = _odds_cache.get(today)
@@ -155,8 +173,12 @@ def _get_odds_cached():
     if not ODDS_API_KEY:
         print("[odds] ODDS_API_KEY not set — skipping odds fetch", flush=True)
         return {}
+    if _odds_budget_exhausted():
+        print(f"[odds] budget breaker tripped (remaining<={_ODDS_SAFETY_FLOOR}) — "
+              f"skipping fetch for {reason}", flush=True)
+        return {}
     odds = get_mlb_odds(ODDS_API_KEY)
-    print(f"[odds] Fetched {len(odds)} games from The Odds API for {today}", flush=True)
+    print(f"[odds] Fetched {len(odds)} games from The Odds API for {today} (reason={reason})", flush=True)
     _odds_cache[today] = {"ts": time.monotonic(), "odds": odds}
     return odds
 
@@ -653,7 +675,7 @@ def _log_predictions_for_date(target_date, log=None):
     games_raw = get_todays_schedule(target_date)
     # Fetch live odds for today/future; use closing odds archive for past dates
     if target_date >= _today_et():
-        odds_map = _get_odds_cached()
+        odds_map = _get_odds_cached(reason="log_predictions_for_date seed")
     else:
         # For past dates, try to get from closing odds archive
         date_str = target_date.isoformat()
@@ -1089,7 +1111,7 @@ def _refresh_today_odds():
         return
 
     _odds_cache.pop(today_str, None)  # force fresh fetch, bypass cache
-    odds_map = _get_odds_cached()
+    odds_map = _get_odds_cached(reason="refresh_today_odds cron/pageview")
     if not odds_map:
         print("[app] _refresh_today_odds: no odds returned from API", flush=True)
         return
@@ -1318,9 +1340,14 @@ def _store_closing_odds():
         if _today_entries and all(e.get("closing_away_ml") is not None for e in _today_entries):
             print(f"[app] _store_closing_odds: {today} already fully captured — skipping fetch", flush=True)
             return
+        if _odds_budget_exhausted():
+            print(f"[app] _store_closing_odds: budget breaker tripped (remaining<={_ODDS_SAFETY_FLOOR}) "
+                  f"— skipping fetch", flush=True)
+            return
         # Bypass cache: clear the odds cache entry so we get a fresh fetch
         _odds_cache.pop(today, None)
         odds = get_mlb_odds(ODDS_API_KEY)
+        print(f"[odds] Fetched {len(odds)} games from The Odds API for {today} (reason=store_closing_odds)", flush=True)
 
         # Store odds snapshot in archive for historical lookup
         _store_closing_odds_to_archive(today, odds)
@@ -1631,6 +1658,7 @@ def api_status():
         "github_token_set":  bool(GITHUB_TOKEN),
         "odds_api_key_set":  bool(ODDS_API_KEY),
         "odds_quota":        get_last_odds_quota(),   # last-seen credits; remaining==0/status 401 == exhausted
+        "odds_budget_tripped": _odds_budget_exhausted(),  # True once remaining <= ODDS_SAFETY_FLOOR; app stops fetching
         "model_version":     _artifacts.get("model_version"),
         "now":               datetime.now(_ET).isoformat(),
         "note":              "job state persists across restarts on the same instance; resets on redeploy",
@@ -1844,7 +1872,7 @@ def predictions():
         if _today_entries and all(e.get("away_ml") is not None for e in _today_entries):
             odds_map = _odds_map_from_log_entries(_today_entries)
         else:
-            odds_map = _get_odds_cached()
+            odds_map = _get_odds_cached(reason="api/predictions fallback")
     elif target_date > _today_et():
         # Future dates are never seeded with odds (books haven't posted final lines,
         # and _refresh_today_odds only ever patches TODAY), so the "already has odds"
@@ -2762,7 +2790,11 @@ def debug_odds():
     sample = []
     if key_set:
         try:
-            odds = get_mlb_odds(ODDS_API_KEY)
+            # Reuse the shared 30-min cache instead of calling get_mlb_odds directly —
+            # this is a diagnostic route with no rate limit of its own, and an
+            # unconditional live call here burned real credits every time someone
+            # (including this route being polled repeatedly) checked odds status.
+            odds = _get_odds_cached(reason="api/debug/odds")
             games_returned = len(odds)
             sample = [f"{a}@{h}: away={v['away_ml']}, home={v['home_ml']}"
                       for (a, h), v in list(odds.items())[:3]]
@@ -2778,7 +2810,9 @@ def debug_odds():
         "odds_api_key_set":       key_set,
         "games_from_api_now":     games_returned,
         "api_error":              error,
-        "odds_quota":             get_last_odds_quota(),  # fresh: this route just called the API
+        # last-seen quota from whichever call site fired most recently in this
+        # process — may be from this route's cache hit, odds_refresh, or closing_odds
+        "odds_quota":             get_last_odds_quota(),
         "sample_games":           sample,
         "betting_log_entries":    blog_entries,
         "predictions_with_odds":  entries_with_odds,
