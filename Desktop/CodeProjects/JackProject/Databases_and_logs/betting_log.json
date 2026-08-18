@@ -24946,6 +24946,104 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 824475,
+      "date": "2026-08-18",
+      "game_type": "R",
+      "away_team": "SLN",
+      "away_team_name": "St. Louis Cardinals",
+      "home_team": "CIN",
+      "home_team_name": "Cincinnati Reds",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.436,
+      "home_win_prob": 0.564,
+      "confidence": 0.064,
+      "calibration_bucket": "50-60%",
+      "away_ml": -117,
+      "home_ml": 103,
+      "away_implied": 0.5226,
+      "home_implied": 0.4774,
+      "bet_rating": "good",
+      "predicted_team_ml": 103,
+      "model_edge": 0.0866,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -112,
+          "home_ml": 104
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -117,
+          "home_ml": 106
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -120,
+          "home_ml": 100
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -117,
+          "home_ml": 106
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -121,
+          "home_ml": 101
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -115,
+          "home_ml": 105
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -114,
+          "home_ml": 106
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -120,
+          "home_ml": 100
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.7,
+      "home_est_score": 3.3,
+      "away_est_score": 4.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.38287086075877963,
+        0.011218034438737567,
+        0.9654359034334222,
+        -0.1866985534961727,
+        -0.21304686085117153,
+        -1.335834136730386,
+        0.7276338344806002,
+        0.7546714707518533,
+        -0.46594882406355237,
+        1.2016323892281646,
+        1.732616555244344,
+        1.355839872305158,
+        -0.033909915571940265,
+        0.557410695676393,
+        0.035105582122489015,
+        -0.8281317566593654,
+        0.9106242176669362,
+        0.7705064770949247
+      ],
+      "prediction_timestamp": "2026-08-18T10:15:04.835192-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 822938,
       "date": "2026-08-18",
       "game_type": "R",
