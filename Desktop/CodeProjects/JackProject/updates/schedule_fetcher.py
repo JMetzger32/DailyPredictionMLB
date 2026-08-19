@@ -14,6 +14,7 @@ import re
 
 MLB_SCHEDULE_URL  = "https://statsapi.mlb.com/api/v1/schedule"
 ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
+ODDS_API_HISTORICAL_URL = ("https://api.the-odds-api.com/v4/historical/sports/baseball_mlb/odds/")
 
 # The Odds API full team name → Retrosheet code
 ODDS_API_TEAM_TO_RETRO = {
@@ -540,6 +541,163 @@ def get_last_odds_quota():
     return dict(LAST_ODDS_QUOTA)
 
 
+def _record_quota(resp):
+    """Record quota from response headers. The Odds API returns x-requests-remaining
+    / x-requests-used on BOTH a 200 AND a 401 quota-exhausted response, so this is
+    how the app learns it's out of credits rather than silently seeing 0 games."""
+    _rem, _used = resp.headers.get("x-requests-remaining"), resp.headers.get("x-requests-used")
+    _last = resp.headers.get("x-requests-last")
+    LAST_ODDS_QUOTA.update({
+        "remaining":  int(_rem)  if _rem  not in (None, "") else None,
+        "used":       int(_used) if _used not in (None, "") else None,
+        "last_cost":  int(_last) if _last not in (None, "") else None,
+        "status":     resp.status_code,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return LAST_ODDS_QUOTA
+
+
+def _american_to_raw(ml):
+    """Convert American moneyline to raw (pre-vig) implied probability."""
+    if ml < 0:
+        return abs(ml) / (abs(ml) + 100)
+    return 100 / (ml + 100)
+
+
+def _ml_to_dec(ml):
+    return ml / 100 + 1 if ml >= 0 else 100 / abs(ml) + 1
+
+
+def parse_odds_events(events):
+    """Parse a list of Odds-API event objects into one record per event.
+
+    This is the SINGLE parsing path shared by the live endpoint and the historical
+    endpoint — the two differ only in the envelope (historical wraps the same event
+    list in {timestamp, previous_timestamp, next_timestamp, data:[...]}), so keeping
+    one parser is what stops live and backfilled prices from drifting apart.
+
+    Per-bookmaker prices are averaged, then de-vigged so implied probabilities sum to
+    1.0. Events whose teams do not resolve are still returned (with away_team/
+    home_team None) so callers can audit them; odds_map_from_event_rows drops them.
+    Events with no usable h2h prices, or with a malformed line (|ml| < 100), are
+    skipped entirely — matching long-standing get_mlb_odds behaviour.
+    """
+    rows = []
+    for event in events or []:
+        home_name = event.get("home_team", "")
+        away_name = event.get("away_team", "")
+        home_retro = resolve_odds_team(home_name)
+        away_retro = resolve_odds_team(away_name)
+
+        away_prices, home_prices = [], []
+        books = []
+        for bm in event.get("bookmakers", []):
+            bm_away = bm_home = None
+            for mkt in bm.get("markets", []):
+                if mkt.get("key") != "h2h":
+                    continue
+                for outcome in mkt.get("outcomes", []):
+                    n = outcome.get("name")
+                    pr = outcome.get("price")
+                    if pr is None:
+                        continue
+                    if n == away_name:
+                        bm_away = pr
+                    elif n == home_name:
+                        bm_home = pr
+            if bm_away is not None:
+                away_prices.append(bm_away)
+            if bm_home is not None:
+                home_prices.append(bm_home)
+            if bm_away is not None and bm_home is not None:
+                books.append({
+                    "name":    bm.get("title", "Unknown"),
+                    "away_ml": round(bm_away),
+                    "home_ml": round(bm_home),
+                })
+
+        if not away_prices or not home_prices:
+            continue
+
+        away_ml = round(sum(away_prices) / len(away_prices))
+        home_ml = round(sum(home_prices) / len(home_prices))
+
+        # Skip malformed odds — valid American lines must be <=-100 or >=+100
+        if abs(away_ml) < 100 or abs(home_ml) < 100:
+            continue
+
+        away_raw = _american_to_raw(away_ml)
+        home_raw = _american_to_raw(home_ml)
+        total = away_raw + home_raw  # >1 due to vig
+
+        # Arbitrage: best away line + best home line across all books
+        arbitrage = None
+        if books:
+            best_away_dec = max(_ml_to_dec(b["away_ml"]) for b in books)
+            best_home_dec = max(_ml_to_dec(b["home_ml"]) for b in books)
+            arb_pct = 1 / best_away_dec + 1 / best_home_dec
+            if arb_pct < 1.0:
+                arbitrage = {"exists": True, "profit_pct": round((1 - arb_pct) * 100, 2)}
+
+        commence = event.get("commence_time")
+        rows.append({
+            "event_id":       event.get("id"),
+            "commence_time":  commence,
+            # MLB game dates are ET; commence_time is UTC. Any game starting at or
+            # after 8 PM ET carries the NEXT UTC calendar date — roughly half the
+            # slate — so every date comparison must go through ET, never the raw
+            # UTC prefix.
+            "game_date_et":   commence_time_to_et_date(commence),
+            "away_team_raw":  away_name,
+            "home_team_raw":  home_name,
+            "away_team":      away_retro,
+            "home_team":      home_retro,
+            "away_ml":        away_ml,
+            "home_ml":        home_ml,
+            "away_implied":   round(away_raw / total, 4),
+            "home_implied":   round(home_raw / total, 4),
+            "overround":      round(total - 1.0, 6),
+            "n_books":        len(books),
+            "books":          books[:8],   # cap at 8 for display
+            "arbitrage":      arbitrage,
+        })
+    return rows
+
+
+def commence_time_to_et_date(commence_time):
+    """ISO8601 UTC commence_time -> 'YYYY-MM-DD' in America/New_York, or None."""
+    if not commence_time:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(commence_time).replace("Z", "+00:00"))
+        return dt.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    except Exception:
+        return None
+
+
+def odds_map_from_event_rows(rows):
+    """Collapse parse_odds_events output to the legacy {(away, home): {...}} shape.
+
+    Rows whose teams did not resolve are dropped. NOTE this key cannot represent a
+    doubleheader: two games between the same teams on the same day collapse to one
+    entry (last wins). That is pre-existing behaviour, preserved here deliberately;
+    the historical backfill keys on event_id instead precisely to avoid it.
+    """
+    odds_map = {}
+    for r in rows:
+        if not r["away_team"] or not r["home_team"]:
+            continue
+        odds_map[(r["away_team"], r["home_team"])] = {
+            "away_ml":      r["away_ml"],
+            "home_ml":      r["home_ml"],
+            "away_implied": r["away_implied"],
+            "home_implied": r["home_implied"],
+            "books":        r["books"],
+            "arbitrage":    r["arbitrage"],
+        }
+    return odds_map
+
+
 def get_mlb_odds(api_key):
     """
     Fetch current MLB moneyline odds from The Odds API.
@@ -569,16 +727,7 @@ def get_mlb_odds(api_key):
         print(f"[odds] API request failed: {e}")
         return {}
 
-    # Record quota from response headers. The Odds API returns x-requests-remaining
-    # / x-requests-used on BOTH a 200 AND a 401 quota-exhausted response, so this is
-    # how the app learns it's out of credits rather than silently seeing 0 games.
-    _rem, _used = resp.headers.get("x-requests-remaining"), resp.headers.get("x-requests-used")
-    LAST_ODDS_QUOTA.update({
-        "remaining":  int(_rem)  if _rem  not in (None, "") else None,
-        "used":       int(_used) if _used not in (None, "") else None,
-        "status":     resp.status_code,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-    })
+    _record_quota(resp)
 
     if resp.status_code == 401:
         print(f"[odds] API 401 — key rejected or monthly quota exhausted "
@@ -592,83 +741,82 @@ def get_mlb_odds(api_key):
         print(f"[odds] API error: {e}")
         return {}
 
-    def _american_to_raw(ml):
-        """Convert American moneyline to raw (pre-vig) implied probability."""
-        if ml < 0:
-            return abs(ml) / (abs(ml) + 100)
-        return 100 / (ml + 100)
-
-    odds_map = {}
-    for event in events:
-        home_name  = event.get("home_team", "")
-        away_name  = event.get("away_team", "")
-        home_retro = resolve_odds_team(home_name)
-        away_retro = resolve_odds_team(away_name)
-        if not home_retro or not away_retro:
-            continue
-
-        # Collect per-bookmaker odds and compute average
-        away_prices, home_prices = [], []
-        books = []
-        for bm in event.get("bookmakers", []):
-            bm_away = bm_home = None
-            for mkt in bm.get("markets", []):
-                if mkt.get("key") != "h2h":
-                    continue
-                for outcome in mkt.get("outcomes", []):
-                    n = outcome.get("name")
-                    p = outcome.get("price")
-                    if p is None:
-                        continue
-                    if n == away_name:
-                        bm_away = p
-                    elif n == home_name:
-                        bm_home = p
-            if bm_away is not None:
-                away_prices.append(bm_away)
-            if bm_home is not None:
-                home_prices.append(bm_home)
-            if bm_away is not None and bm_home is not None:
-                books.append({
-                    "name":     bm.get("title", "Unknown"),
-                    "away_ml":  round(bm_away),
-                    "home_ml":  round(bm_home),
-                })
-
-        if not away_prices or not home_prices:
-            continue
-
-        away_ml = round(sum(away_prices) / len(away_prices))
-        home_ml = round(sum(home_prices) / len(home_prices))
-
-        # Skip malformed odds — valid American lines must be ≤-100 or ≥+100
-        if abs(away_ml) < 100 or abs(home_ml) < 100:
-            continue
-
-        away_raw = _american_to_raw(away_ml)
-        home_raw = _american_to_raw(home_ml)
-        total    = away_raw + home_raw  # >1 due to vig
-
-        # Arbitrage: best away line + best home line across all books
-        def _ml_to_dec(ml):
-            return ml / 100 + 1 if ml >= 0 else 100 / abs(ml) + 1
-
-        arbitrage = None
-        if books:
-            best_away_dec = max(_ml_to_dec(b["away_ml"]) for b in books)
-            best_home_dec = max(_ml_to_dec(b["home_ml"]) for b in books)
-            arb_pct = 1 / best_away_dec + 1 / best_home_dec
-            if arb_pct < 1.0:
-                arbitrage = {"exists": True, "profit_pct": round((1 - arb_pct) * 100, 2)}
-
-        odds_map[(away_retro, home_retro)] = {
-            "away_ml":      away_ml,
-            "home_ml":      home_ml,
-            "away_implied": round(away_raw / total, 4),
-            "home_implied": round(home_raw / total, 4),
-            "books":        books[:8],   # cap at 8 for display
-            "arbitrage":    arbitrage,
-        }
-
+    odds_map = odds_map_from_event_rows(parse_odds_events(events))
+    if UNMAPPED_ODDS_TEAMS:
+        print(f"[odds] WARNING unresolved team names (games dropped): "
+              f"{dict(UNMAPPED_ODDS_TEAMS)}", flush=True)
     print(f"[odds] Fetched odds for {len(odds_map)} games")
     return odds_map
+
+
+def get_historical_mlb_odds(api_key, iso_ts):
+    """Fetch a HISTORICAL odds snapshot at iso_ts (e.g. '2026-08-13T14:00:00Z').
+
+    Costs 10 credits per successful call — 10x the live endpoint (cost = 10 x markets
+    x regions) — and is available only on paid plans. The API returns the closest
+    snapshot at or earlier than iso_ts.
+
+    Returns (meta, raw_json, event_rows):
+      meta       {timestamp, previous_timestamp, next_timestamp, status, http_ok}
+      raw_json   the exact response body, for archiving so re-parsing is free forever
+      event_rows parse_odds_events output (may span several game dates — the endpoint
+                 returns a rolling window of UPCOMING events, not a single day, so
+                 callers MUST filter on game_date_et)
+    Returns (meta, None, []) on any failure; inspect meta['status'].
+    """
+    if not api_key:
+        return {"status": None, "http_ok": False, "error": "no api key"}, None, []
+    try:
+        resp = requests.get(
+            ODDS_API_HISTORICAL_URL,
+            params={
+                "apiKey":      api_key,
+                "regions":     "us",
+                "markets":     "h2h",
+                "oddsFormat":  "american",
+                "date":        iso_ts,
+            },
+            timeout=30,
+        )
+    except Exception as e:
+        return {"status": None, "http_ok": False, "error": str(e)}, None, []
+
+    _record_quota(resp)
+    meta = {
+        "status":   resp.status_code,
+        "http_ok":  resp.status_code == 200,
+        "timestamp": None, "previous_timestamp": None, "next_timestamp": None,
+    }
+    if resp.status_code != 200:
+        meta["error"] = resp.text[:300]
+        return meta, None, []
+    try:
+        payload = resp.json()
+    except Exception as e:
+        meta["error"] = f"unparseable json: {e}"
+        return meta, None, []
+
+    meta["timestamp"]          = payload.get("timestamp")
+    meta["previous_timestamp"] = payload.get("previous_timestamp")
+    meta["next_timestamp"]     = payload.get("next_timestamp")
+    # The ONLY structural difference from the live endpoint: events are under "data".
+    return meta, payload, parse_odds_events(payload.get("data") or [])
+
+
+def get_odds_quota(api_key):
+    """Read the account's remaining/used credits WITHOUT spending one.
+
+    /v4/sports is documented as a free endpoint but still returns the quota headers,
+    so this is how a budget guard checks its ceiling before committing to a run.
+    Returns the LAST_ODDS_QUOTA snapshot; 'remaining' is None if the call failed.
+    """
+    if not api_key:
+        return dict(LAST_ODDS_QUOTA)
+    try:
+        resp = requests.get("https://api.the-odds-api.com/v4/sports/",
+                            params={"apiKey": api_key}, timeout=15)
+    except Exception as e:
+        print(f"[odds] quota check failed: {e}", flush=True)
+        return dict(LAST_ODDS_QUOTA)
+    _record_quota(resp)
+    return dict(LAST_ODDS_QUOTA)

@@ -154,6 +154,96 @@ def test_odds_team_resolution():
     assert r("Las Vegas Athletics")  == "ATH"
 
 
+def _odds_event(eid, away, home, commence, prices=((120, -140), (125, -145))):
+    """Minimal Odds-API event fixture with two bookmakers."""
+    return {
+        "id": eid, "commence_time": commence, "away_team": away, "home_team": home,
+        "bookmakers": [
+            {"title": f"Book{i}", "markets": [{"key": "h2h", "outcomes": [
+                {"name": away, "price": a}, {"name": home, "price": h}]}]}
+            for i, (a, h) in enumerate(prices)
+        ],
+    }
+
+
+def test_parse_odds_events_envelope():
+    """THE regression test for the live/historical split: the same events parsed as a
+    bare list (live endpoint) and unwrapped from {"data": [...]} (historical endpoint)
+    must produce identical prices. If these ever diverge, backfilled odds stop being
+    comparable to live-captured odds and the whole edge calibration is invalid."""
+    import schedule_fetcher as sf
+    events = [_odds_event("e1", "New York Yankees", "Boston Red Sox",
+                          "2026-06-16T00:10:00Z")]
+    live = sf.parse_odds_events(events)                       # live: bare list
+    hist = sf.parse_odds_events({"data": events}["data"])     # historical: under "data"
+    assert live == hist
+    assert len(live) == 1
+    row = live[0]
+    assert row["away_team"] == "NYA" and row["home_team"] == "BOS"
+    # mean of the two books, via round() — note Python's banker's rounding takes
+    # 122.5 -> 122 and -142.5 -> -142, which is pre-existing get_mlb_odds behaviour
+    assert row["away_ml"] == 122 and row["home_ml"] == -142
+    # de-vigged implieds sum to exactly 1.0
+    assert abs(row["away_implied"] + row["home_implied"] - 1.0) < 1e-9
+    assert row["n_books"] == 2
+    assert row["overround"] > 0                               # vig is positive
+    # the legacy map shape is unchanged
+    m = sf.odds_map_from_event_rows(live)
+    assert m[("NYA", "BOS")]["away_ml"] == 122
+
+
+def test_game_date_et():
+    """commence_time is UTC but MLB game dates are ET. A 8:10 PM ET first pitch is
+    already the NEXT day in UTC — roughly half the slate — so parsing the UTC date
+    prefix would misfile those games by one day."""
+    import schedule_fetcher as sf
+    f = sf.commence_time_to_et_date
+    assert f("2026-06-16T00:10:00Z") == "2026-06-15"   # 8:10 PM ET, next UTC day
+    assert f("2026-06-15T17:05:00Z") == "2026-06-15"   # 1:05 PM ET, same UTC day
+    assert f("2026-06-16T02:40:00Z") == "2026-06-15"   # 10:40 PM ET west coast
+    assert f(None) is None and f("garbage") is None
+
+
+def test_parse_odds_events_doubleheader():
+    """Two games, same teams, same day, different event ids and start times. The
+    per-event rows keep both; the legacy (away, home) map can only hold one. That
+    collision is why the historical store keys on event_id instead."""
+    import schedule_fetcher as sf
+    evs = [_odds_event("g1", "New York Yankees", "Boston Red Sox", "2026-06-15T17:05:00Z"),
+           _odds_event("g2", "New York Yankees", "Boston Red Sox", "2026-06-15T23:05:00Z",
+                       prices=((150, -170), (155, -175)))]
+    rows = sf.parse_odds_events(evs)
+    assert len(rows) == 2
+    assert {r["event_id"] for r in rows} == {"g1", "g2"}
+    assert rows[0]["away_ml"] != rows[1]["away_ml"]        # genuinely different prices
+    assert all(r["game_date_et"] == "2026-06-15" for r in rows)
+    assert len(sf.odds_map_from_event_rows(rows)) == 1     # documented collapse
+
+
+def test_parse_odds_events_unresolved_team_kept():
+    """An unresolvable team yields a row (so it can be audited) but is dropped from
+    the legacy map — the old code dropped it with no trace at all."""
+    import schedule_fetcher as sf
+    sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
+    rows = sf.parse_odds_events([
+        _odds_event("x1", "Utica Pierogies", "Boston Red Sox", "2026-06-15T17:05:00Z")])
+    assert len(rows) == 1 and rows[0]["away_team"] is None
+    assert rows[0]["away_team_raw"] == "Utica Pierogies"    # raw name preserved
+    assert sf.odds_map_from_event_rows(rows) == {}
+    assert "Utica Pierogies" in sf.UNMAPPED_ODDS_TEAMS
+    sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
+
+
+def test_parse_odds_events_malformed_skipped():
+    """|ml| < 100 is not a valid American line; such events are skipped entirely,
+    matching long-standing get_mlb_odds behaviour."""
+    import schedule_fetcher as sf
+    rows = sf.parse_odds_events([
+        _odds_event("m1", "New York Yankees", "Boston Red Sox",
+                    "2026-06-15T17:05:00Z", prices=((50, -60),))])
+    assert rows == []
+
+
 def test_should_restore():
     ns = _extract("_latest_date_key", "_should_restore")
     should = ns["_should_restore"]
