@@ -24750,6 +24750,109 @@
   ],
   "2026-08-18": [
     {
+      "game_pk": 824803,
+      "date": "2026-08-18",
+      "game_type": "R",
+      "away_team": "NYA",
+      "away_team_name": "New York Yankees",
+      "home_team": "BAL",
+      "home_team_name": "Baltimore Orioles",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.576,
+      "home_win_prob": 0.424,
+      "confidence": 0.076,
+      "calibration_bucket": "50-60%",
+      "away_ml": -121,
+      "home_ml": 104,
+      "away_implied": 0.5276,
+      "home_implied": 0.4724,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -121,
+      "model_edge": 0.0484,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -126,
+          "home_ml": 108
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -120,
+          "home_ml": 100
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -121,
+          "home_ml": 103
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -128,
+          "home_ml": 107
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -115,
+          "home_ml": 104
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -115,
+          "home_ml": 104
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -115,
+          "home_ml": 105
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -121,
+          "home_ml": 101
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": "Away",
+      "away_score": 3,
+      "home_score": 1,
+      "correct": true,
+      "brier_score": 0.1798,
+      "log_loss": 0.5516,
+      "clv": null,
+      "predicted_total": 8.3,
+      "home_est_score": 2.3,
+      "away_est_score": 6.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.9923637217370909,
+        -1.6876202705817351,
+        -1.9913747202314898,
+        -2.181948109852152,
+        0.36290366307456595,
+        0.7534967622676515,
+        0.9046690273746739,
+        -0.10643799216471755,
+        0.8850039735370215,
+        -1.8932548015358475,
+        0.755676452323526,
+        -0.05862467273404947,
+        -0.033909915571940265,
+        0.4721673404116795,
+        0.09228277774341145,
+        0.25145692230396716,
+        0.4157497225417792,
+        0.7963100254499689
+      ],
+      "prediction_timestamp": "2026-08-18T10:15:02.028001-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -120,
+      "closing_home_ml": 104,
+      "closing_away_implied": 0.5267,
+      "closing_home_implied": 0.4733,
+      "edge_vs_close": 0.0493
+    },
+    {
       "game_pk": 823341,
       "date": "2026-08-18",
       "game_type": "R",
