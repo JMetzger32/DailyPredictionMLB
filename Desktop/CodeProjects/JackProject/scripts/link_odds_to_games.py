@@ -70,10 +70,14 @@ def load_odds(conn):
 
 
 def load_games(conn):
-    """DB games 2021-2025, ISO date, OAK normalized to ATH to match the odds side."""
+    """DB games 2021-2026, ISO date, OAK normalized to ATH to match the odds side.
+
+    2026 is included even though the DB only reaches 2026-07-07: walk-forward 2026 is
+    the single most production-comparable fold (trained on 2021-2025, exactly like the
+    shipped artifact), so excluding it threw away the most relevant evidence."""
     rows = conn.execute(
         "SELECT game_id, date, visiting_team, home_team, doubleheader, season "
-        "FROM games WHERE season BETWEEN 2021 AND 2025").fetchall()
+        "FROM games WHERE season BETWEEN 2021 AND 2026").fetchall()
     g = defaultdict(list)
     for gid, d, away, home, dh, season in rows:
         iso = f"{d[:4]}-{d[4:6]}-{d[6:8]}"

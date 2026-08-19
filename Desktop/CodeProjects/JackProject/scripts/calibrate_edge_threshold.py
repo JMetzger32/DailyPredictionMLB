@@ -62,17 +62,19 @@ def wilson(k, n, z=1.96):
     return (max(0.0, c - h), min(1.0, c + h))
 
 
-def boot_ci(vals, n_boot=4000, seed=42):
-    """Percentile bootstrap CI for the mean (used for ROI)."""
+def boot_ci(vals, n_boot=2000, seed=42):
+    """Percentile bootstrap CI for the mean (used for ROI).
+
+    Vectorized: the naive loop is O(n_boot * n) in Python and takes minutes at
+    n~11k across 41 thresholds x 3 datasets."""
     if not vals:
         return (0.0, 0.0)
-    rng = random.Random(seed)
-    n = len(vals)
-    means = []
-    for _ in range(n_boot):
-        means.append(sum(vals[rng.randrange(n)] for _ in range(n)) / n)
-    means.sort()
-    return (means[int(0.025 * n_boot)], means[int(0.975 * n_boot)])
+    import numpy as _np
+    a = _np.asarray(vals, dtype=float)
+    rng = _np.random.default_rng(seed)
+    idx = rng.integers(0, len(a), size=(n_boot, len(a)))
+    means = a[idx].mean(axis=1)
+    return (float(_np.percentile(means, 2.5)), float(_np.percentile(means, 97.5)))
 
 
 def required_n(delta):
