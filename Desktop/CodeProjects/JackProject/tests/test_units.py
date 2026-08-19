@@ -234,6 +234,29 @@ def test_parse_odds_events_unresolved_team_kept():
     sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
 
 
+def test_parse_odds_events_pickem_straddle():
+    """Books straddling the +/-100 boundary on a pick'em game must still price.
+
+    Regression for a bug that silently dropped near-even games from BOTH the live
+    product and the historical backfill: American odds are discontinuous across
+    +/-100, so averaging +104 and -101 (both ~50%) numerically gives about -28 --
+    not a valid line -- which then tripped the malformed-odds guard and discarded
+    the game entirely. Observed on 1 of 9 games in the 2026-08-13 probe. Averaging
+    implied probabilities instead is continuous and yields ~-101.
+    """
+    import schedule_fetcher as sf
+    rows = sf.parse_odds_events([_odds_event(
+        "pk1", "Cleveland Guardians", "Detroit Tigers", "2026-08-13T17:11:00Z",
+        prices=((-114, 104), (-109, -101), (-110, -102)))])
+    assert len(rows) == 1, "pick'em game must not be dropped"
+    r = rows[0]
+    assert r["home_team"] == "DET"
+    # home side is a true coin flip; the naive numeric average would be ~+0
+    assert abs(r["home_implied"] - 0.5) < 0.03
+    assert abs(r["home_ml"]) >= 100, "must emit a valid American line"
+    assert abs(r["away_implied"] + r["home_implied"] - 1.0) < 1e-9
+
+
 def test_parse_odds_events_malformed_skipped():
     """|ml| < 100 is not a valid American line; such events are skipped entirely,
     matching long-standing get_mlb_odds behaviour."""

@@ -568,6 +568,13 @@ def _ml_to_dec(ml):
     return ml / 100 + 1 if ml >= 0 else 100 / abs(ml) + 1
 
 
+def _raw_to_american(p):
+    """Raw implied probability -> American moneyline (inverse of _american_to_raw)."""
+    if not 0 < p < 1:
+        return None
+    return round(-100 * p / (1 - p)) if p >= 0.5 else round(100 * (1 - p) / p)
+
+
 def parse_odds_events(events):
     """Parse a list of Odds-API event objects into one record per event.
 
@@ -601,6 +608,13 @@ def parse_odds_events(events):
                     pr = outcome.get("price")
                     if pr is None:
                         continue
+                    # Validate each quoted price here rather than after averaging:
+                    # a real American line is always <=-100 or >=+100, so anything
+                    # inside that band is corrupt input and must not pollute the
+                    # consensus. (The post-average guard cannot tell corrupt input
+                    # apart from a legitimate pick'em.)
+                    if abs(pr) < 100:
+                        continue
                     if n == away_name:
                         bm_away = pr
                     elif n == home_name:
@@ -619,15 +633,24 @@ def parse_odds_events(events):
         if not away_prices or not home_prices:
             continue
 
-        away_ml = round(sum(away_prices) / len(away_prices))
-        home_ml = round(sum(home_prices) / len(home_prices))
+        # Consensus line: average in PROBABILITY space, not raw American odds.
+        # American odds are discontinuous across the +/-100 boundary -- a pick'em
+        # game where books quote +104 and -101 (both ~50%) averages numerically to
+        # about -28, which is not a valid line at all and then trips the malformed
+        # guard below, silently dropping the whole game. Observed on 1 of 9 games in
+        # the 2026-08-13 probe. Averaging implied probabilities is continuous and
+        # gives the right answer (-101, implied 0.502) for exactly that case.
+        away_raw = sum(_american_to_raw(x) for x in away_prices) / len(away_prices)
+        home_raw = sum(_american_to_raw(x) for x in home_prices) / len(home_prices)
+        away_ml = _raw_to_american(away_raw)
+        home_ml = _raw_to_american(home_raw)
 
-        # Skip malformed odds — valid American lines must be <=-100 or >=+100
-        if abs(away_ml) < 100 or abs(home_ml) < 100:
+        # Safety net only: after probability-space averaging a real market can no
+        # longer land inside +/-100, so this now catches genuinely corrupt input
+        # rather than legitimate pick'em games.
+        if away_ml is None or home_ml is None or abs(away_ml) < 100 or abs(home_ml) < 100:
             continue
 
-        away_raw = _american_to_raw(away_ml)
-        home_raw = _american_to_raw(home_ml)
         total = away_raw + home_raw  # >1 due to vig
 
         # Arbitrage: best away line + best home line across all books
