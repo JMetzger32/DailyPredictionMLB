@@ -72931,7 +72931,12 @@
         0.7963100254499689
       ],
       "prediction_timestamp": "2026-08-18T10:15:02.028001-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -120,
+      "closing_home_ml": 104,
+      "closing_away_implied": 0.5267,
+      "closing_home_implied": 0.4733,
+      "edge_vs_close": 0.0493
     },
     {
       "game_pk": 823341,
