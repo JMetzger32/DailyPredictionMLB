@@ -57,6 +57,37 @@ def pl_for(ml, won, stake):
     return -stake
 
 
+def sweep_thresholds(rows, grid=None, min_sample=30, stake=10.0):
+    """Sweep edge thresholds over resolved bets. Shared with
+    scripts/calibrate_edge_threshold.py so the repo has exactly ONE threshold sweep --
+    a second copy would drift, and this one is what the live 0.05 is measured against.
+
+    rows: dicts with model_edge, predicted_team_ml, correct.
+    Returns a list of per-threshold dicts, oldest behaviour preserved.
+    """
+    if grid is None:
+        grid = [round(t * 0.01, 2) for t in range(1, 16)]
+    out = []
+    for T in grid:
+        bets = [e for e in rows if e["model_edge"] >= T]
+        if len(bets) < min_sample:
+            continue
+        pl_list = [pl_for(b["predicted_team_ml"], b["correct"], stake) for b in bets]
+        wins = sum(1 for b in bets if b["correct"])
+        net_pl = sum(pl_list)
+        out.append({
+            "threshold": T,
+            "bets":      len(bets),
+            "wins":      wins,
+            "win_pct":   wins / len(bets),
+            "roi":       net_pl / (len(bets) * stake),
+            "sharpe":    (mean(pl_list) / stdev(pl_list))
+                         if len(pl_list) > 1 and stdev(pl_list) > 0 else None,
+            "net_pl":    net_pl,
+        })
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-sample", type=int, default=30,
@@ -74,23 +105,7 @@ def main():
         print(f"[!] Below the ~{DECISION_GRADE_N}-bet bar for a decision-grade result — "
               "treat everything below as directional only.\n")
 
-    results = []
-    for t in range(1, 16):                       # thresholds 0.01 .. 0.15
-        T = round(t * 0.01, 2)
-        bets = [e for e in resolved if e["model_edge"] >= T]
-        if len(bets) < args.min_sample:
-            continue
-        pl_list = [pl_for(b["predicted_team_ml"], b["correct"], args.stake) for b in bets]
-        wins   = sum(1 for b in bets if b["correct"])
-        net_pl = sum(pl_list)
-        results.append({
-            "threshold": T,
-            "bets":      len(bets),
-            "win_pct":   wins / len(bets),
-            "roi":       net_pl / (len(bets) * args.stake),
-            "sharpe":    (mean(pl_list) / stdev(pl_list)) if len(pl_list) > 1 and stdev(pl_list) > 0 else None,
-            "net_pl":    net_pl,
-        })
+    results = sweep_thresholds(resolved, min_sample=args.min_sample, stake=args.stake)
 
     if not results:
         print(f"No threshold reached min sample of {args.min_sample} bets "

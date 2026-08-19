@@ -234,6 +234,23 @@ def test_parse_odds_events_unresolved_team_kept():
     sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
 
 
+def test_budget_guard():
+    """The historical backfill must never spend below the reserve kept for live games.
+
+    Evaluated against the SERVER's reported remaining before every call, because the
+    Render app shares the same key and a locally-tracked counter would drift."""
+    sys.path.insert(0, os.path.join(_ROOT, "updates"))
+    from backfill_historical_odds import would_breach_floor as g, HISTORICAL_COST
+    assert HISTORICAL_COST == 10          # historical = 10x the live endpoint
+    assert g(5011, 5000) is False         # 5011-10 = 5001, still above the floor
+    assert g(5010, 5000) is False         # exactly on the floor is allowed
+    assert g(5009, 5000) is True          # 5009-10 = 4999 -> would breach
+    assert g(5000, 5000) is True
+    assert g(0, 5000) is True
+    assert g(None, 5000) is True          # unknown remaining is treated as unsafe
+    assert g(19884, 5000) is False        # the real pre-flight state
+
+
 def test_parse_odds_events_pickem_straddle():
     """Books straddling the +/-100 boundary on a pick'em game must still price.
 

@@ -41,6 +41,19 @@ PYTH_EXPONENT = 1.83
 # and update_daily.py::retrain_model() using this same constant.
 SCALER_WINDOW_START_SEASON = 2023
 
+# Soft recalibration applied to EVERY served probability: nudge 4% toward the MLB
+# home-win prior. Defined once here because it must stay identical across
+# predict_game, predict_games_batch and any offline replay (out-of-fold backtests,
+# edge calibration) -- an offline path that skips the blend is not measuring the
+# model the product actually ships.
+HOME_PRIOR  = 0.53
+RECAL_BLEND = 0.04
+
+
+def apply_home_prior_blend(prob):
+    """Blend a raw ensemble probability toward HOME_PRIOR. Scalar or numpy array."""
+    return (1 - RECAL_BLEND) * prob + RECAL_BLEND * HOME_PRIOR
+
 # Moneyline LR penalty. Switched from pure L2 (C=0.5) to elastic net after
 # EDA/eda_4 found that several features carry no signal their coefficients could
 # support: 7 of 18 had a sign opposite their own univariate direction, and only
@@ -1163,9 +1176,7 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
 
     # Soft recalibration: nudge 4% toward MLB home win prior (53%)
     # Reduces overconfident away picks without a hard cutoff
-    _HOME_PRIOR  = 0.53
-    _RECAL_BLEND = 0.04
-    prob = (1 - _RECAL_BLEND) * prob + _RECAL_BLEND * _HOME_PRIOR
+    prob = apply_home_prior_blend(prob)
 
     result = {
         "home_win_prob": round(prob, 3),
@@ -1295,9 +1306,7 @@ def predict_games_batch(games_stats, model, scaler=None, feature_cols=None, runl
     probs = np.mean(np.vstack(all_probs), axis=0)
 
     # Soft recalibration: nudge 4% toward MLB home win prior (53%) — identical to predict_game
-    _HOME_PRIOR  = 0.53
-    _RECAL_BLEND = 0.04
-    probs = (1 - _RECAL_BLEND) * probs + _RECAL_BLEND * _HOME_PRIOR
+    probs = apply_home_prior_blend(probs)
 
     # Run line prediction (-1.5): ensemble of LR + GBM if models provided — batched
     rl_probs = None
