@@ -52,8 +52,20 @@ def load_odds(conn):
     g = defaultdict(list)
     for d, eid, a, h, ct, src in rows:
         g[(d, a, h)].append({"event_id": eid, "commence_time": ct or "", "source": src})
-    for v in g.values():
-        v.sort(key=lambda r: r["commence_time"])
+
+    # One SOURCE per game. The same 2026 game can appear three times -- once from the
+    # historical backfill, once from the live capture on predictions_log, once from
+    # the closing archive -- and counting those as three distinct events makes every
+    # such group look like a doubleheader with a count mismatch (393 groups locally).
+    # Prefer historical_api because it is the only source measured at a single fixed
+    # horizon (15:00 UTC) across every date; live_log is the morning capture and
+    # closing_archive is a 6:45 PM ET price, so mixing them would silently blend
+    # three different markets.
+    priority = {"historical_api": 0, "live_log": 1, "closing_archive": 2}
+    for k, v in g.items():
+        best = min(priority.get(e["source"], 9) for e in v)
+        g[k] = sorted([e for e in v if priority.get(e["source"], 9) == best],
+                      key=lambda r: r["commence_time"])
     return g
 
 
