@@ -48,7 +48,57 @@ ODDS_API_TEAM_TO_RETRO = {
     "Miami Marlins":         "MIA",
     "New York Yankees":      "NYA",
     "Milwaukee Brewers":     "MIL",
+    # --- Aliases for names The Odds API actually returns, current and historical. ---
+    # "Athletics" (no city) is the club's CURRENT name and is what MLB StatsAPI and
+    # The Odds API both return; its absence meant every A's game resolved to None and
+    # was silently dropped (126 game-appearances in predictions_log, 0 with odds,
+    # vs 17-22% for every other team). "Cleveland Indians" is the pre-2022 name and
+    # is required for any 2021 historical backfill.
+    "Athletics":             "ATH",
+    "Cleveland Indians":     "CLE",
 }
+
+# Nickname -> retro, derived from the full-name map by stripping the city prefix, plus
+# retired nicknames. Used as a FALLBACK when an exact full-name match fails, so a future
+# relocation/rename (the Athletics moved twice in two years) degrades to a warning
+# instead of silently dropping every one of that team's games.
+_ODDS_NICKNAME_TO_RETRO = {
+    "angels": "ANA", "diamondbacks": "ARI", "orioles": "BAL", "red sox": "BOS",
+    "cubs": "CHN", "reds": "CIN", "guardians": "CLE", "indians": "CLE",
+    "rockies": "COL", "tigers": "DET", "astros": "HOU", "royals": "KCA",
+    "dodgers": "LAN", "nationals": "WAS", "mets": "NYN", "athletics": "ATH",
+    "pirates": "PIT", "padres": "SDN", "mariners": "SEA", "giants": "SFN",
+    "cardinals": "SLN", "rays": "TBA", "rangers": "TEX", "blue jays": "TOR",
+    "twins": "MIN", "phillies": "PHI", "braves": "ATL", "white sox": "CHA",
+    "marlins": "MIA", "yankees": "NYA", "brewers": "MIL",
+}
+
+# Raw team strings we could not resolve, counted per process. Printed by callers and
+# checked by the historical backfill's canary gate -- an unresolved name means paid-for
+# games get discarded, so this must never be silently ignored again.
+UNMAPPED_ODDS_TEAMS = {}
+
+
+def resolve_odds_team(name):
+    """The Odds API team name -> Retrosheet code, or None (and recorded).
+
+    Exact full-name match first, then longest-matching nickname suffix. Records any
+    failure in UNMAPPED_ODDS_TEAMS rather than dropping it on the floor."""
+    if not name:
+        return None
+    retro = ODDS_API_TEAM_TO_RETRO.get(name)
+    if retro:
+        return retro
+    low = name.lower().strip()
+    best = None
+    for nick, code in _ODDS_NICKNAME_TO_RETRO.items():
+        if low.endswith(nick) and (best is None or len(nick) > len(best[0])):
+            best = (nick, code)
+    if best:
+        return best[1]
+    UNMAPPED_ODDS_TEAMS[name] = UNMAPPED_ODDS_TEAMS.get(name, 0) + 1
+    return None
+
 
 # MLB Stats API team ID -> Retrosheet team code
 MLB_TEAM_ID_TO_RETRO = {
@@ -552,8 +602,8 @@ def get_mlb_odds(api_key):
     for event in events:
         home_name  = event.get("home_team", "")
         away_name  = event.get("away_team", "")
-        home_retro = ODDS_API_TEAM_TO_RETRO.get(home_name)
-        away_retro = ODDS_API_TEAM_TO_RETRO.get(away_name)
+        home_retro = resolve_odds_team(home_name)
+        away_retro = resolve_odds_team(away_name)
         if not home_retro or not away_retro:
             continue
 

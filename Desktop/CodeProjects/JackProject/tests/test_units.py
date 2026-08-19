@@ -128,6 +128,32 @@ def test_find_pitcher_by_name():
     assert find_pitcher_by_name(None, sp) is None
 
 
+def test_odds_team_resolution():
+    """The Odds API team name -> retro code. Regression test for the bug where
+    "Athletics" (the club's CURRENT name, no city) was absent from the map, so
+    resolution returned None and get_mlb_odds silently `continue`d past every A's
+    game -- 126 game-appearances in predictions_log with 0 odds, vs 17-22% for
+    every other team. "Cleveland Indians" is the pre-2022 name, needed for 2021."""
+    import schedule_fetcher as sf
+    r = sf.resolve_odds_team
+    assert r("Athletics")            == "ATH"   # the live bug
+    assert r("Oakland Athletics")    == "ATH"
+    assert r("Sacramento Athletics") == "ATH"
+    assert r("Cleveland Indians")    == "CLE"   # pre-2022, needed for the 2021 backfill
+    assert r("Cleveland Guardians")  == "CLE"
+    assert r("Chicago White Sox")    == "CHA"   # two-word nickname
+    assert r("New York Yankees")     == "NYA"
+    assert r("New York Mets")        == "NYN"   # same city, must not collide
+    # unknown names resolve to None AND get recorded, never silently dropped
+    sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
+    assert r("Utica Pierogies") is None
+    assert sf.UNMAPPED_ODDS_TEAMS.get("Utica Pierogies") == 1
+    sf.UNMAPPED_ODDS_TEAMS.pop("Utica Pierogies", None)
+    assert r(None) is None
+    # a future relocation degrades to the nickname fallback instead of dropping games
+    assert r("Las Vegas Athletics")  == "ATH"
+
+
 def test_should_restore():
     ns = _extract("_latest_date_key", "_should_restore")
     should = ns["_should_restore"]
