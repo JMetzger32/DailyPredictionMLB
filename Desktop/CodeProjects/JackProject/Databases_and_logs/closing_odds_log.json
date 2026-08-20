@@ -2471,34 +2471,34 @@
       "home_implied": 0.7112
     },
     "TOR|TBA": {
-      "away_ml": 146,
-      "home_ml": -168,
-      "away_implied": 0.3934,
-      "home_implied": 0.6066
+      "away_ml": 145,
+      "home_ml": -169,
+      "away_implied": 0.3938,
+      "home_implied": 0.6062
     },
     "SFN|CLE": {
-      "away_ml": 161,
-      "home_ml": -188,
-      "away_implied": 0.3699,
-      "home_implied": 0.6301
+      "away_ml": 160,
+      "home_ml": -187,
+      "away_implied": 0.3712,
+      "home_implied": 0.6288
     },
     "SLN|CIN": {
-      "away_ml": 125,
-      "home_ml": -151,
-      "away_implied": 0.4249,
-      "home_implied": 0.5751
+      "away_ml": 634,
+      "home_ml": -1093,
+      "away_implied": 0.1295,
+      "home_implied": 0.8705
     },
     "SEA|MIL": {
       "away_ml": 111,
-      "home_ml": -127,
-      "away_implied": 0.4586,
-      "home_implied": 0.5414
+      "home_ml": -128,
+      "away_implied": 0.4578,
+      "home_implied": 0.5422
     },
     "WAS|TEX": {
-      "away_ml": 139,
-      "home_ml": -161,
-      "away_implied": 0.4042,
-      "home_implied": 0.5958
+      "away_ml": 141,
+      "home_ml": -164,
+      "away_implied": 0.4005,
+      "home_implied": 0.5995
     },
     "ANA|HOU": {
       "away_ml": 161,
@@ -2507,10 +2507,16 @@
       "home_implied": 0.6301
     },
     "LAN|COL": {
-      "away_ml": -195,
-      "home_ml": 170,
-      "away_implied": 0.6409,
-      "home_implied": 0.3591
+      "away_ml": -1822,
+      "home_ml": 761,
+      "away_implied": 0.8909,
+      "home_implied": 0.1091
+    },
+    "NYA|BAL": {
+      "away_ml": -2257,
+      "home_ml": 1116,
+      "away_implied": 0.9209,
+      "home_implied": 0.0791
     }
   }
 }
