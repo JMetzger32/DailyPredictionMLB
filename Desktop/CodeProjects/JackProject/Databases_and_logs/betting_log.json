@@ -29826,13 +29826,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Away",
+      "away_score": 4,
+      "home_score": 3,
+      "correct": false,
+      "brier_score": 0.257,
+      "log_loss": 0.7072,
+      "clv": 0.0482,
       "predicted_total": 6.3,
       "home_est_score": 3.8,
       "away_est_score": 2.5,
@@ -29859,7 +29859,12 @@
         0.7533041115248955
       ],
       "prediction_timestamp": "2026-08-22T10:15:01.762012-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 113,
+      "closing_home_ml": -131,
+      "closing_away_implied": 0.4529,
+      "closing_home_implied": 0.5471,
+      "edge_vs_close": -0.0401
     },
     {
       "game_pk": 823743,
@@ -29924,13 +29929,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 1,
+      "home_score": 4,
+      "correct": true,
+      "brier_score": 0.1936,
+      "log_loss": 0.5798,
+      "clv": -0.0497,
       "predicted_total": 6.1,
       "home_est_score": 2.4,
       "away_est_score": 3.7,
@@ -29957,7 +29962,12 @@
         -0.5540756717973216
       ],
       "prediction_timestamp": "2026-08-22T10:15:02.856802-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 114,
+      "closing_home_ml": -132,
+      "closing_away_implied": 0.4509,
+      "closing_home_implied": 0.5491,
+      "edge_vs_close": 0.0109
     },
     {
       "game_pk": 823831,
@@ -30022,13 +30032,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 2,
+      "home_score": 4,
+      "correct": true,
+      "brier_score": 0.2098,
+      "log_loss": 0.6125,
+      "clv": -0.0279,
       "predicted_total": 9.0,
       "home_est_score": 5.8,
       "away_est_score": 3.2,
@@ -30055,7 +30065,12 @@
         0.06234242779539034
       ],
       "prediction_timestamp": "2026-08-22T10:15:03.762069-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 138,
+      "closing_home_ml": -159,
+      "closing_away_implied": 0.4063,
+      "closing_home_implied": 0.5937,
+      "edge_vs_close": -0.0517
     },
     {
       "game_pk": 823422,
@@ -30120,13 +30135,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 3,
+      "home_score": 12,
+      "correct": false,
+      "brier_score": 0.2798,
+      "log_loss": 0.7529,
+      "clv": -0.0784,
       "predicted_total": 11.0,
       "home_est_score": 4.4,
       "away_est_score": 6.6,
@@ -30153,7 +30168,12 @@
         3.4913472980878733
       ],
       "prediction_timestamp": "2026-08-22T10:15:04.559869-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 183,
+      "closing_home_ml": -214,
+      "closing_away_implied": 0.3414,
+      "closing_home_implied": 0.6586,
+      "edge_vs_close": 0.1876
     },
     {
       "game_pk": 824798,
@@ -30218,13 +30238,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 2,
+      "home_score": 3,
+      "correct": false,
+      "brier_score": 0.3306,
+      "log_loss": 0.8557,
+      "clv": 0.0028,
       "predicted_total": 5.4,
       "home_est_score": 2.2,
       "away_est_score": 3.2,
@@ -30251,7 +30271,12 @@
         1.4385316733977251
       ],
       "prediction_timestamp": "2026-08-22T10:15:05.552611-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -129,
+      "closing_home_ml": 113,
+      "closing_away_implied": 0.5454,
+      "closing_home_implied": 0.4546,
+      "edge_vs_close": 0.0296
     },
     {
       "game_pk": 822858,
@@ -30316,13 +30341,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Away",
+      "away_score": 3,
+      "home_score": 0,
+      "correct": false,
+      "brier_score": 0.5373,
+      "log_loss": 1.3205,
+      "clv": -0.002,
       "predicted_total": 7.6,
       "home_est_score": 4.8,
       "away_est_score": 2.8,
@@ -30349,7 +30374,118 @@
         -4.9808177451515
       ],
       "prediction_timestamp": "2026-08-22T10:15:06.365007-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 147,
+      "closing_home_ml": -167,
+      "closing_away_implied": 0.3929,
+      "closing_home_implied": 0.6071,
+      "edge_vs_close": 0.1259
+    },
+    {
+      "game_pk": 824560,
+      "date": "2026-08-22",
+      "game_type": "R",
+      "away_team": "NYN",
+      "away_team_name": "New York Mets",
+      "home_team": "CHA",
+      "home_team_name": "Chicago White Sox",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.591,
+      "home_win_prob": 0.409,
+      "confidence": 0.091,
+      "calibration_bucket": "50-60%",
+      "away_ml": -555,
+      "home_ml": 374,
+      "away_implied": 0.8007,
+      "home_implied": 0.1993,
+      "bet_rating": "bad",
+      "predicted_team_ml": -555,
+      "model_edge": -0.2097,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": -571,
+          "home_ml": 449
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -750,
+          "home_ml": 460
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -556,
+          "home_ml": 360
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -450,
+          "home_ml": 320
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": -500,
+          "home_ml": 400
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -435,
+          "home_ml": 290
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -625,
+          "home_ml": 340
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -550,
+          "home_ml": 375
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 0.83
+      },
+      "actual_winner": "Away",
+      "away_score": 10,
+      "home_score": 5,
+      "correct": true,
+      "brier_score": 0.1673,
+      "log_loss": 0.5259,
+      "clv": 0.0393,
+      "predicted_total": 9.5,
+      "home_est_score": 3.1,
+      "away_est_score": 6.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.6129932954723087,
+        -1.4550281562942768,
+        -1.5009009450401058,
+        -1.0234161093873904,
+        0.4500225117129262,
+        0.24304717664845607,
+        1.271226135082245,
+        0.38152403682133973,
+        -0.12821062466340927,
+        -1.1195330038448446,
+        0.2358233165279693,
+        -0.37143248199730494,
+        -0.033909915571940265,
+        1.0938559486353652,
+        0.15422473966607766,
+        -0.10549916217825475,
+        2.0333450251669443,
+        2.129493357127231
+      ],
+      "prediction_timestamp": "2026-08-22T10:15:08.064648-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -820,
+      "closing_home_ml": 489,
+      "closing_away_implied": 0.84,
+      "closing_home_implied": 0.16,
+      "edge_vs_close": -0.249
     },
     {
       "game_pk": 824073,
@@ -30414,13 +30550,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 1,
+      "home_score": 3,
+      "correct": true,
+      "brier_score": 0.2411,
+      "log_loss": 0.6753,
+      "clv": -0.0011,
       "predicted_total": 7.6,
       "home_est_score": 5.8,
       "away_est_score": 1.8,
@@ -30447,7 +30583,12 @@
         0.23723314442402024
       ],
       "prediction_timestamp": "2026-08-22T10:15:08.956434-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -107,
+      "closing_home_ml": -107,
+      "closing_away_implied": 0.5,
+      "closing_home_implied": 0.5,
+      "edge_vs_close": 0.009
     },
     {
       "game_pk": 823910,
@@ -30512,13 +30653,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 3,
+      "home_score": 4,
+      "correct": true,
+      "brier_score": 0.0745,
+      "log_loss": 0.3188,
+      "clv": 0.01,
       "predicted_total": 7.8,
       "home_est_score": 5.1,
       "away_est_score": 2.8,
@@ -30545,7 +30686,12 @@
         -2.7015043071226326
       ],
       "prediction_timestamp": "2026-08-22T10:15:09.764082-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 227,
+      "closing_home_ml": -282,
+      "closing_away_implied": 0.2929,
+      "closing_home_implied": 0.7071,
+      "edge_vs_close": 0.0199
     },
     {
       "game_pk": 823100,
@@ -30605,13 +30751,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 4,
+      "home_score": 5,
+      "correct": true,
+      "brier_score": 0.2153,
+      "log_loss": 0.6236,
+      "clv": 0.0012,
       "predicted_total": 11.3,
       "home_est_score": 5.9,
       "away_est_score": 5.4,
@@ -30638,7 +30784,12 @@
         -0.5225380015856024
       ],
       "prediction_timestamp": "2026-08-22T10:15:10.652457-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -109,
+      "closing_home_ml": -107,
+      "closing_away_implied": 0.5022,
+      "closing_home_implied": 0.4978,
+      "edge_vs_close": 0.0382
     },
     {
       "game_pk": 824718,
@@ -30703,13 +30854,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 2,
+      "home_score": 3,
+      "correct": true,
+      "brier_score": 0.2034,
+      "log_loss": 0.5997,
+      "clv": -0.003,
       "predicted_total": 10.4,
       "home_est_score": 5.3,
       "away_est_score": 5.1,
@@ -30736,7 +30887,12 @@
         0.7418358678115421
       ],
       "prediction_timestamp": "2026-08-22T10:15:11.453529-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 176,
+      "closing_home_ml": -212,
+      "closing_away_implied": 0.3478,
+      "closing_home_implied": 0.6522,
+      "edge_vs_close": -0.1032
     },
     {
       "game_pk": 825044,
@@ -30801,13 +30957,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Away",
+      "away_score": 11,
+      "home_score": 5,
+      "correct": false,
+      "brier_score": 0.472,
+      "log_loss": 1.1616,
+      "clv": -0.0678,
       "predicted_total": 7.3,
       "home_est_score": 4.6,
       "away_est_score": 2.7,
@@ -30834,7 +30990,12 @@
         -3.2032399695818166
       ],
       "prediction_timestamp": "2026-08-22T10:15:12.163242-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 114,
+      "closing_home_ml": -132,
+      "closing_away_implied": 0.4509,
+      "closing_home_implied": 0.5491,
+      "edge_vs_close": 0.1379
     },
     {
       "game_pk": 824316,
@@ -30899,13 +31060,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Away",
+      "away_score": 4,
+      "home_score": 3,
+      "correct": true,
+      "brier_score": 0.065,
+      "log_loss": 0.2944,
+      "clv": 0.0351,
       "predicted_total": 11.5,
       "home_est_score": 4.0,
       "away_est_score": 7.5,
@@ -30932,7 +31093,12 @@
         4.4661480137228615
       ],
       "prediction_timestamp": "2026-08-22T10:15:13.058862-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -167,
+      "closing_home_ml": 144,
+      "closing_away_implied": 0.6041,
+      "closing_home_implied": 0.3959,
+      "edge_vs_close": 0.1409
     },
     {
       "game_pk": 823261,
@@ -30997,13 +31163,13 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
-      "clv": null,
+      "actual_winner": "Home",
+      "away_score": 5,
+      "home_score": 7,
+      "correct": true,
+      "brier_score": 0.1832,
+      "log_loss": 0.5586,
+      "clv": -0.0023,
       "predicted_total": 7.5,
       "home_est_score": 5.5,
       "away_est_score": 2.0,
@@ -31030,7 +31196,12 @@
         0.007868270156964225
       ],
       "prediction_timestamp": "2026-08-22T10:15:13.853735-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 119,
+      "closing_home_ml": -138,
+      "closing_away_implied": 0.4406,
+      "closing_home_implied": 0.5594,
+      "edge_vs_close": 0.0126
     }
   ]
 }
