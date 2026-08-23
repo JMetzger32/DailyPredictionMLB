@@ -32,7 +32,13 @@
     <div id="filter-bar" class="d-flex flex-wrap gap-2 d-none">
       <button class="btn btn-sm btn-primary filter-pill active" data-team="all">All Games</button>
     </div>
-    <div id="confidence-toggle-wrap" class="d-none ms-auto">
+    <div id="value-toggle-wrap" class="d-none ms-auto">
+      <button id="value-toggle" class="btn btn-sm btn-outline-success"
+              title="Show only games the model rates as a value bet — edge above +5pp, including high-edge (+12pp or more) games.">
+        💰 Value Bets Only <span id="value-count" class="badge bg-success ms-1">0</span>
+      </button>
+    </div>
+    <div id="confidence-toggle-wrap" class="d-none">
       <button id="confidence-toggle" class="btn btn-sm btn-outline-warning">
         ⚡ High Confidence Only (≥60%)
       </button>
@@ -341,6 +347,30 @@
   // (Refresh-baselines button removed — /api/refresh is now TRIGGER_SECRET-gated;
   //  baselines refresh automatically via the 5 AM daily job.)
 
+  // ── Value-bet filter state ────────────────────────────────────────
+  // "Value bet" here means bet_rating good OR extreme, i.e. edge > +5pp with no
+  // upper cut-off. bet_rating is the app's own _rate_edge output, so the UI can't
+  // drift if those thresholds move; model_edge is only a fallback for older
+  // entries that predate the stored rating.
+  let valueOnly = false;
+
+  function isValueBet(rating, edge) {
+    if (rating === "good" || rating === "extreme") return true;
+    if (!rating && edge !== "" && edge != null) return parseFloat(edge) > 0.05;
+    return false;
+  }
+
+  document.getElementById("value-toggle").addEventListener("click", () => {
+    valueOnly = !valueOnly;
+    const btn = document.getElementById("value-toggle");
+    btn.classList.toggle("btn-success", valueOnly);
+    btn.classList.toggle("btn-outline-success", !valueOnly);
+    btn.querySelector("#value-count").classList.toggle("bg-light", valueOnly);
+    btn.querySelector("#value-count").classList.toggle("text-dark", valueOnly);
+    btn.querySelector("#value-count").classList.toggle("bg-success", !valueOnly);
+    applyVisibility();
+  });
+
   // ── Confidence filter state ───────────────────────────────────────
   let confidenceOnly = false;
 
@@ -519,7 +549,8 @@
       const awayOddsStr = game.away_ml > 0 ? `+${game.away_ml}` : `${game.away_ml}`;
       const homeOddsStr = game.home_ml > 0 ? `+${game.home_ml}` : `${game.home_ml}`;
       const ratingsMap = {
-        good:   { cls: "bg-success text-white",       text: "✓ Value Bet" },
+        good:    { cls: "bg-success text-white",      text: "✓ Value Bet" },
+        extreme: { cls: "bg-info text-dark",          text: "★ High Edge"  },
         unsure: { cls: "bg-warning text-dark",         text: "~ Toss-Up"  },
         bad:    { cls: "bg-danger text-white",         text: "✗ No Value"  },
       };
@@ -632,10 +663,11 @@
       const matchup = col.querySelector(".matchup-label")?.textContent || "";
       const maxProb = parseFloat(col.dataset.maxProb || "0");
 
-      const passTeam = activeTeamFilter === "all" || matchup.includes(activeTeamFilter);
-      const passConf = !confidenceOnly || maxProb >= 0.60;
+      const passTeam  = activeTeamFilter === "all" || matchup.includes(activeTeamFilter);
+      const passConf  = !confidenceOnly || maxProb >= 0.60;
+      const passValue = !valueOnly || isValueBet(col.dataset.rating, col.dataset.edge);
 
-      col.classList.toggle("d-none", !(passTeam && passConf));
+      col.classList.toggle("d-none", !(passTeam && passConf && passValue));
     });
   }
 
@@ -738,6 +770,8 @@
         // Store max win prob on the column wrapper for confidence filter
         const col = grid.lastElementChild;
         col.dataset.maxProb = Math.max(game.home_win_prob || 0.5, game.away_win_prob || 0.5);
+        col.dataset.rating  = game.bet_rating || "";
+        col.dataset.edge    = game.model_edge != null ? game.model_edge : "";
         col.dataset.gamePk  = game.game_pk;
         // Arb badge + parlay checkbox wiring
         setupCardExtras(col, game);
@@ -754,6 +788,17 @@
 
       renderFilterPills(playable);
       document.getElementById("confidence-toggle-wrap").classList.remove("d-none");
+
+      // Surface the count up front — on a slate with no qualifying games the
+      // button would otherwise look broken when clicking it empties the grid.
+      const valueCount = playable.filter(g => isValueBet(g.bet_rating, g.model_edge)).length;
+      const valueBtn   = document.getElementById("value-toggle");
+      document.getElementById("value-count").textContent = valueCount;
+      valueBtn.disabled = valueCount === 0;
+      valueBtn.title = valueCount === 0
+        ? "No games today clear the +5pp value-bet threshold."
+        : `${valueCount} game${valueCount === 1 ? "" : "s"} with edge above +5pp (includes high-edge +12pp or more).`;
+      document.getElementById("value-toggle-wrap").classList.remove("d-none");
 
     } catch (e) {
       loading.classList.add("d-none");
