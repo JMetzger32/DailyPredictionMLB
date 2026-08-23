@@ -34,7 +34,7 @@
     </div>
     <div id="value-toggle-wrap" class="d-none ms-auto">
       <button id="value-toggle" class="btn btn-sm btn-outline-success"
-              title="Show only games the model rates as a value bet — edge above +5pp, including high-edge (+12pp or more) games.">
+              title="Show only games in the +5pp to +12pp value band.">
         💰 Value Bets Only <span id="value-count" class="badge bg-success ms-1">0</span>
       </button>
     </div>
@@ -348,15 +348,21 @@
   //  baselines refresh automatically via the 5 AM daily job.)
 
   // ── Value-bet filter state ────────────────────────────────────────
-  // "Value bet" here means bet_rating good OR extreme, i.e. edge > +5pp with no
-  // upper cut-off. bet_rating is the app's own _rate_edge output, so the UI can't
-  // drift if those thresholds move; model_edge is only a fallback for older
-  // entries that predate the stored rating.
+  // The value band is edge +5pp..+12pp — bet_rating "good" only. Games above +12pp
+  // are deliberately NOT included: they are the worst-performing tier out-of-sample
+  // (43.5% win, n=694), so surfacing them under a "Value Bets" button would invert
+  // the signal. They get the ⚠ Overconfident badge instead.
+  // Keying off bet_rating (the app's own _rate_edge output) keeps the UI from
+  // drifting if those thresholds move; model_edge is a fallback only for older
+  // entries predating the stored rating.
   let valueOnly = false;
 
   function isValueBet(rating, edge) {
-    if (rating === "good" || rating === "extreme") return true;
-    if (!rating && edge !== "" && edge != null) return parseFloat(edge) > 0.05;
+    if (rating) return rating === "good";
+    if (edge !== "" && edge != null) {
+      const e = parseFloat(edge);
+      return e > 0.05 && e <= 0.12;
+    }
     return false;
   }
 
@@ -549,14 +555,18 @@
       const awayOddsStr = game.away_ml > 0 ? `+${game.away_ml}` : `${game.away_ml}`;
       const homeOddsStr = game.home_ml > 0 ? `+${game.home_ml}` : `${game.home_ml}`;
       const ratingsMap = {
-        good:    { cls: "bg-success text-white",      text: "✓ Value Bet" },
-        extreme: { cls: "bg-info text-dark",          text: "★ High Edge"  },
-        unsure: { cls: "bg-warning text-dark",         text: "~ Toss-Up"  },
-        bad:    { cls: "bg-danger text-white",         text: "✗ No Value"  },
+        good:    { cls: "bg-success text-white", text: "✓ Value Bet",
+                   tip: "Edge +5pp to +12pp — the band the betting system sizes with quarter-Kelly. Roughly break-even out-of-sample, not a guaranteed winner." },
+        extreme: { cls: "bg-warning text-dark",  text: "⚠ Overconfident",
+                   tip: "Edge above +12pp. Historically the WORST tier, not the best: 43.5% win rate out-of-sample (n=694, 95% CI [39.9, 47.2]) — the model is overconfident here, not finding value. Excluded from value bets and Kelly sizing." },
+        unsure:  { cls: "bg-secondary text-white", text: "~ Toss-Up",
+                   tip: "Edge within ±5pp — no meaningful disagreement with the market." },
+        bad:     { cls: "bg-danger text-white",  text: "✗ No Value",
+                   tip: "Edge below −5pp — the market rates this side higher than the model does." },
       };
       const rating = game.bet_rating ? ratingsMap[game.bet_rating] : null;
       const badgeHtml = rating
-        ? `<span class="badge bet-badge ${rating.cls}">${rating.text}</span>`
+        ? `<span class="badge bet-badge ${rating.cls}" data-bs-toggle="tooltip" title="${rating.tip}">${rating.text}</span>`
         : `<span class="text-muted" style="font-size:0.72rem;">—</span>`;
       oddsRow.innerHTML = `
         <span class="odds-tag">${awayOddsStr}</span>
@@ -796,8 +806,8 @@
       document.getElementById("value-count").textContent = valueCount;
       valueBtn.disabled = valueCount === 0;
       valueBtn.title = valueCount === 0
-        ? "No games today clear the +5pp value-bet threshold."
-        : `${valueCount} game${valueCount === 1 ? "" : "s"} with edge above +5pp (includes high-edge +12pp or more).`;
+        ? "No games today fall in the +5pp to +12pp value band."
+        : `${valueCount} game${valueCount === 1 ? "" : "s"} in the +5pp to +12pp value band. Games above +12pp are flagged ⚠ Overconfident, not value.`;
       document.getElementById("value-toggle-wrap").classList.remove("d-none");
 
     } catch (e) {
