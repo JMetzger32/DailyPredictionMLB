@@ -31598,6 +31598,107 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 824071,
+      "date": "2026-08-23",
+      "game_type": "R",
+      "away_team": "DET",
+      "away_team_name": "Detroit Tigers",
+      "home_team": "KCA",
+      "home_team_name": "Kansas City Royals",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.497,
+      "home_win_prob": 0.503,
+      "confidence": 0.003,
+      "calibration_bucket": "50-60%",
+      "away_ml": 270,
+      "home_ml": -442,
+      "away_implied": 0.2489,
+      "home_implied": 0.7511,
+      "bet_rating": "bad",
+      "predicted_team_ml": -442,
+      "model_edge": -0.2481,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": 317,
+          "home_ml": -385
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 200,
+          "home_ml": -260
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 725,
+          "home_ml": -1667
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 210,
+          "home_ml": -275
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": 190,
+          "home_ml": -286
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 150,
+          "home_ml": -200
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": 165,
+          "home_ml": -185
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 200,
+          "home_ml": -275
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 22.97
+      },
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.5,
+      "home_est_score": 5.9,
+      "away_est_score": 1.6,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.23007377530695813,
+        -0.06624889296578976,
+        0.2606703264962343,
+        2.5165427809216054,
+        -2.487462917548572,
+        -0.6835039713331411,
+        -0.5156979999742793,
+        -0.6231036699146582,
+        -0.8650939688091767,
+        1.588493288073666,
+        1.0717977610704181,
+        0.05205115574568861,
+        -0.033909915571940265,
+        -0.7484293241977075,
+        1.3576085112270158,
+        0.12123190125507827,
+        0.44316659207779957,
+        -0.14982008090163645
+      ],
+      "prediction_timestamp": "2026-08-23T10:15:05.256549-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 824558,
       "date": "2026-08-23",
       "game_type": "R",
