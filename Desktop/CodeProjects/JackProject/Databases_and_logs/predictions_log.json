@@ -81097,7 +81097,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.4186,
       "predicted_total": 8.8,
       "home_est_score": 3.4,
       "away_est_score": 5.3,
@@ -81124,7 +81124,12 @@
         -0.9525971408363325
       ],
       "prediction_timestamp": "2026-08-23T10:15:13.853386-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -1264,
+      "closing_home_ml": 699,
+      "closing_away_implied": 0.881,
+      "closing_home_implied": 0.119,
+      "edge_vs_close": 0.449
     }
   ]
 }
