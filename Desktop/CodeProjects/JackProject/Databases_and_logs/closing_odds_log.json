@@ -2797,46 +2797,52 @@
       "home_implied": 0.9322
     },
     "BOS|MIA": {
-      "away_ml": -135,
-      "home_ml": 117,
-      "away_implied": 0.5549,
-      "home_implied": 0.4451
+      "away_ml": -134,
+      "home_ml": 116,
+      "away_implied": 0.553,
+      "home_implied": 0.447
     },
     "TBA|DET": {
-      "away_ml": -130,
-      "home_ml": 113,
-      "away_implied": 0.5463,
-      "home_implied": 0.4537
+      "away_ml": -138,
+      "home_ml": 119,
+      "away_implied": 0.5594,
+      "home_implied": 0.4406
     },
     "COL|WAS": {
-      "away_ml": 162,
+      "away_ml": 161,
       "home_ml": -189,
-      "away_implied": 0.3685,
-      "home_implied": 0.6315
+      "away_implied": 0.3694,
+      "home_implied": 0.6306
     },
     "TEX|CHA": {
-      "away_ml": 110,
-      "home_ml": -130,
-      "away_implied": 0.4573,
-      "home_implied": 0.5427
+      "away_ml": 111,
+      "home_ml": -128,
+      "away_implied": 0.4578,
+      "home_implied": 0.5422
     },
     "CLE|ANA": {
-      "away_ml": -156,
-      "home_ml": 136,
-      "away_implied": 0.5898,
-      "home_implied": 0.4102
+      "away_ml": -158,
+      "home_ml": 137,
+      "away_implied": 0.5921,
+      "home_implied": 0.4079
     },
     "CHN|ARI": {
-      "away_ml": -143,
-      "home_ml": 123,
-      "away_implied": 0.5675,
-      "home_implied": 0.4325
+      "away_ml": -144,
+      "home_ml": 124,
+      "away_implied": 0.5693,
+      "home_implied": 0.4307
     },
     "CIN|SFN": {
-      "away_ml": -147,
-      "home_ml": 127,
-      "away_implied": 0.5746,
-      "home_implied": 0.4254
+      "away_ml": -149,
+      "home_ml": 128,
+      "away_implied": 0.577,
+      "home_implied": 0.423
+    },
+    "ATL|MIL": {
+      "away_ml": -1264,
+      "home_ml": 699,
+      "away_implied": 0.881,
+      "home_implied": 0.119
     }
   }
 }
