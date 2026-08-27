@@ -3026,15 +3026,15 @@
     },
     "HOU|NYA": {
       "away_ml": 130,
-      "home_ml": -150,
-      "away_implied": 0.4202,
-      "home_implied": 0.5798
+      "home_ml": -151,
+      "away_implied": 0.4195,
+      "home_implied": 0.5805
     },
     "KCA|TOR": {
-      "away_ml": 137,
-      "home_ml": -155,
-      "away_implied": 0.4097,
-      "home_implied": 0.5903
+      "away_ml": 4000,
+      "home_ml": -10000,
+      "away_implied": 0.024,
+      "home_implied": 0.976
     },
     "MIL|NYN": {
       "away_ml": -215,
@@ -3049,10 +3049,10 @@
       "home_implied": 0.4666
     },
     "TEX|CHA": {
-      "away_ml": 107,
-      "home_ml": -122,
-      "away_implied": 0.4678,
-      "home_implied": 0.5322
+      "away_ml": 388,
+      "home_ml": -571,
+      "away_implied": 0.1941,
+      "home_implied": 0.8059
     }
   }
 }
