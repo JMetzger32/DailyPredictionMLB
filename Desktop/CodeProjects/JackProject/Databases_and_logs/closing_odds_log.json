@@ -3235,10 +3235,10 @@
   },
   "2026-08-29": {
     "ARI|SFN": {
-      "away_ml": -125,
-      "home_ml": 110,
-      "away_implied": 0.5385,
-      "home_implied": 0.4615
+      "away_ml": -127,
+      "home_ml": 112,
+      "away_implied": 0.5426,
+      "home_implied": 0.4574
     },
     "KCA|CLE": {
       "away_ml": 162,
@@ -3247,58 +3247,58 @@
       "home_implied": 0.6323
     },
     "HOU|NYN": {
-      "away_ml": 2417,
-      "home_ml": -8167,
-      "away_implied": 0.0387,
-      "home_implied": 0.9613
+      "away_ml": 104,
+      "home_ml": -120,
+      "away_implied": 0.4733,
+      "home_implied": 0.5267
     },
     "SDN|TBA": {
-      "away_ml": 145,
+      "away_ml": 144,
       "home_ml": -168,
-      "away_implied": 0.3943,
-      "home_implied": 0.6057
+      "away_implied": 0.3953,
+      "home_implied": 0.6047
     },
     "COL|ATL": {
-      "away_ml": 190,
-      "home_ml": -224,
-      "away_implied": 0.3328,
-      "home_implied": 0.6672
+      "away_ml": 189,
+      "home_ml": -223,
+      "away_implied": 0.3339,
+      "home_implied": 0.6661
     },
     "BOS|NYA": {
-      "away_ml": 123,
-      "home_ml": -140,
-      "away_implied": 0.4346,
-      "home_implied": 0.5654
+      "away_ml": 1408,
+      "home_ml": -4650,
+      "away_implied": 0.0634,
+      "home_implied": 0.9366
     },
     "TEX|MIL": {
-      "away_ml": 142,
-      "home_ml": -166,
-      "away_implied": 0.3984,
-      "home_implied": 0.6016
+      "away_ml": 144,
+      "home_ml": -167,
+      "away_implied": 0.3959,
+      "home_implied": 0.6041
     },
     "PHI|ANA": {
-      "away_ml": -188,
+      "away_ml": -189,
       "home_ml": 160,
-      "away_implied": 0.6292,
-      "home_implied": 0.3708
+      "away_implied": 0.6297,
+      "home_implied": 0.3703
     },
     "SEA|TOR": {
-      "away_ml": -132,
-      "home_ml": 114,
-      "away_implied": 0.5491,
-      "home_implied": 0.4509
+      "away_ml": -134,
+      "home_ml": 116,
+      "away_implied": 0.553,
+      "home_implied": 0.447
     },
     "LAN|DET": {
-      "away_ml": -163,
-      "home_ml": 138,
-      "away_implied": 0.596,
-      "home_implied": 0.404
+      "away_ml": -160,
+      "home_ml": 139,
+      "away_implied": 0.5953,
+      "home_implied": 0.4047
     },
     "CIN|CHN": {
-      "away_ml": 122,
-      "home_ml": -141,
-      "away_implied": 0.435,
-      "home_implied": 0.565
+      "away_ml": 121,
+      "home_ml": -140,
+      "away_implied": 0.4368,
+      "home_implied": 0.5632
     }
   }
 }
