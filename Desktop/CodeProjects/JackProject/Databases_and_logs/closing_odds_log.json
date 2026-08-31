@@ -3309,58 +3309,58 @@
       "home_implied": 0.031
     },
     "CIN|CHN": {
-      "away_ml": 137,
-      "home_ml": -156,
-      "away_implied": 0.4091,
-      "home_implied": 0.5909
+      "away_ml": -637,
+      "home_ml": 412,
+      "away_implied": 0.8157,
+      "home_implied": 0.1843
     },
     "SFN|ATL": {
-      "away_ml": 138,
-      "home_ml": -159,
-      "away_implied": 0.4063,
-      "home_implied": 0.5937
+      "away_ml": 130,
+      "home_ml": -150,
+      "away_implied": 0.4202,
+      "home_implied": 0.5798
     },
     "SDN|CIN": {
-      "away_ml": -143,
-      "home_ml": 123,
-      "away_implied": 0.5675,
-      "home_implied": 0.4325
+      "away_ml": -145,
+      "home_ml": 125,
+      "away_implied": 0.5711,
+      "home_implied": 0.4289
     },
     "NYN|TBA": {
-      "away_ml": 143,
-      "home_ml": -166,
-      "away_implied": 0.3974,
-      "home_implied": 0.6026
+      "away_ml": 142,
+      "home_ml": -165,
+      "away_implied": 0.3989,
+      "home_implied": 0.6011
     },
     "SEA|BOS": {
-      "away_ml": 139,
-      "home_ml": -161,
-      "away_implied": 0.4042,
-      "home_implied": 0.5958
+      "away_ml": 142,
+      "home_ml": -166,
+      "away_implied": 0.3984,
+      "home_implied": 0.6016
     },
     "MIA|WAS": {
-      "away_ml": -119,
-      "home_ml": 103,
-      "away_implied": 0.5245,
-      "home_implied": 0.4755
+      "away_ml": -120,
+      "home_ml": 104,
+      "away_implied": 0.5267,
+      "home_implied": 0.4733
     },
     "MIL|CHN": {
-      "away_ml": -107,
-      "home_ml": -109,
-      "away_implied": 0.4978,
-      "home_implied": 0.5022
+      "away_ml": -105,
+      "home_ml": -111,
+      "away_implied": 0.4933,
+      "home_implied": 0.5067
     },
     "DET|MIN": {
-      "away_ml": 114,
-      "home_ml": -131,
-      "away_implied": 0.4518,
-      "home_implied": 0.5482
+      "away_ml": 115,
+      "home_ml": -133,
+      "away_implied": 0.449,
+      "home_implied": 0.551
     },
     "CHA|HOU": {
       "away_ml": 112,
-      "home_ml": -128,
-      "away_implied": 0.4566,
-      "home_implied": 0.5434
+      "home_ml": -129,
+      "away_implied": 0.4557,
+      "home_implied": 0.5443
     },
     "BAL|COL": {
       "away_ml": -140,
@@ -3369,10 +3369,10 @@
       "home_implied": 0.4402
     },
     "NYA|ANA": {
-      "away_ml": -143,
+      "away_ml": -140,
       "home_ml": 121,
-      "away_implied": 0.5653,
-      "home_implied": 0.4347
+      "away_implied": 0.5632,
+      "home_implied": 0.4368
     }
   }
 }
