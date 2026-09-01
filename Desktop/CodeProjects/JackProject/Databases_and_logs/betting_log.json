@@ -41194,5 +41194,1125 @@
       "closing_home_implied": 0.5909,
       "edge_vs_close": 0.0661
     }
+  ],
+  "2026-08-31": [
+    {
+      "game_pk": 824911,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "SFN",
+      "away_team_name": "San Francisco Giants",
+      "home_team": "ATL",
+      "home_team_name": "Atlanta Braves",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.406,
+      "home_win_prob": 0.594,
+      "confidence": 0.094,
+      "calibration_bucket": "50-60%",
+      "away_ml": 166,
+      "home_ml": -191,
+      "away_implied": 0.3642,
+      "home_implied": 0.6358,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -191,
+      "model_edge": -0.0418,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 170,
+          "home_ml": -184
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 165,
+          "home_ml": -200
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 157,
+          "home_ml": -186
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 166,
+          "home_ml": -202
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 175,
+          "home_ml": -195
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 175,
+          "home_ml": -195
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 165,
+          "home_ml": -200
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 167,
+          "home_ml": -182
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": "Away",
+      "away_score": 7,
+      "home_score": 3,
+      "correct": false,
+      "brier_score": 0.3528,
+      "log_loss": 0.9014,
+      "clv": 0.1037,
+      "predicted_total": 13.8,
+      "home_est_score": 9.5,
+      "away_est_score": 4.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.11840593693231555,
+        -0.13640144987174593,
+        0.13577914141283282,
+        0.8431076691391711,
+        -0.47605639252220355,
+        -0.2842953938909166,
+        1.0711055146270483,
+        0.6685605244601951,
+        -0.12821062466340846,
+        0.8147714903826627,
+        -0.8666611171774282,
+        0.2911960519592662,
+        -0.033909915571940265,
+        -2.080724178464305,
+        -7.486218165365056,
+        0.3911070497193541,
+        -0.23608018649427773,
+        -0.03382275116178604
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:01.693745-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 264,
+      "closing_home_ml": -354,
+      "closing_away_implied": 0.2605,
+      "closing_home_implied": 0.7395,
+      "edge_vs_close": -0.1455
+    },
+    {
+      "game_pk": 824473,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "SDN",
+      "away_team_name": "San Diego Padres",
+      "home_team": "CIN",
+      "home_team_name": "Cincinnati Reds",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.5,
+      "home_win_prob": 0.5,
+      "confidence": 0.0,
+      "calibration_bucket": "50-60%",
+      "away_ml": -146,
+      "home_ml": 128,
+      "away_implied": 0.575,
+      "home_implied": 0.425,
+      "bet_rating": "good",
+      "predicted_team_ml": 128,
+      "model_edge": 0.075,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -138,
+          "home_ml": 128
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -146,
+          "home_ml": 132
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -146,
+          "home_ml": 132
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -150,
+          "home_ml": 125
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -147,
+          "home_ml": 125
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -150,
+          "home_ml": 126
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -140,
+          "home_ml": 130
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -155,
+          "home_ml": 125
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0209,
+      "predicted_total": 8.7,
+      "home_est_score": 3.2,
+      "away_est_score": 5.6,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.16177527402844846,
+        -0.3736253904327976,
+        0.030515666094503832,
+        -0.5085129980697177,
+        1.1305778341925705,
+        -0.5695471030247676,
+        0.12301023691090836,
+        -0.6231036699146574,
+        0.1788241020639944,
+        0.42791059153716177,
+        1.3271839551918403,
+        0.9913015389525878,
+        -0.033909915571940265,
+        1.1012045137443918,
+        -0.06579535132619808,
+        0.12937096507063395,
+        0.16899789671760196,
+        0.3805861908409302
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:02.592762-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -134,
+      "closing_home_ml": 117,
+      "closing_away_implied": 0.5541,
+      "closing_home_implied": 0.4459,
+      "edge_vs_close": 0.0541
+    },
+    {
+      "game_pk": 822932,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "NYN",
+      "away_team_name": "New York Mets",
+      "home_team": "TBA",
+      "home_team_name": "Tampa Bay Rays",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.321,
+      "home_win_prob": 0.679,
+      "confidence": 0.179,
+      "calibration_bucket": "60-70%",
+      "away_ml": 150,
+      "home_ml": -172,
+      "away_implied": 0.3875,
+      "home_implied": 0.6125,
+      "bet_rating": "good",
+      "predicted_team_ml": -172,
+      "model_edge": 0.0665,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 156,
+          "home_ml": -168
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 145,
+          "home_ml": -175
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 153,
+          "home_ml": -169
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 153,
+          "home_ml": -169
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 148,
+          "home_ml": -175
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 147,
+          "home_ml": -179
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 155,
+          "home_ml": -170
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 145,
+          "home_ml": -180
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": -0.0703,
+      "predicted_total": 10.1,
+      "home_est_score": 4.9,
+      "away_est_score": 5.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.04721666764227328,
+        -0.8449008180637668,
+        -1.0028772694216503,
+        -1.0877789983020991,
+        0.12012332131816897,
+        -0.8648405288564607,
+        -0.5791721860766413,
+        0.58244957816854,
+        -1.3256460589002812,
+        -0.3458112061538415,
+        -0.7246842557250078,
+        -0.5814302089494078,
+        -0.033909915571940265,
+        -1.1621535398359282,
+        0.6720427245173257,
+        1.122918112269522,
+        -4.315031115898426,
+        -4.510619752904035
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:03.580567-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 111,
+      "closing_home_ml": -128,
+      "closing_away_implied": 0.4578,
+      "closing_home_implied": 0.5422,
+      "edge_vs_close": 0.1368
+    },
+    {
+      "game_pk": 824719,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "SEA",
+      "away_team_name": "Seattle Mariners",
+      "home_team": "BOS",
+      "home_team_name": "Boston Red Sox",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.596,
+      "home_win_prob": 0.404,
+      "confidence": 0.096,
+      "calibration_bucket": "50-60%",
+      "away_ml": 144,
+      "home_ml": -164,
+      "away_implied": 0.3975,
+      "home_implied": 0.6025,
+      "bet_rating": "extreme",
+      "predicted_team_ml": 144,
+      "model_edge": 0.1985,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 146,
+          "home_ml": -158
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 145,
+          "home_ml": -160
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 145,
+          "home_ml": -160
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 140,
+          "home_ml": -170
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 142,
+          "home_ml": -169
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 143,
+          "home_ml": -174
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 140,
+          "home_ml": -170
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 150,
+          "home_ml": -160
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0145,
+      "predicted_total": 8.3,
+      "home_est_score": 4.6,
+      "away_est_score": 3.7,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.1168796291664399,
+        -0.7249877770601965,
+        -1.8752188067785267,
+        -0.1866985534961727,
+        -0.1614562565421023,
+        1.0300027877500977,
+        -0.3156868241529642,
+        -0.5944000211507734,
+        0.2095275747367346,
+        -0.3458112061538415,
+        0.1205444761122225,
+        -0.08920887666764406,
+        -0.033909915571940265,
+        -0.6771482426401452,
+        -0.025154697576032482,
+        0.18111215646952253,
+        0.9215909654813429,
+        0.9941372295053043
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:04.388733-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 136,
+      "closing_home_ml": -153,
+      "closing_away_implied": 0.412,
+      "closing_home_implied": 0.588,
+      "edge_vs_close": 0.184
+    },
+    {
+      "game_pk": 822689,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "MIA",
+      "away_team_name": "Miami Marlins",
+      "home_team": "WAS",
+      "home_team_name": "Washington Nationals",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.55,
+      "home_win_prob": 0.45,
+      "confidence": 0.05,
+      "calibration_bucket": "50-60%",
+      "away_ml": -108,
+      "home_ml": -106,
+      "away_implied": 0.5023,
+      "home_implied": 0.4977,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -108,
+      "model_edge": 0.0477,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -104,
+          "home_ml": -104
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -108,
+          "home_ml": -102
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -105,
+          "home_ml": -102
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 8.6,
+      "home_est_score": 4.2,
+      "away_est_score": 4.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.3633806502809725,
+        -0.9800944774911703,
+        0.9029115575205713,
+        0.006390113247954216,
+        2.288430158461162,
+        0.36817234333507426,
+        -1.1490642405736606,
+        -0.22125258722025973,
+        -0.005396733972447652,
+        -1.1195330038448443,
+        -0.5049242026263084,
+        -1.000931677345559,
+        -0.033909915571940265,
+        0.16793674489796137,
+        0.1346051137177219,
+        -0.26479226828269914,
+        -0.33684334622196177,
+        -0.34764728495697256
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:05.183650-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
+      "game_pk": 823663,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "DET",
+      "away_team_name": "Detroit Tigers",
+      "home_team": "MIN",
+      "home_team_name": "Minnesota Twins",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.458,
+      "home_win_prob": 0.542,
+      "confidence": 0.042,
+      "calibration_bucket": "50-60%",
+      "away_ml": 112,
+      "home_ml": -128,
+      "away_implied": 0.4566,
+      "home_implied": 0.5434,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -128,
+      "model_edge": -0.0014,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 112,
+          "home_ml": -122
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 113,
+          "home_ml": -125
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 113,
+          "home_ml": -125
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 111,
+          "home_ml": -130
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 108,
+          "home_ml": -130
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 110,
+          "home_ml": -130
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 110,
+          "home_ml": -135
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 110,
+          "home_ml": -121
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 5.1,
+      "home_est_score": 3.1,
+      "away_est_score": 2.0,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.6147524969155189,
+        0.5624203850935728,
+        0.7948040571581905,
+        0.5212932245656262,
+        -0.6291665285934259,
+        0.14282693689300335,
+        -0.061116267141948094,
+        0.38152403682133973,
+        0.3937484107731758,
+        0.8147714903826629,
+        0.5716118394545472,
+        -0.15037728453483556,
+        -0.033909915571940265,
+        -0.33029596949407014,
+        0.034545021381107356,
+        0.3008726668984116,
+        -0.8577638674063366,
+        -0.7920417288493933
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:06.182894-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
+      "game_pk": 824635,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "MIL",
+      "away_team_name": "Milwaukee Brewers",
+      "home_team": "CHN",
+      "home_team_name": "Chicago Cubs",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.484,
+      "home_win_prob": 0.516,
+      "confidence": 0.016,
+      "calibration_bucket": "50-60%",
+      "away_ml": 107,
+      "home_ml": -124,
+      "away_implied": 0.466,
+      "home_implied": 0.534,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -124,
+      "model_edge": -0.018,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 108,
+          "home_ml": -126
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 105,
+          "home_ml": -125
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 110,
+          "home_ml": -121
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 104,
+          "home_ml": -125
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 107,
+          "home_ml": -128
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0012,
+      "predicted_total": 5.7,
+      "home_est_score": 3.9,
+      "away_est_score": 1.8,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.10839443511996208,
+        -0.27527049913852936,
+        1.5384513285962433,
+        1.6154623361156792,
+        0.826329084563399,
+        -0.6916067694993998,
+        1.8659734679737627,
+        -0.7379182649702011,
+        0.056010211373032755,
+        0.04104969269165991,
+        1.1970070211011388,
+        -0.3616550657996403,
+        -0.033909915571940265,
+        -0.38320563827906495,
+        0.13040090815736002,
+        -1.464141457674921,
+        0.030542705560701135,
+        0.10534834172046366
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:06.989156-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 108,
+      "closing_home_ml": -124,
+      "closing_away_implied": 0.4648,
+      "closing_home_implied": 0.5352,
+      "edge_vs_close": -0.0192
+    },
+    {
+      "game_pk": 824149,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "CHA",
+      "away_team_name": "Chicago White Sox",
+      "home_team": "HOU",
+      "home_team_name": "Houston Astros",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.422,
+      "home_win_prob": 0.578,
+      "confidence": 0.078,
+      "calibration_bucket": "50-60%",
+      "away_ml": 115,
+      "home_ml": -130,
+      "away_implied": 0.4514,
+      "home_implied": 0.5486,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -130,
+      "model_edge": 0.0294,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 116,
+          "home_ml": -126
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 115,
+          "home_ml": -127
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 115,
+          "home_ml": -127
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 110,
+          "home_ml": -130
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 110,
+          "home_ml": -135
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 117,
+          "home_ml": -127
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 111,
+          "home_ml": -133
+        },
+        {
+          "name": "BetUS",
+          "away_ml": 116,
+          "home_ml": -127
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0028,
+      "predicted_total": 7.0,
+      "home_est_score": 3.7,
+      "away_est_score": 3.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.47427956519134673,
+        0.29980075145948004,
+        0.3222042252521203,
+        0.07075300216266328,
+        -0.6010290220910733,
+        -1.0703134891522368,
+        -0.4599600318421583,
+        -0.24995623598414374,
+        -1.110721750191099,
+        0.8147714903826629,
+        -0.541922164526255,
+        0.028739778986669417,
+        -0.033909915571940265,
+        -0.30971998718879445,
+        0.04491539509666683,
+        0.07762977367174512,
+        -0.5849660155229405,
+        -0.6085498294357478
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:08.592328-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 116,
+      "closing_home_ml": -132,
+      "closing_away_implied": 0.4486,
+      "closing_home_implied": 0.5514,
+      "edge_vs_close": 0.0266
+    },
+    {
+      "game_pk": 824314,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "BAL",
+      "away_team_name": "Baltimore Orioles",
+      "home_team": "COL",
+      "home_team_name": "Colorado Rockies",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.544,
+      "home_win_prob": 0.456,
+      "confidence": 0.044,
+      "calibration_bucket": "50-60%",
+      "away_ml": -134,
+      "home_ml": 118,
+      "away_implied": 0.5552,
+      "home_implied": 0.4448,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -134,
+      "model_edge": -0.0112,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -128,
+          "home_ml": 120
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -130,
+          "home_ml": 118
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -130,
+          "home_ml": 118
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -137,
+          "home_ml": 116
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -140,
+          "home_ml": 117
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -130,
+          "home_ml": 121
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -130,
+          "home_ml": 120
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -140,
+          "home_ml": 115
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0083,
+      "predicted_total": 9.4,
+      "home_est_score": 4.2,
+      "away_est_score": 5.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.945232308629245,
+        -0.5849747555781288,
+        -0.23014265447250065,
+        0.39256744673620836,
+        -0.315930819748239,
+        0.6238135494785418,
+        1.9985591100682298,
+        -1.225880293956256,
+        1.0692248095734636,
+        -0.7326721049993432,
+        1.599725598680971,
+        -0.4445583366161435,
+        -0.033909915571940265,
+        1.594293232560104,
+        0.5429736138142136,
+        1.1548930058306335,
+        0.7036268526699863,
+        0.6959628929581322
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:09.394351-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -142,
+      "closing_home_ml": 120,
+      "closing_away_implied": 0.5635,
+      "closing_home_implied": 0.4365,
+      "edge_vs_close": -0.0195
+    },
+    {
+      "game_pk": 823982,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "NYA",
+      "away_team_name": "New York Yankees",
+      "home_team": "ANA",
+      "home_team_name": "Los Angeles Angels",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.474,
+      "home_win_prob": 0.526,
+      "confidence": 0.026,
+      "calibration_bucket": "50-60%",
+      "away_ml": -124,
+      "home_ml": 109,
+      "away_implied": 0.5364,
+      "home_implied": 0.4636,
+      "bet_rating": "good",
+      "predicted_team_ml": 109,
+      "model_edge": 0.0624,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -118,
+          "home_ml": 110
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -125,
+          "home_ml": 107
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -128,
+          "home_ml": 107
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -125,
+          "home_ml": 105
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -119,
+          "home_ml": 111
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -121,
+          "home_ml": 110
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -130,
+          "home_ml": 105
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -134,
+          "home_ml": 114
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": -0.0838,
+      "predicted_total": 7.3,
+      "home_est_score": 3.1,
+      "away_est_score": 4.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -1.1599541662354993,
+        -2.6020450498009873,
+        -1.1621602552792016,
+        -2.053222332022734,
+        1.041762700512407,
+        1.2920138707882203,
+        1.2022756683919766,
+        -0.852732860025744,
+        2.021032462428413,
+        -2.2801157003813497,
+        1.114685184174435,
+        0.14320025080219626,
+        -0.033909915571940265,
+        -1.1033650189637123,
+        0.01688735802758708,
+        -0.07584971542158814,
+        -2.4081878396682534,
+        -2.5151453467806495
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:10.291881-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -180,
+      "closing_home_ml": 154,
+      "closing_away_implied": 0.6202,
+      "closing_home_implied": 0.3798,
+      "edge_vs_close": 0.1462
+    },
+    {
+      "game_pk": 825040,
+      "date": "2026-08-31",
+      "game_type": "R",
+      "away_team": "PHI",
+      "away_team_name": "Philadelphia Phillies",
+      "home_team": "ARI",
+      "home_team_name": "Arizona Diamondbacks",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.507,
+      "home_win_prob": 0.493,
+      "confidence": 0.007,
+      "calibration_bucket": "50-60%",
+      "away_ml": -121,
+      "home_ml": 106,
+      "away_implied": 0.53,
+      "home_implied": 0.47,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -121,
+      "model_edge": -0.023,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -116,
+          "home_ml": 106
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -122,
+          "home_ml": 104
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -124,
+          "home_ml": 104
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": -125,
+          "home_ml": 105
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -118,
+          "home_ml": 110
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -115,
+          "home_ml": 105
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -130,
+          "home_ml": 105
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -119,
+          "home_ml": 108
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": 0.0249,
+      "predicted_total": 8.8,
+      "home_est_score": 4.4,
+      "away_est_score": 4.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.4466067638332091,
+        -0.278512922756281,
+        -1.4356182567517781,
+        -0.3797872202402998,
+        -0.38106861116729485,
+        0.050107669858985036,
+        0.33092595061395247,
+        -0.4508817773313449,
+        0.6086727194823585,
+        -0.3458112061538415,
+        -0.15554474796042023,
+        -0.013198354954293797,
+        -0.033909915571940265,
+        -0.6036625915498752,
+        0.07434483401920054,
+        -0.3729255446893657,
+        0.7721690265100359,
+        0.4665980186910756
+      ],
+      "prediction_timestamp": "2026-08-31T10:15:11.182645-04:00",
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -135,
+      "closing_home_ml": 117,
+      "closing_away_implied": 0.5549,
+      "closing_home_implied": 0.4451,
+      "edge_vs_close": -0.0479
+    }
   ]
 }
