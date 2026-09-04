@@ -95388,14 +95388,40 @@
       "home_win_prob": 0.481,
       "confidence": 0.019,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": 138,
+      "home_ml": -156,
+      "away_implied": 0.4081,
+      "home_implied": 0.5919,
+      "bet_rating": "good",
+      "predicted_team_ml": 138,
+      "model_edge": 0.1109,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 134,
+          "home_ml": -158
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 134,
+          "home_ml": -160
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 140,
+          "home_ml": -155
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 140,
+          "home_ml": -155
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 143,
+          "home_ml": -153
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -95543,14 +95569,35 @@
       "home_win_prob": 0.411,
       "confidence": 0.089,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": -140,
+      "home_ml": 122,
+      "away_implied": 0.5643,
+      "home_implied": 0.4357,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -140,
+      "model_edge": 0.0247,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -142,
+          "home_ml": 120
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -142,
+          "home_ml": 119
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -138,
+          "home_ml": 125
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -138,
+          "home_ml": 125
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -95894,14 +95941,35 @@
       "home_win_prob": 0.508,
       "confidence": 0.008,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": 108,
+      "home_ml": -122,
+      "away_implied": 0.4666,
+      "home_implied": 0.5334,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -122,
+      "model_edge": -0.0254,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 106,
+          "home_ml": -124
+        },
+        {
+          "name": "Bovada",
+          "away_ml": 106,
+          "home_ml": -126
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -95951,14 +96019,35 @@
       "home_win_prob": 0.528,
       "confidence": 0.028,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": -107,
+      "home_ml": -107,
+      "away_implied": 0.5,
+      "home_implied": 0.5,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -107,
+      "model_edge": 0.028,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -108,
+          "home_ml": -108
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -105,
+          "home_ml": -105
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -105,
+          "home_ml": -105
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -96106,14 +96195,35 @@
       "home_win_prob": 0.533,
       "confidence": 0.033,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": -104,
+      "home_ml": -110,
+      "away_implied": 0.4932,
+      "home_implied": 0.5068,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -110,
+      "model_edge": 0.0262,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -106,
+          "home_ml": -110
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -108,
+          "home_ml": -112
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -102,
+          "home_ml": -108
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -102,
+          "home_ml": -108
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -96261,14 +96371,35 @@
       "home_win_prob": 0.455,
       "confidence": 0.045,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": -104,
+      "home_ml": -111,
+      "away_implied": 0.4922,
+      "home_implied": 0.5078,
+      "bet_rating": "good",
+      "predicted_team_ml": -104,
+      "model_edge": 0.0528,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -102,
+          "home_ml": -116
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -103,
+          "home_ml": -117
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -105,
+          "home_ml": -105
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -105,
+          "home_ml": -105
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
