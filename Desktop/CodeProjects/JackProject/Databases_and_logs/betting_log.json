@@ -49858,6 +49858,104 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 823253,
+      "date": "2026-09-06",
+      "game_type": "R",
+      "away_team": "NYA",
+      "away_team_name": "New York Yankees",
+      "home_team": "SDN",
+      "home_team_name": "San Diego Padres",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.514,
+      "home_win_prob": 0.486,
+      "confidence": 0.014,
+      "calibration_bucket": "50-60%",
+      "away_ml": -108,
+      "home_ml": -108,
+      "away_implied": 0.5,
+      "home_implied": 0.5,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -108,
+      "model_edge": 0.014,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": -110,
+          "home_ml": -110
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -106,
+          "home_ml": -104
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -106,
+          "home_ml": -104
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -106,
+          "home_ml": -109
+        },
+        {
+          "name": "Caesars",
+          "away_ml": -105,
+          "home_ml": -105
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": -110,
+          "home_ml": -106
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -107,
+          "home_ml": -113
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -110,
+          "home_ml": -110
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.6,
+      "home_est_score": 3.4,
+      "away_est_score": 4.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.27586495395361155,
+        -1.0287404341062982,
+        -1.4257364167595616,
+        -1.0234161093873904,
+        -1.7188394418752202,
+        0.4605005961154614,
+        1.425996949161108,
+        0.6685605244601951,
+        0.3937484107731766,
+        -0.7326721049993434,
+        0.7125220459953725,
+        -0.275822206036581,
+        -0.033909915571940265,
+        -0.12600585946311946,
+        0.005676143199955181,
+        -1.6211091169749208,
+        0.2923738096296906,
+        0.4952686279744576
+      ],
+      "prediction_timestamp": "2026-09-06T10:15:12.678599-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 824552,
       "date": "2026-09-06",
       "game_type": "R",
