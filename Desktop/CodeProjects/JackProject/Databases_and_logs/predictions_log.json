@@ -100774,7 +100774,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.036,
       "predicted_total": 6.3,
       "home_est_score": 2.8,
       "away_est_score": 3.6,
@@ -100801,7 +100801,12 @@
         0.9654666202219223
       ],
       "prediction_timestamp": "2026-09-08T10:15:01.449496-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -107,
+      "closing_home_ml": -109,
+      "closing_away_implied": 0.4978,
+      "closing_home_implied": 0.5022,
+      "edge_vs_close": 0.0782
     },
     {
       "game_pk": 824228,
@@ -101078,7 +101083,7 @@
       "correct": true,
       "brier_score": 0.2125,
       "log_loss": 0.618,
-      "clv": null,
+      "clv": 0.0147,
       "predicted_total": 9.0,
       "home_est_score": 4.7,
       "away_est_score": 4.3,
@@ -101105,7 +101110,12 @@
         0.420725043837665
       ],
       "prediction_timestamp": "2026-09-08T10:15:03.642165-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 103,
+      "closing_home_ml": -120,
+      "closing_away_implied": 0.4745,
+      "closing_home_implied": 0.5255,
+      "edge_vs_close": 0.0645
     },
     {
       "game_pk": 824714,
@@ -101441,7 +101451,12 @@
         0.6099510651079856
       ],
       "prediction_timestamp": "2026-09-08T10:15:06.542590-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 110,
+      "closing_home_ml": -145,
+      "closing_away_implied": 0.4459,
+      "closing_home_implied": 0.5541,
+      "edge_vs_close": -0.0291
     },
     {
       "game_pk": 824551,
@@ -101981,7 +101996,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.0373,
       "predicted_total": 8.2,
       "home_est_score": 4.3,
       "away_est_score": 3.9,
@@ -102008,7 +102023,12 @@
         0.022203574798654906
       ],
       "prediction_timestamp": "2026-09-08T10:15:11.341954-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -124,
+      "closing_home_ml": 106,
+      "closing_away_implied": 0.5328,
+      "closing_home_implied": 0.4672,
+      "edge_vs_close": 0.1048
     },
     {
       "game_pk": 823901,
