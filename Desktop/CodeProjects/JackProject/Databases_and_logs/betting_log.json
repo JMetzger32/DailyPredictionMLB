@@ -52507,6 +52507,104 @@
   ],
   "2026-09-09": [
     {
+      "game_pk": 824226,
+      "date": "2026-09-09",
+      "game_type": "R",
+      "away_team": "MIN",
+      "away_team_name": "Minnesota Twins",
+      "home_team": "DET",
+      "home_team_name": "Detroit Tigers",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.509,
+      "home_win_prob": 0.491,
+      "confidence": 0.009,
+      "calibration_bucket": "50-60%",
+      "away_ml": 105,
+      "home_ml": -123,
+      "away_implied": 0.4693,
+      "home_implied": 0.5307,
+      "bet_rating": "unsure",
+      "predicted_team_ml": 105,
+      "model_edge": 0.0397,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 108,
+          "home_ml": -126
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 100,
+          "home_ml": -120
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 106,
+          "home_ml": -125
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 106,
+          "home_ml": -117
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 106,
+          "home_ml": -117
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 103,
+          "home_ml": -124
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 105,
+          "home_ml": -125
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 105,
+          "home_ml": -125
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 4.8,
+      "home_est_score": 2.3,
+      "away_est_score": 2.4,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.6105439302709265,
+        -0.5584463383096447,
+        -0.7870344067734162,
+        -0.5085129980697177,
+        0.6217811125298275,
+        -0.15982215317259743,
+        0.05122423473575249,
+        -0.36477083103968744,
+        -0.4045418787180711,
+        -0.7326721049993432,
+        -0.5772460806746391,
+        -0.08920887666764406,
+        -0.033909915571940265,
+        -0.853513805256794,
+        0.056126609924298736,
+        0.031120837582856206,
+        0.38833285300576004,
+        1.0256748997170249
+      ],
+      "prediction_timestamp": "2026-09-09T10:15:01.998273-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 823251,
       "date": "2026-09-09",
       "game_type": "R",
