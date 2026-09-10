@@ -53384,7 +53384,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": -0.5062,
       "predicted_total": 9.2,
       "home_est_score": 5.3,
       "away_est_score": 3.8,
@@ -53411,7 +53411,12 @@
         -0.34764728495697256
       ],
       "prediction_timestamp": "2026-09-09T10:15:12.509355-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -30000,
+      "closing_home_ml": 3900,
+      "closing_away_implied": 0.9755,
+      "closing_home_implied": 0.0245,
+      "edge_vs_close": 0.5295
     },
     {
       "game_pk": 824549,
