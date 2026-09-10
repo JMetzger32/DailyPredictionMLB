@@ -103179,14 +103179,45 @@
       "home_win_prob": 0.5,
       "confidence": 0.0,
       "calibration_bucket": "50-60%",
-      "away_ml": null,
-      "home_ml": null,
-      "away_implied": null,
-      "home_implied": null,
-      "bet_rating": null,
-      "predicted_team_ml": null,
-      "model_edge": null,
-      "odds_books": [],
+      "away_ml": 1421,
+      "home_ml": -6389,
+      "away_implied": 0.0626,
+      "home_implied": 0.9374,
+      "bet_rating": "bad",
+      "predicted_team_ml": -6389,
+      "model_edge": -0.4374,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 1400,
+          "home_ml": -6000
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 1025,
+          "home_ml": -3333
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 2200,
+          "home_ml": -10000
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 1400,
+          "home_ml": -10000
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 1500,
+          "home_ml": -4000
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 1000,
+          "home_ml": -5000
+        }
+      ],
       "arbitrage": null,
       "actual_winner": null,
       "away_score": null,
@@ -103291,12 +103322,12 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
+      "actual_winner": "Away",
+      "away_score": 4,
+      "home_score": 2,
+      "correct": true,
+      "brier_score": 0.246,
+      "log_loss": 0.6852,
       "clv": 0.0777,
       "predicted_total": 7.5,
       "home_est_score": 3.4,
@@ -103394,12 +103425,12 @@
         }
       ],
       "arbitrage": null,
-      "actual_winner": null,
-      "away_score": null,
-      "home_score": null,
-      "correct": null,
-      "brier_score": null,
-      "log_loss": null,
+      "actual_winner": "Home",
+      "away_score": 6,
+      "home_score": 8,
+      "correct": false,
+      "brier_score": 0.2767,
+      "log_loss": 0.7465,
       "clv": -0.0048,
       "predicted_total": 6.7,
       "home_est_score": 3.3,
