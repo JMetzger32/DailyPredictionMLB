@@ -4183,40 +4183,40 @@
       "home_implied": 0.8902
     },
     "COL|NYA": {
-      "away_ml": 238,
-      "home_ml": -290,
-      "away_implied": 0.2846,
-      "home_implied": 0.7154
+      "away_ml": 3300,
+      "home_ml": -10000,
+      "away_implied": 0.0288,
+      "home_implied": 0.9712
     },
     "COL|DET": {
-      "away_ml": 154,
-      "home_ml": -181,
-      "away_implied": 0.3794,
-      "home_implied": 0.6206
+      "away_ml": 153,
+      "home_ml": -180,
+      "away_implied": 0.3807,
+      "home_implied": 0.6193
     },
     "ANA|WAS": {
-      "away_ml": 129,
-      "home_ml": -151,
-      "away_implied": 0.4206,
-      "home_implied": 0.5794
+      "away_ml": 130,
+      "home_ml": -152,
+      "away_implied": 0.4189,
+      "home_implied": 0.5811
     },
     "NYN|NYA": {
-      "away_ml": 117,
-      "home_ml": -136,
-      "away_implied": 0.4443,
-      "home_implied": 0.5557
+      "away_ml": 118,
+      "home_ml": -138,
+      "away_implied": 0.4417,
+      "home_implied": 0.5583
     },
     "BAL|TOR": {
-      "away_ml": 106,
-      "home_ml": -123,
-      "away_implied": 0.4681,
-      "home_implied": 0.5319
+      "away_ml": 107,
+      "home_ml": -124,
+      "away_implied": 0.466,
+      "home_implied": 0.534
     },
     "KCA|BOS": {
-      "away_ml": 168,
-      "home_ml": -198,
-      "away_implied": 0.3596,
-      "home_implied": 0.6404
+      "away_ml": 169,
+      "home_ml": -199,
+      "away_implied": 0.3584,
+      "home_implied": 0.6416
     },
     "HOU|TBA": {
       "away_ml": 145,
@@ -4225,28 +4225,40 @@
       "home_implied": 0.6067
     },
     "PHI|ATL": {
-      "away_ml": 152,
-      "home_ml": -178,
-      "away_implied": 0.3826,
-      "home_implied": 0.6174
+      "away_ml": 155,
+      "home_ml": -182,
+      "away_implied": 0.378,
+      "home_implied": 0.622
     },
     "CIN|MIL": {
-      "away_ml": 156,
-      "home_ml": -191,
-      "away_implied": 0.3731,
-      "home_implied": 0.6269
+      "away_ml": 157,
+      "home_ml": -187,
+      "away_implied": 0.3739,
+      "home_implied": 0.6261
     },
     "CHA|SLN": {
       "away_ml": -110,
-      "home_ml": -108,
-      "away_implied": 0.5022,
-      "home_implied": 0.4978
+      "home_ml": -106,
+      "away_implied": 0.5045,
+      "home_implied": 0.4955
     },
     "SDN|SFN": {
       "away_ml": -142,
-      "home_ml": 122,
-      "away_implied": 0.5657,
-      "home_implied": 0.4343
+      "home_ml": 121,
+      "away_implied": 0.5646,
+      "home_implied": 0.4354
+    },
+    "PIT|CHA": {
+      "away_ml": -893,
+      "home_ml": 512,
+      "away_implied": 0.8462,
+      "home_implied": 0.1538
+    },
+    "CLE|MIN": {
+      "away_ml": -120,
+      "home_ml": 103,
+      "away_implied": 0.5255,
+      "home_implied": 0.4745
     }
   }
 }
