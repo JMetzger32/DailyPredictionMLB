@@ -56166,6 +56166,107 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 822685,
+      "date": "2026-09-12",
+      "game_type": "R",
+      "away_team": "ANA",
+      "away_team_name": "Los Angeles Angels",
+      "home_team": "WAS",
+      "home_team_name": "Washington Nationals",
+      "predicted_winner": "Away",
+      "away_win_prob": 0.53,
+      "home_win_prob": 0.47,
+      "confidence": 0.03,
+      "calibration_bucket": "50-60%",
+      "away_ml": 124,
+      "home_ml": -155,
+      "away_implied": 0.4234,
+      "home_implied": 0.5766,
+      "bet_rating": "good",
+      "predicted_team_ml": 124,
+      "model_edge": 0.1066,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 134,
+          "home_ml": -172
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 125,
+          "home_ml": -165
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 117,
+          "home_ml": -129
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 117,
+          "home_ml": -129
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 129,
+          "home_ml": -168
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 125,
+          "home_ml": -160
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 140,
+          "home_ml": -175
+        },
+        {
+          "name": "BetUS",
+          "away_ml": 117,
+          "home_ml": -128
+        }
+      ],
+      "arbitrage": {
+        "exists": true,
+        "profit_pct": 2.19
+      },
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 5.4,
+      "home_est_score": 2.9,
+      "away_est_score": 2.6,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.12279683029177951,
+        0.6532927058883685,
+        -0.13487359628569798,
+        0.9074705580538804,
+        -1.3191635226136713,
+        0.11067046834750316,
+        0.34173657918723627,
+        0.2667094417657968,
+        -0.2510245153543701,
+        0.42791059153716154,
+        0.10873439451643181,
+        -0.6872238918410241,
+        -0.033909915571940265,
+        0.63824491187569,
+        0.18925978600242746,
+        0.11251147573841166,
+        2.0730994859941716,
+        2.1696322101239653
+      ],
+      "prediction_timestamp": "2026-09-12T10:15:04.315301-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 823170,
       "date": "2026-09-12",
       "game_type": "R",
