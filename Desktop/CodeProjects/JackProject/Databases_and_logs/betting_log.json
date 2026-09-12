@@ -56757,6 +56757,104 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 824870,
+      "date": "2026-09-12",
+      "game_type": "R",
+      "away_team": "PHI",
+      "away_team_name": "Philadelphia Phillies",
+      "home_team": "ATL",
+      "home_team_name": "Atlanta Braves",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.481,
+      "home_win_prob": 0.519,
+      "confidence": 0.019,
+      "calibration_bucket": "50-60%",
+      "away_ml": 117,
+      "home_ml": -137,
+      "away_implied": 0.4436,
+      "home_implied": 0.5564,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -137,
+      "model_edge": -0.0374,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": 116,
+          "home_ml": -134
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 115,
+          "home_ml": -140
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": 116,
+          "home_ml": -136
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 122,
+          "home_ml": -135
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 122,
+          "home_ml": -135
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": 115,
+          "home_ml": -140
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": 114,
+          "home_ml": -137
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 115,
+          "home_ml": -135
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 10.0,
+      "home_est_score": 5.9,
+      "away_est_score": 4.2,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.5448261631297813,
+        -0.5675239886762488,
+        -0.5651568543268637,
+        0.9718334469685893,
+        -1.193955768185508,
+        0.3713893899197246,
+        0.6716891765595048,
+        0.7259678219879663,
+        0.6700796648278396,
+        0.8147714903826627,
+        -0.7498516696689181,
+        -0.6761664213306541,
+        -0.033909915571940265,
+        -0.10396016413603855,
+        -0.04337292167093428,
+        0.21715658193841156,
+        0.7721690265100354,
+        0.7676394161665868
+      ],
+      "prediction_timestamp": "2026-09-12T10:15:09.613645-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 823009,
       "date": "2026-09-12",
       "game_type": "R",
