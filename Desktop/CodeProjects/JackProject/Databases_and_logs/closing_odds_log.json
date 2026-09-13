@@ -4349,10 +4349,10 @@
   },
   "2026-09-12": {
     "SDN|SFN": {
-      "away_ml": -125,
-      "home_ml": 108,
-      "away_implied": 0.5361,
-      "home_implied": 0.4639
+      "away_ml": -130,
+      "home_ml": 112,
+      "away_implied": 0.5451,
+      "home_implied": 0.4549
     },
     "CLE|MIN": {
       "away_ml": 458,
@@ -4361,22 +4361,22 @@
       "home_implied": 0.8315
     },
     "LAN|MIA": {
-      "away_ml": -152,
-      "home_ml": 132,
-      "away_implied": 0.5832,
-      "home_implied": 0.4168
+      "away_ml": -150,
+      "home_ml": 129,
+      "away_implied": 0.5788,
+      "home_implied": 0.4212
     },
     "CIN|MIL": {
-      "away_ml": 175,
-      "home_ml": -208,
-      "away_implied": 0.35,
-      "home_implied": 0.65
+      "away_ml": 925,
+      "home_ml": -3160,
+      "away_implied": 0.0914,
+      "home_implied": 0.9086
     },
     "PHI|ATL": {
-      "away_ml": 108,
-      "home_ml": -126,
-      "away_implied": 0.463,
-      "home_implied": 0.537
+      "away_ml": 110,
+      "home_ml": -128,
+      "away_implied": 0.4589,
+      "home_implied": 0.5411
     },
     "CHA|SLN": {
       "away_ml": -110,
@@ -4385,10 +4385,10 @@
       "home_implied": 0.4967
     },
     "TEX|ARI": {
-      "away_ml": 113,
-      "home_ml": -132,
-      "away_implied": 0.4521,
-      "home_implied": 0.5479
+      "away_ml": -1904,
+      "home_ml": 799,
+      "away_implied": 0.8952,
+      "home_implied": 0.1048
     },
     "COL|DET": {
       "away_ml": 130,
@@ -4397,16 +4397,16 @@
       "home_implied": 0.5811
     },
     "NYN|NYA": {
-      "away_ml": 156,
+      "away_ml": 155,
       "home_ml": -183,
-      "away_implied": 0.3766,
-      "home_implied": 0.6234
+      "away_implied": 0.3775,
+      "home_implied": 0.6225
     },
     "BAL|TOR": {
-      "away_ml": 130,
-      "home_ml": -152,
-      "away_implied": 0.4189,
-      "home_implied": 0.5811
+      "away_ml": 132,
+      "home_ml": -154,
+      "away_implied": 0.4155,
+      "home_implied": 0.5845
     },
     "HOU|TBA": {
       "away_ml": 119,
@@ -4421,10 +4421,10 @@
       "home_implied": 0.5693
     },
     "KCA|BOS": {
-      "away_ml": 152,
-      "home_ml": -179,
-      "away_implied": 0.3821,
-      "home_implied": 0.6179
+      "away_ml": 158,
+      "home_ml": -186,
+      "away_implied": 0.3734,
+      "home_implied": 0.6266
     }
   }
 }
