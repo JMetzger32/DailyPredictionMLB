@@ -58897,6 +58897,94 @@
       "model_version": "24c1e93ac246"
     },
     {
+      "game_pk": 823575,
+      "date": "2026-09-14",
+      "game_type": "R",
+      "away_team": "BAL",
+      "away_team_name": "Baltimore Orioles",
+      "home_team": "NYN",
+      "home_team_name": "New York Mets",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.451,
+      "home_win_prob": 0.549,
+      "confidence": 0.049,
+      "calibration_bucket": "50-60%",
+      "away_ml": 108,
+      "home_ml": -126,
+      "away_implied": 0.463,
+      "home_implied": 0.537,
+      "bet_rating": "unsure",
+      "predicted_team_ml": -126,
+      "model_edge": 0.012,
+      "odds_books": [
+        {
+          "name": "DraftKings",
+          "away_ml": 109,
+          "home_ml": -131
+        },
+        {
+          "name": "Fanatics",
+          "away_ml": 105,
+          "home_ml": -125
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": 109,
+          "home_ml": -120
+        },
+        {
+          "name": "Caesars",
+          "away_ml": 109,
+          "home_ml": -129
+        },
+        {
+          "name": "FanDuel",
+          "away_ml": 110,
+          "home_ml": -130
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 7.8,
+      "home_est_score": 4.7,
+      "away_est_score": 3.1,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        0.6128892989140317,
+        1.1625470826836761,
+        1.4002425103422513,
+        1.679825225030389,
+        -1.505415462757278,
+        0.2203594851685875,
+        -0.5993091696749231,
+        0.037080251654711696,
+        0.6086727194823589,
+        0.4279105915371613,
+        0.050306503618839676,
+        0.14698489413798618,
+        -0.033909915571940265,
+        0.7808070749908144,
+        0.1867372626662103,
+        0.010773178043967248,
+        0.00449667950148343,
+        0.007868270156964225
+      ],
+      "prediction_timestamp": "2026-09-14T10:15:04.015753-04:00",
+      "model_version": "24c1e93ac246"
+    },
+    {
       "game_pk": 824629,
       "date": "2026-09-14",
       "game_type": "R",
