@@ -18,6 +18,7 @@ Run locally:
 """
 
 import json
+import math
 import os
 import sys
 import pickle
@@ -50,7 +51,7 @@ def _today_et():
 from flask import Flask, jsonify, render_template, request
 
 from MLBModel import predict_game, predict_games_batch, _default_sp_stats
-from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_last_odds_quota, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
+from schedule_fetcher import get_todays_schedule, get_game_results, get_schedule_and_results, get_mlb_odds, get_mlb_spread_odds, get_last_odds_quota, get_team_standings, find_pitcher_by_name, RETRO_TO_FULL_NAME
 
 app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
@@ -183,6 +184,93 @@ def _get_odds_cached(reason="unspecified"):
     return odds
 
 
+_spread_cache = {}
+
+
+def _get_spread_odds_cached(reason="unspecified"):
+    """Today's run-line map from cache or The Odds API (1 credit per call, verified).
+
+    Separate cache from the moneyline one so a spreads failure or an empty run-line
+    slate never invalidates moneyline odds that were fetched successfully. Returns {}
+    whenever odds are unavailable; every consumer null-guards, and the joint edge
+    falls back to the moneyline-only edge when the run line is missing.
+    """
+    today = _today_et().isoformat()
+    cached = _spread_cache.get(today)
+    if cached and (time.monotonic() - cached["ts"]) < _ODDS_CACHE_TTL:
+        return cached["odds"]
+    if not ODDS_API_KEY:
+        return {}
+    if _odds_budget_exhausted():
+        print(f"[spreads] budget breaker tripped — skipping fetch for {reason}",
+              flush=True)
+        return {}
+    odds = get_mlb_spread_odds(ODDS_API_KEY)
+    print(f"[spreads] Fetched {len(odds)} run lines for {today} (reason={reason})",
+          flush=True)
+    _spread_cache[today] = {"ts": time.monotonic(), "odds": odds}
+    return odds
+
+
+def _spread_map_from_log_entries(entries):
+    """Rebuild the spread map from run lines already stored on log entries, so a
+    page view can serve captured run lines without spending a credit -- mirrors
+    _odds_map_from_log_entries and the same credit-saving gate in /api/predictions."""
+    m = {}
+    for e in entries:
+        if e.get("home_spread_ml") is None:
+            continue
+        m[(e.get("away_team"), e.get("home_team"))] = {
+            "away_point":          e.get("away_spread_point"),
+            "home_point":          e.get("home_spread_point"),
+            "away_spread_ml":      e.get("away_spread_ml"),
+            "home_spread_ml":      e.get("home_spread_ml"),
+            "away_spread_implied": e.get("away_spread_implied"),
+            "home_spread_implied": e.get("home_spread_implied"),
+            "spread_books":        e.get("spread_books", []),
+        }
+    return m
+
+
+def _spread_map_from_db(date_str):
+    """Run lines for a past date, read from the archived historical spreads table.
+
+    This is what puts real market run lines on past-date pages: odds_snapshots_spreads
+    holds a fixed pre-game snapshot for 2021-2026, backfilled from the paid historical
+    endpoint (updates/backfill_historical_spreads.py + scripts/parse_spread_archive.py).
+    That access has lapsed and cannot be re-bought, so this table is read-only history.
+
+    Only primary rows (horizon_days = 0, i.e. priced for that date's own slate) are
+    used -- a line quoted 24-48h out is a different, thinner market.
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect(os.path.join(_ROOT, "Databases_and_logs", "mlb_allseasons.db"))
+        rows = conn.execute(
+            "SELECT away_team, home_team, away_point, home_point, away_spread_ml, "
+            "       home_spread_ml, away_implied, home_implied, books_json "
+            "FROM odds_snapshots_spreads "
+            "WHERE game_date_et = ? AND horizon_days = 0 "
+            "  AND away_team IS NOT NULL AND home_team IS NOT NULL", (date_str,)).fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"[spreads] DB read failed for {date_str}: {e}", flush=True)
+        return {}
+    m = {}
+    for a, h, ap, hp, aml, hml, ai, hi, books in rows:
+        try:
+            parsed_books = json.loads(books) if books else []
+        except Exception:
+            parsed_books = []
+        m[(a, h)] = {
+            "away_point": ap, "home_point": hp,
+            "away_spread_ml": aml, "home_spread_ml": hml,
+            "away_spread_implied": ai, "home_spread_implied": hi,
+            "spread_books": parsed_books[:8],
+        }
+    return m
+
+
 def _odds_map_from_log_entries(entries):
     """Rebuild the odds_map (keyed by (away_retro, home_retro)) that
     _compute_odds_fields expects, from odds already stored on log entries. Lets the
@@ -295,8 +383,13 @@ def _upsert_betting_entries(entries):
                     bet_rating, model_edge, predicted_team_ml,
                     predicted_total, actual_winner, away_score, home_score,
                     correct, closing_away_ml, closing_home_ml, clv,
+                    home_cover_prob, away_cover_prob, away_win_by2_prob, correct_rl,
+                    away_spread_point, home_spread_point, away_spread_ml, home_spread_ml,
+                    away_spread_implied, home_spread_implied, joint_home_win_prob,
+                    edge_method,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           datetime('now'), datetime('now'))
                 ON CONFLICT(game_pk) DO UPDATE SET
                     date             = COALESCE(excluded.date, betting_log.date),
@@ -321,6 +414,18 @@ def _upsert_betting_entries(entries):
                     closing_away_ml  = COALESCE(excluded.closing_away_ml, betting_log.closing_away_ml),
                     closing_home_ml  = COALESCE(excluded.closing_home_ml, betting_log.closing_home_ml),
                     clv              = COALESCE(excluded.clv, betting_log.clv),
+                    home_cover_prob  = COALESCE(excluded.home_cover_prob, betting_log.home_cover_prob),
+                    away_cover_prob  = COALESCE(excluded.away_cover_prob, betting_log.away_cover_prob),
+                    away_win_by2_prob= COALESCE(excluded.away_win_by2_prob, betting_log.away_win_by2_prob),
+                    correct_rl       = COALESCE(excluded.correct_rl, betting_log.correct_rl),
+                    away_spread_point= COALESCE(excluded.away_spread_point, betting_log.away_spread_point),
+                    home_spread_point= COALESCE(excluded.home_spread_point, betting_log.home_spread_point),
+                    away_spread_ml   = COALESCE(excluded.away_spread_ml, betting_log.away_spread_ml),
+                    home_spread_ml   = COALESCE(excluded.home_spread_ml, betting_log.home_spread_ml),
+                    away_spread_implied = COALESCE(excluded.away_spread_implied, betting_log.away_spread_implied),
+                    home_spread_implied = COALESCE(excluded.home_spread_implied, betting_log.home_spread_implied),
+                    joint_home_win_prob = COALESCE(excluded.joint_home_win_prob, betting_log.joint_home_win_prob),
+                    edge_method      = COALESCE(excluded.edge_method, betting_log.edge_method),
                     updated_at       = datetime('now')
             """, (
                 pk,
@@ -346,6 +451,18 @@ def _upsert_betting_entries(entries):
                 entry.get("closing_away_ml"),
                 entry.get("closing_home_ml"),
                 entry.get("clv"),
+                entry.get("home_cover_prob"),
+                entry.get("away_cover_prob"),
+                entry.get("away_win_by2_prob"),
+                entry.get("correct_rl"),
+                entry.get("away_spread_point"),
+                entry.get("home_spread_point"),
+                entry.get("away_spread_ml"),
+                entry.get("home_spread_ml"),
+                entry.get("away_spread_implied"),
+                entry.get("home_spread_implied"),
+                entry.get("joint_home_win_prob"),
+                entry.get("edge_method"),
             ))
 
         conn.commit()
@@ -590,6 +707,26 @@ def _build_prediction_entry(game, result, odds_data=None):
         "actual_total":      None,
         "ou_correct":        None,
         "x_scaled_features": result.get("x_scaled_features"),
+        # Run line. These were computed by the model from the start but never written
+        # here, so `hcp` in update_yesterday_results was always None and correct_rl was
+        # never set on a single one of the ~1,900 logged predictions -- which is why
+        # /api/betting's rl_stats had always been empty. away_win_by2_prob is a separate
+        # event from away_cover_prob (see MLBModel: 1 - home_cover_prob also counts
+        # one-run games), and is what prices the away team laying -1.5.
+        "home_cover_prob":   result.get("home_cover_prob"),
+        "away_cover_prob":   result.get("away_cover_prob"),
+        "away_win_by2_prob": result.get("away_win_by2_prob"),
+        "correct_rl":        None,
+        # Run-line market + which edge formula this row's model_edge came from.
+        "away_spread_point":   odds_data.get("away_spread_point"),
+        "home_spread_point":   odds_data.get("home_spread_point"),
+        "away_spread_ml":      odds_data.get("away_spread_ml"),
+        "home_spread_ml":      odds_data.get("home_spread_ml"),
+        "away_spread_implied": odds_data.get("away_spread_implied"),
+        "home_spread_implied": odds_data.get("home_spread_implied"),
+        "spread_books":        odds_data.get("spread_books", []),
+        "joint_home_win_prob": odds_data.get("joint_home_win_prob"),
+        "edge_method":         odds_data.get("edge_method"),
         # Set once at creation, never overwritten by any result-resolution path.
         "prediction_timestamp": datetime.now(_ET).isoformat(),
         # Which model artifact produced this pick (None until the pkl carries a version).
@@ -669,6 +806,12 @@ def _log_predictions_for_date(target_date, log=None):
     gb_model             = _artifacts.get("gb_model")
     xgb_model            = _artifacts.get("xgb_model")
     xgb_bootstrap_models = _artifacts.get("xgb_bootstrap_models")
+    _rl = (_artifacts.get("lr_runline"), _artifacts.get("gb_runline"),
+           _artifacts.get("scaler_runline"))
+    runline_models = _rl if (_rl[0] and _rl[1]) else None
+    _rla = (_artifacts.get("lr_runline_away"), _artifacts.get("gb_runline_away"),
+            _artifacts.get("scaler_runline_away"))
+    runline_away_models = _rla if (_rla[0] and _rla[1]) else None
     if lr_model is None:
         return log
 
@@ -676,7 +819,9 @@ def _log_predictions_for_date(target_date, log=None):
     # Fetch live odds for today/future; use closing odds archive for past dates
     if target_date >= _today_et():
         odds_map = _get_odds_cached(reason="log_predictions_for_date seed")
+        spread_map = _get_spread_odds_cached(reason="log_predictions_for_date seed")
     else:
+        spread_map = _spread_map_from_db(target_date.isoformat())
         # For past dates, try to get from closing odds archive
         date_str = target_date.isoformat()
         closing_archive = _get_closing_odds_archive()
@@ -710,9 +855,11 @@ def _log_predictions_for_date(target_date, log=None):
         away_sp = dict(sp_baselines[away_sp_id]) if away_sp_id and away_sp_id in sp_baselines else _default_sp_stats()
         try:
             result = predict_game(home_ts, away_ts, home_sp, away_sp, lr_model, scaler=scaler,
+                                  runline_models=runline_models,
+                                  runline_away_models=runline_away_models,
                                   gb_model=gb_model, xgb_model=xgb_model,
                                   xgb_bootstrap_models=xgb_bootstrap_models)
-            odds_data = _compute_odds_fields(away, home, result, odds_map)
+            odds_data = _odds_and_edge_fields(away, home, result, odds_map, spread_map)
             entries.append(_build_prediction_entry(game, result, odds_data=odds_data))
         except Exception:
             continue
@@ -1542,7 +1689,7 @@ def _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp):
 # ---------------------------------------------------------------------------
 # Odds helpers
 # ---------------------------------------------------------------------------
-def _rate_edge(edge):
+def _rate_edge(edge, edge_method=None):
     """Classify a model_edge value under CURRENT thresholds — single source of truth,
     used both when bet_rating is first persisted below (at odds-attach time) AND when
     re-deriving today's category from a stored model_edge (see betting_stats/
@@ -1558,9 +1705,29 @@ def _rate_edge(edge):
     sign of model overconfidence, not a stronger signal — so it isn't labeled "good". Note
     (2026-08-06, n=222): the >0.12 penalty has since narrowed to roughly break-even; edge
     still doesn't discriminate above ~0.08 but isn't reliably a loser anymore — see
-    scripts/results/value_bet_segmentation.md and calibrated_edge_comparison.md."""
-    EXTREME_EDGE = 0.12
-    GOOD_EDGE = 0.05
+    scripts/results/value_bet_segmentation.md and calibrated_edge_comparison.md.
+
+    RECALIBRATED 2026-09-15 for the joint moneyline+run-line edge. That metric lives on
+    a ~6x smaller scale than the old moneyline-only edge (mean |edge| 0.0088 vs 0.0518),
+    because its second stage largely defers to the market, so the old 0.05/0.12 bars
+    would flag 3 games in 8,233 and empty the betting page. The replacements below are
+    scale-equivalent AND land on the best-measured cell: |edge| >= 0.010 won 51.8%
+    [50.1, 53.5] on n=2,938 walk-forward bets. Read
+    scripts/results/joint_edge_research.md before touching these -- in particular,
+    51.8% is still BELOW the 52.4% breakeven at -110, so these thresholds select the
+    least-bad band of a signal that is not demonstrably profitable, not a winning one.
+
+    `edge_method` selects the scale, and defaults to the OLD moneyline one. Every row
+    written before 2026-09-15 holds a moneyline-scale edge (mean |edge| 0.0518); rating
+    those against the joint bars would mark essentially all of them "extreme". Rows
+    carry edge_method precisely so the two are never silently pooled -- the same lesson
+    as the frozen-vintage bug above, one scale change later."""
+    if edge_method == "joint_ml_rl":
+        EXTREME_EDGE = 0.020
+        GOOD_EDGE = 0.010
+    else:
+        EXTREME_EDGE = 0.12
+        GOOD_EDGE = 0.05
     if edge is None:
         return None
     if edge > EXTREME_EDGE:
@@ -1627,6 +1794,101 @@ def _compute_odds_fields(away_retro, home_retro, pred_result, odds_map):
         "odds_books":        game_odds.get("books", []),
         "arbitrage":         game_odds.get("arbitrage"),
     }
+
+
+def _compute_runline_odds_fields(away_retro, home_retro, spread_odds_map):
+    """Look up the run-line (spread) market for a game. Market data only — no model.
+
+    Returns all-None when the game has no run line, so callers can null-guard the same
+    way they already do for moneyline.
+    """
+    g = (spread_odds_map or {}).get((away_retro, home_retro), {})
+    return {
+        "away_spread_point":   g.get("away_point"),
+        "home_spread_point":   g.get("home_point"),
+        "away_spread_ml":      g.get("away_spread_ml"),
+        "home_spread_ml":      g.get("home_spread_ml"),
+        "away_spread_implied": g.get("away_spread_implied"),
+        "home_spread_implied": g.get("home_spread_implied"),
+        "spread_books":        g.get("spread_books", []),
+    }
+
+
+def _logit(p):
+    p = min(max(float(p), 1e-6), 1 - 1e-6)
+    return math.log(p / (1 - p))
+
+
+def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
+    """The shipped edge: second-stage P(home win) from both markets, minus the h2h price.
+
+    Inputs are the four logits the model was fit on (see
+    scripts/train_joint_edge_model.py): the model's and market's moneyline
+    probabilities, and the model's and market's run-line probabilities for the SAME
+    event -- which is why the away-side run-line model is required. The market hangs
+    -1.5 on whichever side it favours, so:
+        home lays -1.5  -> both price P(margin > 1.5):  home_cover_prob
+        home takes +1.5 -> both price P(margin > -1.5): 1 - away_win_by2_prob
+    Using 1 - home_cover_prob for the second case would silently compare different
+    events (it also counts one-run games), which is the bug this guards against.
+
+    Returns (edge_for_picked_side, home_win_prob_from_second_stage), or (None, None)
+    when any input is missing -- callers fall back to the moneyline-only edge.
+    """
+    if joint_model is None:
+        return None, None
+    mkt_home = ml_fields.get("home_implied")
+    mkt_rl_home = rl_fields.get("home_spread_implied")
+    home_point = rl_fields.get("home_spread_point")
+    mdl_home = pred_result.get("home_win_prob")
+    if None in (mkt_home, mkt_rl_home, home_point, mdl_home):
+        return None, None
+
+    if home_point == -1.5:
+        mdl_rl_home = pred_result.get("home_cover_prob")
+    else:
+        awd = pred_result.get("away_win_by2_prob")
+        mdl_rl_home = None if awd is None else 1.0 - awd
+    if mdl_rl_home is None:
+        return None, None
+
+    try:
+        feats = [[_logit(mdl_home), _logit(mkt_home),
+                  _logit(mdl_rl_home), _logit(mkt_rl_home)]]
+        joint_home_prob = float(joint_model.predict_proba(feats)[0][1])
+    except Exception:
+        return None, None
+
+    predicted = pred_result["predicted_winner"]
+    model_p = joint_home_prob if predicted == "Home" else 1 - joint_home_prob
+    market_p = mkt_home if predicted == "Home" else 1 - mkt_home
+    return round(model_p - market_p, 4), round(joint_home_prob, 4)
+
+
+def _odds_and_edge_fields(away_retro, home_retro, pred_result, odds_map,
+                          spread_odds_map=None):
+    """Moneyline fields + run-line fields + the joint edge, as one flat dict.
+
+    `model_edge`/`bet_rating` carry the JOINT (moneyline+run-line) edge whenever both
+    markets are available, and fall back to the moneyline-only edge when the run line
+    is missing -- the field names are unchanged so every existing consumer keeps
+    working. `edge_method` records which one a row actually got, because the two are
+    on different scales (~6x) and mixing them unlabelled is how the old bet_rating
+    vintage bug happened. See scripts/results/joint_edge_research.md.
+    """
+    fields = _compute_odds_fields(away_retro, home_retro, pred_result, odds_map)
+    fields.update(_compute_runline_odds_fields(away_retro, home_retro, spread_odds_map))
+    fields["edge_method"] = "moneyline"
+    fields["joint_home_win_prob"] = None
+
+    joint_edge, joint_home_prob = _compute_joint_edge(
+        pred_result, fields, fields, _artifacts.get("joint_edge_model"))
+    if joint_edge is not None:
+        fields["model_edge"] = joint_edge
+        fields["bet_rating"] = _rate_edge(joint_edge, "joint_ml_rl")
+        fields["joint_home_win_prob"] = joint_home_prob
+        fields["edge_method"] = "joint_ml_rl"
+    return fields
 
 
 # ---------------------------------------------------------------------------
@@ -1848,6 +2110,13 @@ def predictions():
     _rl_gb  = _artifacts.get("gb_runline")
     _rl_sc  = _artifacts.get("scaler_runline")
     runline_models = (_rl_lr, _rl_gb, _rl_sc) if (_rl_lr and _rl_gb) else None
+    # Away side of the run line — P(away wins by 2+), which is NOT 1 - home_cover_prob.
+    # Needed whenever the market hangs -1.5 on the away team (~42% of games).
+    _rla_lr = _artifacts.get("lr_runline_away")
+    _rla_gb = _artifacts.get("gb_runline_away")
+    _rla_sc = _artifacts.get("scaler_runline_away")
+    runline_away_models = ((_rla_lr, _rla_gb, _rla_sc)
+                           if (_rla_lr and _rla_gb) else None)
 
     if lr_model is None:
         return jsonify({"error": "Model not loaded. Run MLBModel.py first."}), 500
@@ -1873,6 +2142,14 @@ def predictions():
             odds_map = _odds_map_from_log_entries(_today_entries)
         else:
             odds_map = _get_odds_cached(reason="api/predictions fallback")
+        # Same credit-saving gate for run lines, tracked separately: the moneyline can
+        # be fully attached while the run line is not (different market, different
+        # call), and reusing one gate for both would either overspend or under-fetch.
+        if _today_entries and all(e.get("home_spread_ml") is not None
+                                  for e in _today_entries):
+            spread_map = _spread_map_from_log_entries(_today_entries)
+        else:
+            spread_map = _get_spread_odds_cached(reason="api/predictions fallback")
     elif target_date > _today_et():
         # Future dates are never seeded with odds (books haven't posted final lines,
         # and _refresh_today_odds only ever patches TODAY), so the "already has odds"
@@ -1880,6 +2157,7 @@ def predictions():
         # to a paid fetch for a date with nothing real to show. Just skip odds entirely;
         # the page still renders model-only predictions with "No Odds Available".
         odds_map = {}
+        spread_map = {}
     else:
         # For past dates, try to get from closing odds archive
         closing_archive = _get_closing_odds_archive()
@@ -1897,6 +2175,11 @@ def predictions():
                 }
             except Exception:
                 pass
+        # Run lines for past dates come from the archived historical snapshots, with
+        # anything already stored on the log entries taking precedence (a live capture
+        # is the price this site actually showed that day).
+        spread_map = _spread_map_from_db(date_str)
+        spread_map.update(_spread_map_from_log_entries(log.get(date_str, [])))
 
     predictions_out = []
     log_changed = False
@@ -1957,7 +2240,9 @@ def predictions():
         try:
             batch_stats = [(c["home_ts"], c["away_ts"], c["home_sp"], c["away_sp"]) for c in game_ctx]
             batch_results = predict_games_batch(batch_stats, lr_model, scaler=scaler,
-                                                 runline_models=runline_models, gb_model=gb_model,
+                                                 runline_models=runline_models,
+                                                 runline_away_models=runline_away_models,
+                                                 gb_model=gb_model,
                                                  xgb_model=xgb_model, xgb_bootstrap_models=xgb_bootstrap_models)
             results_by_idx = dict(enumerate(batch_results))
         except Exception as e:
@@ -2102,7 +2387,8 @@ def predictions():
             "home_score":            home_score,
             "correct":               correct,
             "feature_contributions": _compute_feature_contributions(home_ts, away_ts, home_sp, away_sp),
-            **_compute_odds_fields(away, home, result, odds_map),
+            "away_win_by2_prob": result.get("away_win_by2_prob"),
+            **_odds_and_edge_fields(away, home, result, odds_map, spread_map),
         }
 
         # For PAST dates, the card must show the prediction that was actually logged
@@ -2484,6 +2770,20 @@ def _bet_row(b, kelly=None):
         "predicted_winner": b.get("predicted_winner"),
         "away_score":     b.get("away_score"),
         "home_score":     b.get("home_score"),
+        # Run line: the market's line/price, the model's own cover probability, and
+        # whether the run-line call was right. edge_method says which formula produced
+        # `edge` above -- the joint and moneyline-only edges are on ~6x different
+        # scales, so the UI must not compare them as one number.
+        "home_spread_point":   b.get("home_spread_point"),
+        "away_spread_point":   b.get("away_spread_point"),
+        "home_spread_ml":      b.get("home_spread_ml"),
+        "away_spread_ml":      b.get("away_spread_ml"),
+        "home_spread_implied": b.get("home_spread_implied"),
+        "away_spread_implied": b.get("away_spread_implied"),
+        "home_cover_prob":     b.get("home_cover_prob"),
+        "away_win_by2_prob":   b.get("away_win_by2_prob"),
+        "correct_rl":     None if b.get("correct_rl") is None else bool(b.get("correct_rl")),
+        "edge_method":    b.get("edge_method"),
     }
     if kelly is not None:
         stake = _kelly_stake(win_p, ml, *kelly, edge=b.get("model_edge"))
@@ -2557,7 +2857,7 @@ def betting_stats():
     # attached to that row — see _rate_edge's docstring.
     categories = {"good": [], "unsure": [], "bad": [], "extreme": []}
     for e in all_entries:
-        rating = _rate_edge(e.get("model_edge"))
+        rating = _rate_edge(e.get("model_edge"), e.get("edge_method"))
         if rating in categories:
             categories[rating].append(e)
 
@@ -2706,7 +3006,7 @@ def betting_stats():
 def betting_weekly():
     """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows."""
     value_bets = [e for e in _qualifying_bets(_load_betting_log_from_db())
-                  if _rate_edge(e.get("model_edge")) == "good"]
+                  if _rate_edge(e.get("model_edge"), e.get("edge_method")) == "good"]
     value_bets.sort(key=lambda e: (e["date"], e.get("game_pk", 0)))
 
     week_param = request.args.get("week")

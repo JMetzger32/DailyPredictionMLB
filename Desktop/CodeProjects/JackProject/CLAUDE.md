@@ -254,6 +254,51 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
 - betting_log rows need BOTH `bet_rating` (odds at prediction time) AND `correct`
   (resolution) to count. Odds are unrecoverable after game time; results are
   always re-fetchable. See scripts/results/phase1_root_causes.md.
+- **Run-line (spreads) market data now exists, 2021-2026** — `odds_snapshots_spreads`
+  (13,909 rows, joined via `odds_game_link_spreads`, 94.6% of games vs h2h's 96.6%;
+  the gap is early-2021 dates where no book had posted a run line at the snapshot
+  hour). Fetched 2026-09-15 with the last of the paid historical access
+  (`updates/backfill_historical_spreads.py` archives raw gzip, `scripts/parse_spread_archive.py`
+  parses it for free, forever). **That access has lapsed — the archive under
+  `Databases_and_logs/odds_archive_spreads/` cannot be re-bought at any price.**
+  Live run lines cost **1 credit/call** (verified, same as h2h — the 10x multiplier is
+  historical-only) via `get_mlb_spread_odds`.
+- **Only the ±1.5 line is stored, and that costs nothing** — books also quote 1.0/2.0/2.5
+  alt lines, but `home_covers` is defined as margin > 1.5, so any other point prices a
+  different event. Measured across 611 sampled events: 99.5% carry a two-sided ±1.5
+  quote, the modal point was never anything else, and restricting to it dropped **0**
+  events. Non-1.5 two-sided quotes turned out to be other-sport contamination in the
+  feed (points of -7.5, -12.5, 4.5), which the filter correctly rejects.
+- **`away_cover_prob` is NOT "away wins by 2+"** — it is `1 - home_cover_prob`, i.e.
+  P(home fails to win by 2+), which also counts one-run games either way. The market
+  hangs -1.5 on whichever side it favours (58% home / 42% away), so comparing the model
+  to the market needs BOTH thresholds. `scripts/train_away_runline.py` added the away
+  side (`away_covers`, keys `lr_runline_away`/`gb_runline_away`/`scaler_runline_away`,
+  output `away_win_by2_prob`). With both, model and market price the identical event on
+  every game: home lays -1.5 → `home_cover_prob`; home takes +1.5 → `1 - away_win_by2_prob`.
+  Getting this wrong looks like calibrated data until you check it — the naive version
+  showed the market implying 48% against a 36% actual rate, *inverted*.
+- **FIXED 2026-09-15: `correct_rl` had never once been set.** `_build_prediction_entry`
+  never wrote `home_cover_prob` onto log entries, so the `hcp is not None` guard in
+  `update_yesterday_results` never fired — 0 of 1,893 entries had either field, making
+  `/api/betting`'s `rl_stats` a permanent no-op. The entry builder now writes the
+  run-line fields and `betting_log` has columns for them.
+- **The shipped edge is now the JOINT moneyline+run-line edge** (`_compute_joint_edge`,
+  `joint_edge_model` in the pkl, a 4-logit second stage; `scripts/joint_edge_research.md`).
+  Honest summary: it is **better but still not profitable**. It fixes the old edge being
+  *anti-predictive* (slope −0.98 → +4.87; flat win% 47.4% → 49.8%, holding in 3 of 4
+  seasons), and its best band wins 51.8% [50.1, 53.5] at |edge| ≥ 0.010 — but breakeven
+  at −110 is **52.4%**, and the run-line terms are not significant (LR test p=0.109).
+  The second stage mostly learns to copy the market (AUC 0.5944 vs market 0.5946); the
+  only model input carrying real weight is `model_rl` (+0.0991), while `model_ml` is
+  ~zero (−0.0253). Shipped anyway at the user's explicit direction, with a plain-language
+  caveat on the betting page. **Don't cite it as beating the market.**
+- **`_rate_edge` takes an `edge_method` and the scales are NOT comparable.** The joint
+  edge is ~6x smaller (mean |edge| 0.0088 vs 0.0518), so its bars are **0.010/0.020**,
+  not 0.05/0.12 — at the old bars it flagged 3 games in 8,233. Every row written before
+  2026-09-15 holds a moneyline-scale edge and no `edge_method`, so the default is the
+  OLD scale; rows now store `edge_method` (`moneyline` | `joint_ml_rl`) and display
+  re-rates per row. Same lesson as the frozen-vintage `bet_rating` bug, one scale later.
 
 ## Deploy notes (Render free tier)
 

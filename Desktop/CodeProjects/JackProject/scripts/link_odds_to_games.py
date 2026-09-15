@@ -43,11 +43,15 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def load_odds(conn):
-    """Primary (same-day) odds events only, grouped by (date, away, home)."""
+def load_odds(conn, table="odds_snapshots"):
+    """Primary (same-day) odds events only, grouped by (date, away, home).
+
+    `table` selects the market: odds_snapshots (h2h) or odds_snapshots_spreads
+    (run line). Both carry the identical join columns, so one loader serves both.
+    """
     rows = conn.execute(
         "SELECT game_date_et, event_id, away_team, home_team, commence_time, source "
-        "FROM odds_snapshots WHERE horizon_days = 0 "
+        f"FROM {table} WHERE horizon_days = 0 "
         "AND away_team IS NOT NULL AND home_team IS NOT NULL").fetchall()
     g = defaultdict(list)
     for d, eid, a, h, ct, src in rows:
@@ -130,14 +134,30 @@ def match(odds_groups, game_groups, target, id_field):
     return links, stats
 
 
+# market -> (snapshots table, link table). A fixed lookup, never a caller-supplied
+# string, so the table names interpolated into SQL below can only ever be these.
+MARKET_TABLES = {
+    "h2h":     ("odds_snapshots",         "odds_game_link"),
+    "spreads": ("odds_snapshots_spreads", "odds_game_link_spreads"),
+}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--report-only", action="store_true")
+    ap.add_argument("--market", choices=sorted(MARKET_TABLES), default="h2h",
+                    help="which market to link (default h2h, the original behaviour)")
     args = ap.parse_args()
 
+    snap_table, link_table = MARKET_TABLES[args.market]
+
     conn = sqlite3.connect(DB)
-    odds = load_odds(conn)
-    print(f"odds event groups (horizon_days=0): {len(odds)}")
+    if args.market == "spreads":
+        sys.path.insert(0, os.path.join(_ROOT, "updates"))
+        from init_odds_spreads_table import init_odds_spreads_table
+        init_odds_spreads_table(db_path=DB, verbose=False)
+    odds = load_odds(conn, table=snap_table)
+    print(f"[{args.market}] odds event groups (horizon_days=0): {len(odds)}")
 
     all_links, report = [], []
     for target, loader, id_field in (("games", load_games, "game_id"),
@@ -155,21 +175,21 @@ def main():
 
     if not args.report_only and all_links:
         conn.executemany(
-            "INSERT OR REPLACE INTO odds_game_link (game_date_et, event_id, target, "
-            f"game_id, game_pk, match_method, confidence, linked_at) "
+            f"INSERT OR REPLACE INTO {link_table} (game_date_et, event_id, target, "
+            "game_id, game_pk, match_method, confidence, linked_at) "
             "VALUES (?,?,?,?,?,?,?,?)",
             [(d, e, t, (g if t == "games" else None),
               (g if t == "predictions_log" else None), m, c, _now())
              for d, e, t, g, m, c in all_links])
         conn.commit()
-        print(f"\nwrote {len(all_links)} rows to odds_game_link")
+        print(f"\nwrote {len(all_links)} rows to {link_table}")
 
     # per-team coverage -- the check that caught the Athletics bug; keep it permanent
     print("\nper-team odds coverage (primary events):")
     tc = conn.execute(
         "SELECT team, COUNT(*) FROM ("
-        "  SELECT away_team AS team FROM odds_snapshots WHERE horizon_days=0"
-        "  UNION ALL SELECT home_team FROM odds_snapshots WHERE horizon_days=0"
+        f"  SELECT away_team AS team FROM {snap_table} WHERE horizon_days=0"
+        f"  UNION ALL SELECT home_team FROM {snap_table} WHERE horizon_days=0"
         ") WHERE team IS NOT NULL GROUP BY team ORDER BY 2").fetchall()
     if tc:
         counts = [c for _, c in tc]

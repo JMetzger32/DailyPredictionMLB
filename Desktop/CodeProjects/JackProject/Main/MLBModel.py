@@ -750,6 +750,11 @@ def assemble_features(df, tgl):
     model_df = df[["game_id", "season", "date", "home_team", "visiting_team",
                    "home_win", "home_score", "visitor_score"]].copy()
     model_df["home_covers"] = ((model_df["home_score"] - model_df["visitor_score"]) > 1.5).astype("Int64")
+    # The mirror-image event, NOT 1 - home_covers: "home doesn't win by 2+" also
+    # includes a 1-run home win and a 1-run away win. Only this prices the away team
+    # laying -1.5, which is the main run line on ~42% of games (the home-underdog
+    # ones) and is otherwise unpriceable by the home-side model alone.
+    model_df["away_covers"] = ((model_df["visitor_score"] - model_df["home_score"]) > 1.5).astype("Int64")
     model_df = model_df.merge(home_feats, on="game_id", how="left")
     model_df = model_df.merge(vis_feats, on="game_id", how="left")
 
@@ -1091,6 +1096,7 @@ def estimate_game_total(home_ts, away_ts, home_sp, away_sp):
 
 def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
                  model, scaler=None, feature_cols=None, runline_models=None,
+                 runline_away_models=None,
                  gb_model=None, xgb_model=None, xgb_bootstrap_models=None):
     """
     Predict probability of home team winning.
@@ -1204,6 +1210,18 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
         result["home_cover_prob"] = None
         result["away_cover_prob"] = None
 
+    # P(away wins by 2+) — see predict_games_batch for why this is not 1 - cover_prob.
+    result["away_win_by2_prob"] = None
+    if runline_away_models is not None:
+        try:
+            rla_lr, rla_gb, rla_scaler = runline_away_models
+            X_rla_sc = rla_scaler.transform(X_raw) if rla_scaler is not None else X_raw
+            result["away_win_by2_prob"] = round(
+                (float(rla_lr.predict_proba(X_rla_sc)[0, 1])
+                 + float(rla_gb.predict_proba(X_raw)[0, 1])) / 2, 3)
+        except Exception:
+            result["away_win_by2_prob"] = None
+
     # Estimated game total (formula-based O/U)
     _est = estimate_game_total(
         home_team_stats, away_team_stats, home_sp_stats, away_sp_stats
@@ -1217,6 +1235,7 @@ def predict_game(home_team_stats, away_team_stats, home_sp_stats, away_sp_stats,
 
 
 def predict_games_batch(games_stats, model, scaler=None, feature_cols=None, runline_models=None,
+                        runline_away_models=None,
                         gb_model=None, xgb_model=None, xgb_bootstrap_models=None):
     """
     Batched version of predict_game() for multiple games at once. Returns a list of
@@ -1318,6 +1337,19 @@ def predict_games_batch(games_stats, model, scaler=None, feature_cols=None, runl
         except Exception:
             rl_probs = None
 
+    # Away side of the run line (away wins by 2+) — a genuinely different event from
+    # 1 - home_cover_prob, and the only one comparable to the market's price when the
+    # away team is the one laying -1.5.
+    rl_away_probs = None
+    if runline_away_models is not None:
+        try:
+            rla_lr, rla_gb, rla_scaler = runline_away_models
+            X_rla_sc = rla_scaler.transform(X_raw) if rla_scaler is not None else X_raw
+            rl_away_probs = (rla_lr.predict_proba(X_rla_sc)[:, 1]
+                             + rla_gb.predict_proba(X_raw)[:, 1]) / 2
+        except Exception:
+            rl_away_probs = None
+
     results = []
     for i, (home_ts, away_ts, home_sp, away_sp) in enumerate(games_stats):
         prob = float(probs[i])
@@ -1335,6 +1367,10 @@ def predict_games_batch(games_stats, model, scaler=None, feature_cols=None, runl
         else:
             result["home_cover_prob"] = None
             result["away_cover_prob"] = None
+        # P(away wins by 2+). NOT away_cover_prob, which is P(home fails to win by 2+)
+        # and so also counts 1-run games either way.
+        result["away_win_by2_prob"] = (round(float(rl_away_probs[i]), 3)
+                                       if rl_away_probs is not None else None)
 
         _est = estimate_game_total(home_ts, away_ts, home_sp, away_sp)
         result["predicted_total"] = _est["total"]
@@ -1659,6 +1695,46 @@ if __name__ == "__main__":
     )
     rl_gb.fit(X_rl_all, y_rl_all, sample_weight=_rl_sw)
 
+    # Step 7e: the AWAY side of the run line (away covers -1.5, i.e. wins by 2+).
+    # Same architecture/hyperparameters as the home side deliberately -- the two are
+    # the same problem with the sign flipped, so any difference in their outputs
+    # should come from the data, not from an unexplained modelling choice.
+    print("\n[7e] Training run line model (away covers -1.5)...")
+    rla_df = model_df.dropna(subset=FEATURE_COLS + ["away_covers"])
+    rla_train = rla_df[rla_df["season"].between(2021, 2024)]
+    rla_test  = rla_df[rla_df["season"] == 2025]
+    X_rla_train, X_rla_test = rla_train[FEATURE_COLS], rla_test[FEATURE_COLS]
+    y_rla_train = rla_train["away_covers"].astype(int)
+    y_rla_test  = rla_test["away_covers"].astype(int)
+
+    _s = StandardScaler()
+    _lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    _lr.fit(_s.fit_transform(X_rla_train), y_rla_train)
+    _gb = GradientBoostingClassifier(
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, random_state=RANDOM_STATE
+    )
+    _gb.fit(X_rla_train, y_rla_train)
+    _probs = (_lr.predict_proba(_s.transform(X_rla_test))[:, 1]
+              + _gb.predict_proba(X_rla_test)[:, 1]) / 2
+    _base = max(y_rla_test.mean(), 1 - y_rla_test.mean())
+    print(f"  Run line covers rate (away): {y_rla_test.mean():.3f}")
+    print(f"  Baseline: {_base:.3f}  |  Ensemble accuracy: "
+          f"{accuracy_score(y_rla_test, (_probs > 0.5).astype(int)):.3f}")
+
+    # Final fit on all seasons with the same recency weights as the home side
+    _rla_sw = rla_df["season"].map(YEAR_WEIGHTS).fillna(1.0)
+    X_rla_all = rla_df[FEATURE_COLS]
+    y_rla_all = rla_df["away_covers"].astype(int)
+    rla_scaler = StandardScaler()
+    rla_lr = LogisticRegression(C=0.5, max_iter=1000, random_state=RANDOM_STATE)
+    rla_lr.fit(rla_scaler.fit_transform(X_rla_all), y_rla_all, sample_weight=_rla_sw)
+    rla_gb = GradientBoostingClassifier(
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, random_state=RANDOM_STATE
+    )
+    rla_gb.fit(X_rla_all, y_rla_all, sample_weight=_rla_sw)
+
     # Plots
     print("\n  Generating plots...")
     plot_feature_importance(gb, FEATURE_COLS)
@@ -1701,6 +1777,11 @@ if __name__ == "__main__":
         "lr_runline":     rl_lr,
         "gb_runline":     rl_gb,
         "scaler_runline": rl_scaler,
+        # Away side of the run line (away wins by 2+). Separate from the home side
+        # because "home doesn't cover -1.5" is not the same event as "away covers -1.5".
+        "lr_runline_away":     rla_lr,
+        "gb_runline_away":     rla_gb,
+        "scaler_runline_away": rla_scaler,
     }
     if xgb is not None:
         artifacts["xgb_model"] = xgb

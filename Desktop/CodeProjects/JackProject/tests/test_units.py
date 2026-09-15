@@ -81,17 +81,34 @@ def test_rate_edge():
     _compute_odds_fields's persisted values AND be safe to call at READ time on
     old model_edge values from before the 'extreme' tier existed (2026-07-23),
     since betting_stats/betting_weekly re-derive the category this way instead of
-    trusting the frozen bet_rating column. See CLAUDE.md's frozen-vintage note."""
+    trusting the frozen bet_rating column. See CLAUDE.md's frozen-vintage note.
+
+    Thresholds recalibrated 2026-09-15 to 0.010/0.020 for the joint moneyline+run-line
+    edge, which lives on a ~6x smaller scale than the old moneyline-only edge -- at the
+    old 0.05/0.12 bars it flagged 3 games in 8,233. See
+    scripts/results/joint_edge_research.md sec. 6."""
     ns = _extract("_rate_edge")
     f = ns["_rate_edge"]
     assert f(None) is None
-    assert f(0.13) == "extreme"      # > 0.12
-    assert f(0.12) == "good"         # boundary is exclusive on the extreme side
-    assert f(0.06) == "good"         # 0.05 < edge <= 0.12
-    assert f(0.05) == "unsure"       # boundary is exclusive on the good side
-    assert f(0.0) == "unsure"
-    assert f(-0.05) == "unsure"      # boundary is exclusive on the bad side
+    # Joint scale (rows written 2026-09-15 onward)
+    J = "joint_ml_rl"
+    assert f(0.021, J) == "extreme"     # > 0.020
+    assert f(0.020, J) == "good"        # boundary is exclusive on the extreme side
+    assert f(0.015, J) == "good"        # 0.010 < edge <= 0.020
+    assert f(0.010, J) == "unsure"      # boundary is exclusive on the good side
+    assert f(0.0, J) == "unsure"
+    assert f(-0.010, J) == "unsure"     # boundary is exclusive on the bad side
+    assert f(-0.011, J) == "bad"
+    # Moneyline scale — the DEFAULT, because every row written before the joint edge
+    # shipped carries one and has no edge_method. Rating those on the joint bars would
+    # call almost all of them 'extreme'.
+    assert f(0.13) == "extreme"
+    assert f(0.12) == "good"
+    assert f(0.06) == "good"
+    assert f(0.05) == "unsure"
     assert f(-0.06) == "bad"
+    # The SAME number is rated differently per scale — that is the entire point.
+    assert f(0.015, J) == "good" and f(0.015) == "unsure"
     # a pre-07-23 row stored bet_rating='good' despite edge=0.20 (extreme didn't exist
     # yet) -- re-rating it under today's rules must reclassify it, that's the whole point
     assert f(0.20) == "extreme"
@@ -318,12 +335,22 @@ def test_betting_upsert_coalesce():
     assert init_sql, "could not extract betting_log CREATE TABLE from init_betting_log.py"
     conn = sqlite3.connect(":memory:")
     conn.execute(init_sql.group(0))
+    # Production's schema is CREATE TABLE + ALTER-based migration, so the temp table
+    # must be built the same way or this test passes against a schema that no longer
+    # exists anywhere. Column names/order are taken from the source, not hardcoded.
+    added = re.search(r'ADDED_COLUMNS = \{(.*?)\n\}',
+                      open(os.path.join(_ROOT, "updates", "init_betting_log.py")).read(),
+                      re.S)
+    assert added, "could not extract ADDED_COLUMNS from init_betting_log.py"
+    added_cols = re.findall(r'"(\w+)":\s*"(\w+)"', added.group(1))
+    for col, coltype in added_cols:
+        conn.execute(f"ALTER TABLE betting_log ADD COLUMN {col} {coltype}")
     vals = lambda **kw: tuple(kw.get(c) for c in (
         "game_pk", "date", "game_type", "away_team", "home_team", "predicted_winner",
         "away_win_prob", "home_win_prob", "away_ml", "home_ml", "away_implied",
         "home_implied", "bet_rating", "model_edge", "predicted_team_ml", "predicted_total",
         "actual_winner", "away_score", "home_score", "correct", "closing_away_ml",
-        "closing_home_ml", "clv"))
+        "closing_home_ml", "clv") + tuple(c for c, _ in added_cols))
     conn.execute(sql, vals(game_pk=1, date="2026-07-01", predicted_winner="Home",
                            home_win_prob=0.6, away_ml=120, bet_rating="good",
                            actual_winner="Home", correct=1, clv=0.03))
@@ -426,6 +453,73 @@ def test_synth_results_from_log():
     assert f(ctx, {1: log[1]}) is None                # game 2 unstored -> no fast path
     assert f(ctx, {1: log[1], 2: {"home_win_prob": None, "predicted_winner": "Away"}}) is None
     assert f([], {}) == {}                            # empty slate -> empty dict
+
+
+def test_compute_runline_odds_fields():
+    ns = _extract("_compute_runline_odds_fields")
+    f = ns["_compute_runline_odds_fields"]
+    smap = {("NYA", "BOS"): {"away_point": 1.5, "home_point": -1.5,
+                             "away_spread_ml": -137, "home_spread_ml": 113,
+                             "away_spread_implied": 0.552, "home_spread_implied": 0.448,
+                             "spread_books": [{"name": "FanDuel"}]}}
+    r = f("NYA", "BOS", smap)
+    assert r["home_spread_point"] == -1.5 and r["away_spread_point"] == 1.5
+    assert r["home_spread_ml"] == 113 and r["away_spread_ml"] == -137
+    assert r["home_spread_implied"] == 0.448
+    assert len(r["spread_books"]) == 1
+    # unknown matchup, and a None map, must both degrade to all-None rather than raise
+    for miss in (f("SEA", "TEX", smap), f("NYA", "BOS", None)):
+        assert miss["home_spread_point"] is None and miss["home_spread_ml"] is None
+        assert miss["spread_books"] == []
+
+
+def test_compute_joint_edge_side_selection():
+    """The model probability fed to the joint edge must match the side the market
+    priced at -1.5. 'home wins by 2+' and 'away wins by 2+' are different events (a
+    one-run game is neither), so picking the wrong one silently compares unlike
+    things -- the bug this test exists to prevent."""
+    ns = _extract("_logit", "_compute_joint_edge")
+    import math as _math
+    ns["math"] = _math
+    f = ns["_compute_joint_edge"]
+
+    class FakeModel:
+        """Echoes back which run-line probability it was handed, via the 3rd feature."""
+        def __init__(self): self.seen = None
+        def predict_proba(self, X):
+            self.seen = X[0][2]                       # logit(model_rl)
+            return [[0.4, 0.6]]
+
+    pred = {"predicted_winner": "Home", "home_win_prob": 0.55, "away_win_prob": 0.45,
+            "home_cover_prob": 0.42, "away_win_by2_prob": 0.31}
+    ml = {"home_implied": 0.52}
+
+    # home lays -1.5 -> must use home_cover_prob
+    m1 = FakeModel()
+    edge, jp = f(pred, ml, {"home_spread_implied": 0.45, "home_spread_point": -1.5}, m1)
+    assert abs(m1.seen - _math.log(0.42 / 0.58)) < 1e-9
+    assert jp == 0.6 and abs(edge - (0.6 - 0.52)) < 1e-9   # picked Home
+
+    # home takes +1.5 -> must use 1 - away_win_by2_prob, NOT 1 - home_cover_prob
+    m2 = FakeModel()
+    f(pred, ml, {"home_spread_implied": 0.55, "home_spread_point": 1.5}, m2)
+    assert abs(m2.seen - _math.log(0.69 / 0.31)) < 1e-9
+    assert abs(m2.seen - _math.log(0.58 / 0.42)) > 1e-6    # the wrong-side value
+
+    # away pick flips which market prob the edge is measured against
+    pred_away = dict(pred, predicted_winner="Away")
+    e_away, _ = f(pred_away, ml, {"home_spread_implied": 0.45,
+                                  "home_spread_point": -1.5}, FakeModel())
+    assert abs(e_away - (0.4 - 0.48)) < 1e-9
+
+    # any missing input -> (None, None) so callers fall back to the moneyline edge
+    assert f(pred, ml, {"home_spread_implied": None, "home_spread_point": -1.5},
+             FakeModel()) == (None, None)
+    assert f(pred, ml, {"home_spread_implied": 0.45, "home_spread_point": -1.5},
+             None) == (None, None)
+    no_rl = dict(pred, away_win_by2_prob=None)
+    assert f(no_rl, ml, {"home_spread_implied": 0.45,
+                         "home_spread_point": 1.5}, FakeModel()) == (None, None)
 
 
 # ---------------------------------------------------------------------------

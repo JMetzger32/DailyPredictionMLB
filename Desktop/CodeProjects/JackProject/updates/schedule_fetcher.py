@@ -687,6 +687,111 @@ def parse_odds_events(events):
     return rows
 
 
+# The only run line the model can be scored against: home_covers is defined as
+# (home_score - visitor_score) > 1.5 in MLBModel.py, so a price at any other point
+# (books do also quote 1.0/2.0/2.5 alt lines) prices a DIFFERENT event and must not
+# be averaged in. Measured across 42 sampled archive dates / 611 events: 99.5% of
+# events carry a two-sided +/-1.5 quote, the modal point was never anything else,
+# and restricting to it dropped 0 events -- so this costs no coverage at all.
+STANDARD_RUN_LINE = 1.5
+
+
+def parse_spread_events(events):
+    """Parse Odds-API event objects into one run-line record per event.
+
+    Sibling to parse_odds_events (h2h) rather than an extension of it: the h2h path
+    is load-bearing in production and exhaustively validated, so the spreads market
+    gets its own function and leaves that one byte-identical.
+
+    The shape differs from h2h in one way that matters: a spread outcome carries a
+    `point` as well as a `price`, and books quote several points per event. Only
+    quotes where BOTH sides sit on +/-STANDARD_RUN_LINE are used (see that constant).
+    Prices are averaged in probability space and de-vigged exactly as in
+    parse_odds_events -- same reasoning, since American odds are discontinuous across
+    the +/-100 boundary.
+
+    Events with no usable two-sided 1.5 quote are skipped entirely.
+    """
+    rows = []
+    for event in events or []:
+        home_name = event.get("home_team", "")
+        away_name = event.get("away_team", "")
+        home_retro = resolve_odds_team(home_name)
+        away_retro = resolve_odds_team(away_name)
+
+        away_prices, home_prices = [], []
+        home_point = away_point = None
+        books = []
+        for bm in event.get("bookmakers", []):
+            bm_away = bm_home = None
+            bm_away_pt = bm_home_pt = None
+            for mkt in bm.get("markets", []):
+                if mkt.get("key") != "spreads":
+                    continue
+                for outcome in mkt.get("outcomes", []):
+                    n  = outcome.get("name")
+                    pr = outcome.get("price")
+                    pt = outcome.get("point")
+                    if pr is None or pt is None:
+                        continue
+                    # A real American price is always <=-100 or >=+100; anything
+                    # inside that band is corrupt input (same guard as h2h).
+                    if abs(pr) < 100:
+                        continue
+                    if abs(pt) != STANDARD_RUN_LINE:
+                        continue
+                    if n == away_name:
+                        bm_away, bm_away_pt = pr, pt
+                    elif n == home_name:
+                        bm_home, bm_home_pt = pr, pt
+            # Only take a book that quoted BOTH sides at the standard line -- a
+            # one-sided quote cannot be de-vigged against anything.
+            if bm_away is not None and bm_home is not None:
+                away_prices.append(bm_away)
+                home_prices.append(bm_home)
+                away_point, home_point = bm_away_pt, bm_home_pt
+                books.append({
+                    "name":           bm.get("title", "Unknown"),
+                    "away_point":     bm_away_pt,
+                    "home_point":     bm_home_pt,
+                    "away_spread_ml": round(bm_away),
+                    "home_spread_ml": round(bm_home),
+                })
+
+        if not away_prices or not home_prices:
+            continue
+
+        away_raw = sum(_american_to_raw(x) for x in away_prices) / len(away_prices)
+        home_raw = sum(_american_to_raw(x) for x in home_prices) / len(home_prices)
+        away_ml  = _raw_to_american(away_raw)
+        home_ml  = _raw_to_american(home_raw)
+        if away_ml is None or home_ml is None:
+            continue
+
+        total = away_raw + home_raw  # >1 due to vig
+
+        commence = event.get("commence_time")
+        rows.append({
+            "event_id":            event.get("id"),
+            "commence_time":       commence,
+            "game_date_et":        commence_time_to_et_date(commence),
+            "away_team_raw":       away_name,
+            "home_team_raw":       home_name,
+            "away_team":           away_retro,
+            "home_team":           home_retro,
+            "away_point":          away_point,
+            "home_point":          home_point,
+            "away_spread_ml":      away_ml,
+            "home_spread_ml":      home_ml,
+            "away_implied":        round(away_raw / total, 4),
+            "home_implied":        round(home_raw / total, 4),
+            "overround":           round(total - 1.0, 6),
+            "n_books":             len(books),
+            "books":               books[:8],
+        })
+    return rows
+
+
 def commence_time_to_et_date(commence_time):
     """ISO8601 UTC commence_time -> 'YYYY-MM-DD' in America/New_York, or None."""
     if not commence_time:
@@ -772,12 +877,91 @@ def get_mlb_odds(api_key):
     return odds_map
 
 
-def get_historical_mlb_odds(api_key, iso_ts):
+def spread_map_from_event_rows(rows):
+    """parse_spread_events output -> {(away_retro, home_retro): {...}}.
+
+    Same shape/caveats as odds_map_from_event_rows, including that this key cannot
+    represent a doubleheader (two same-day games between the same teams collapse to
+    one entry, last wins).
+    """
+    m = {}
+    for r in rows:
+        if not r["away_team"] or not r["home_team"]:
+            continue
+        m[(r["away_team"], r["home_team"])] = {
+            "away_point":         r["away_point"],
+            "home_point":         r["home_point"],
+            "away_spread_ml":     r["away_spread_ml"],
+            "home_spread_ml":     r["home_spread_ml"],
+            "away_spread_implied": r["away_implied"],
+            "home_spread_implied": r["home_implied"],
+            "spread_books":       r["books"],
+        }
+    return m
+
+
+def get_mlb_spread_odds(api_key):
+    """Fetch current MLB run-line (spreads) odds. Sibling of get_mlb_odds.
+
+    A separate function rather than a `markets` argument on get_mlb_odds so that
+    every existing moneyline caller is untouched, and so a spreads outage can never
+    take the moneyline path down with it.
+
+    Costs 1 credit per successful (200) call, same as the live moneyline endpoint
+    (the 10x multiplier applies to the HISTORICAL endpoint only). Returns {} on any
+    error; check get_last_odds_quota() to tell exhaustion from an empty slate.
+
+    Only the standard +/-1.5 line is returned -- see parse_spread_events.
+    """
+    if not api_key:
+        return {}
+    try:
+        resp = requests.get(
+            ODDS_API_BASE_URL,
+            params={
+                "apiKey":      api_key,
+                "regions":     "us",
+                "markets":     "spreads",
+                "oddsFormat":  "american",
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[spreads] API request failed: {e}")
+        return {}
+
+    _record_quota(resp)
+
+    if resp.status_code == 401:
+        print(f"[spreads] API 401 — key rejected or monthly quota exhausted "
+              f"(used={LAST_ODDS_QUOTA['used']}, remaining={LAST_ODDS_QUOTA['remaining']})",
+              flush=True)
+        return {}
+    try:
+        resp.raise_for_status()
+        events = resp.json()
+    except Exception as e:
+        print(f"[spreads] API error: {e}")
+        return {}
+
+    spread_map = spread_map_from_event_rows(parse_spread_events(events))
+    print(f"[spreads] Fetched run lines for {len(spread_map)} games")
+    return spread_map
+
+
+def get_historical_mlb_odds(api_key, iso_ts, markets="h2h"):
     """Fetch a HISTORICAL odds snapshot at iso_ts (e.g. '2026-08-13T14:00:00Z').
 
-    Costs 10 credits per successful call — 10x the live endpoint (cost = 10 x markets
-    x regions) — and is available only on paid plans. The API returns the closest
-    snapshot at or earlier than iso_ts.
+    Costs 10 credits per market per region per successful call — 10x the live
+    endpoint's per-market cost — and is available only on paid plans. The API
+    returns the closest snapshot at or earlier than iso_ts.
+
+    `markets` defaults to "h2h" (moneyline, the only market this project has ever
+    parsed/stored) so every existing caller is unaffected. Pass e.g. "spreads" or
+    "h2h,spreads" to fetch other markets — note event_rows below is ALWAYS the
+    h2h-only parse (parse_odds_events only reads the "h2h" market key out of each
+    bookmaker), so a non-h2h response will parse to empty rows; use raw_json
+    directly for any other market until a dedicated parser exists.
 
     Returns (meta, raw_json, event_rows):
       meta       {timestamp, previous_timestamp, next_timestamp, status, http_ok}
@@ -795,7 +979,7 @@ def get_historical_mlb_odds(api_key, iso_ts):
             params={
                 "apiKey":      api_key,
                 "regions":     "us",
-                "markets":     "h2h",
+                "markets":     markets,
                 "oddsFormat":  "american",
                 "date":        iso_ts,
             },

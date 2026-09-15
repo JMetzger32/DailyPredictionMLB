@@ -191,6 +191,15 @@
               <td class="text-center small away-runline"></td>
               <td class="text-center small home-runline"></td>
             </tr>
+            <tr class="market-runline-row d-none">
+              <td class="ps-3 text-muted small"
+                  data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="The sportsbook's actual run line and price for each side, from the archived pre-game market snapshot">
+                Run Line (Market)
+              </td>
+              <td class="text-center small text-muted away-market-runline"></td>
+              <td class="text-center small text-muted home-market-runline"></td>
+            </tr>
             <tr class="total-row d-none">
               <td class="ps-3 text-muted small" style="vertical-align:middle">
                 Est. Total
@@ -513,6 +522,22 @@
         homeRL.textContent = homeRLPct + "%";
         homeRL.className = "text-center small home-runline " + (homeRLPct > awayRLPct ? "text-success" : "text-danger");
       }
+    }
+
+    // Market run line — the book's actual line and price per side, so the model's
+    // cover probabilities above can be read against what Vegas charged.
+    if (game.home_spread_point != null) {
+      const mRow = q(".market-runline-row");
+      if (mRow) mRow.classList.remove("d-none");
+      const fmtSide = (pt, ml) => {
+        if (pt == null) return "—";
+        const ptStr = pt > 0 ? `+${pt}` : `${pt}`;
+        return ml == null ? ptStr : `${ptStr} (${fmtOdds(ml)})`;
+      };
+      const aEl = q(".away-market-runline");
+      const hEl = q(".home-market-runline");
+      if (aEl) aEl.textContent = fmtSide(game.away_spread_point, game.away_spread_ml);
+      if (hEl) hEl.textContent = fmtSide(game.home_spread_point, game.home_spread_ml);
     }
 
     // Est. Total + formula breakdown

@@ -28,6 +28,15 @@ function fmtEdge(edge) {
   return `${sign}${(edge * 100).toFixed(1)}pp`;
 }
 
+// Market run line from the home team's perspective, e.g. "-1.5 (+120)".
+// MLB run lines are always ±1.5; the sign says which side is laying it.
+function fmtRunLine(b) {
+  const pt = b.home_spread_point, ml = b.home_spread_ml;
+  if (pt === null || pt === undefined) return "—";
+  const ptStr = pt > 0 ? `+${pt}` : `${pt}`;
+  return ml === null || ml === undefined ? ptStr : `${ptStr} (${fmtOdds(ml)})`;
+}
+
 function plColor(pl) {
   if (pl === null) return "";
   return pl >= 0 ? "text-success" : "text-danger";
