@@ -129,11 +129,48 @@ meaningless against it:
 | new edge | **3 games (0.0%)** | **0 (0.0%)** |
 
 Dropping the new metric into the existing thresholds would empty the betting page
-permanently. Scale-equivalent replacements, chosen to land near the old bars'
-selectivity and at the best-measured cell:
+permanently. Replacements:
 
-- `GOOD_EDGE` 0.05 → **0.010** (2,938 games, 35.7%, 51.8% win)
-- `EXTREME_EDGE` 0.12 → **0.020** (593 games, 7.2%, 51.6% win)
+- `GOOD_EDGE` 0.05 → **0.010**
+- `EXTREME_EDGE` 0.12 → **0.030**
+
+### Why 0.030 and not 0.020 — read the BANDS, not the cumulative sweep
+
+The cumulative `|edge| >= t` table above is what threshold sweeps normally report, and
+it is misleading here: every row contains all the rows below it, so a strong low band
+props up every threshold above it. Per-band (disjoint) results on the same 8,233 games:
+
+```
+       band     n    win%          95% CI     ROI
+0.000-0.005  3024   49.4%  [47.7,51.3]    0.6%
+0.005-0.010  2271   47.6%  [45.5,49.7]   -2.4%   <- worst band
+0.010-0.015  1588   52.1%  [49.7,54.6]    1.6%
+0.015-0.020   757   51.1%  [47.3,54.7]   -0.4%
+0.020-0.025   341   53.7%  [48.4,58.9]    3.7%   <- BEST band
+0.025-0.030   156   50.0%  [41.7,57.7]   -1.5%
+0.030-1.000    96   46.9%  [37.5,57.3]   -6.6%
+```
+
+`GOOD_EDGE = 0.010` is well supported: the two bands below it are the weakest (49.4%,
+47.6%) and everything above is 50%+.
+
+`EXTREME_EDGE` was **initially set to 0.020 by analogy** with the old moneyline metric,
+where a large edge meant overconfidence and the >0.12 bucket lost money — plus a wish to
+match the old bar's ~7% selectivity. That reasoning does not survive contact with the
+bands: **the 0.020-0.025 band is the best one in the table (53.7%, +3.7% ROI)**, and
+excluding it removed 497 value bets for no gain. Corrected to 0.030, which is the only
+point where the joint edge actually degrades.
+
+| value-bet band | games | share | win% |
+|---|---|---|---|
+| 0.010-0.020 (initial) | 2,345 | 28.5% | 51.8% |
+| **0.010-0.030 (shipped)** | **2,842** | **34.5%** | **51.9%** |
+| excluded, >= 0.030 | 96 | 1.2% | 46.9% |
+
+Honest caveat in both directions: the 0.030+ cell is n=96 with a CI of [37.5, 57.3].
+That is not enough to prove a danger zone exists — CLAUDE.md's power note wants ~400 per
+bucket. The guard is kept because the point estimate is the worst in the table and it
+costs only 1.2% of games, not because it is established.
 
 ## Caveats
 

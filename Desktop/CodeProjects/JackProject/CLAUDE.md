@@ -294,11 +294,21 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   ~zero (−0.0253). Shipped anyway at the user's explicit direction, with a plain-language
   caveat on the betting page. **Don't cite it as beating the market.**
 - **`_rate_edge` takes an `edge_method` and the scales are NOT comparable.** The joint
-  edge is ~6x smaller (mean |edge| 0.0088 vs 0.0518), so its bars are **0.010/0.020**,
+  edge is ~6x smaller (mean |edge| 0.0088 vs 0.0518), so its bars are **0.010/0.030**,
   not 0.05/0.12 — at the old bars it flagged 3 games in 8,233. Every row written before
   2026-09-15 holds a moneyline-scale edge and no `edge_method`, so the default is the
   OLD scale; rows now store `edge_method` (`moneyline` | `joint_ml_rl`) and display
   re-rates per row. Same lesson as the frozen-vintage `bet_rating` bug, one scale later.
+- **Read edge thresholds off DISJOINT BANDS, not the cumulative `|edge| >= t` sweep.**
+  The cumulative view nests every lower band inside each higher row, so a strong low
+  band silently props up every threshold above it. On the joint edge the bands are:
+  0.005-0.010 **47.6%** (worst), 0.010-0.015 52.1%, 0.015-0.020 51.1%, 0.020-0.025
+  **53.7%** (best), 0.025-0.030 50.0%, 0.030+ 46.9% (n=96). `EXTREME_EDGE` was first set
+  to 0.020 by analogy with the old metric's overconfidence tier — that excluded the
+  single best band and 497 value bets for no gain. **The old edge's "big edge = bad"
+  pattern does not reappear on the joint edge; don't assume it transfers.** Corrected to
+  0.030, which is weakly evidenced (n=96, CI [37.5, 57.3]) and kept only because it costs
+  1.2% of games. Value bets are now 34.5% of the slate at 51.9%.
 
 ## Deploy notes (Render free tier)
 

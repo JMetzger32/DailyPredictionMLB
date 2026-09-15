@@ -90,11 +90,15 @@ def test_rate_edge():
     ns = _extract("_rate_edge")
     f = ns["_rate_edge"]
     assert f(None) is None
-    # Joint scale (rows written 2026-09-15 onward)
+    # Joint scale (rows written 2026-09-15 onward). The value-bet band is
+    # 0.010 < edge <= 0.030: per-band walk-forward results put the worst band just
+    # BELOW 0.010 (47.6%) and the best one at 0.020-0.025 (53.7%), so an extreme bar
+    # at 0.020 would have excluded the best-performing band.
     J = "joint_ml_rl"
-    assert f(0.021, J) == "extreme"     # > 0.020
-    assert f(0.020, J) == "good"        # boundary is exclusive on the extreme side
-    assert f(0.015, J) == "good"        # 0.010 < edge <= 0.020
+    assert f(0.031, J) == "extreme"     # > 0.030
+    assert f(0.030, J) == "good"        # boundary is exclusive on the extreme side
+    assert f(0.022, J) == "good"        # the 0.020-0.025 band must COUNT as a value bet
+    assert f(0.015, J) == "good"        # 0.010 < edge <= 0.030
     assert f(0.010, J) == "unsure"      # boundary is exclusive on the good side
     assert f(0.0, J) == "unsure"
     assert f(-0.010, J) == "unsure"     # boundary is exclusive on the bad side

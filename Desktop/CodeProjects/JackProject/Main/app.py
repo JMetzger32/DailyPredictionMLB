@@ -1723,7 +1723,22 @@ def _rate_edge(edge, edge_method=None):
     carry edge_method precisely so the two are never silently pooled -- the same lesson
     as the frozen-vintage bug above, one scale change later."""
     if edge_method == "joint_ml_rl":
-        EXTREME_EDGE = 0.020
+        # Per-band walk-forward results (n=8,233), NOT cumulative thresholds -- the
+        # cumulative view hides where performance actually lives:
+        #   0.000-0.005  n=3024  49.4%
+        #   0.005-0.010  n=2271  47.6%   <- worst band, hence GOOD_EDGE at 0.010
+        #   0.010-0.015  n=1588  52.1%
+        #   0.015-0.020  n= 757  51.1%
+        #   0.020-0.025  n= 341  53.7%   <- BEST band; an 0.020 extreme bar excluded it
+        #   0.025-0.030  n= 156  50.0%
+        #   0.030+       n=  96  46.9%
+        # EXTREME sits at 0.030 because that is the only point where the joint edge
+        # degrades. The old metric's 0.12 bar existed because large moneyline edges were
+        # overconfidence; that pattern does NOT reappear here, so copying the old
+        # two-tier shape by analogy (an earlier 0.020 bar) threw away the best band.
+        # Caveat both ways: at n=96 the 0.030+ cell's CI is [37.5, 57.3], so this guard
+        # is weakly evidenced -- CLAUDE.md's power note wants ~400/bucket.
+        EXTREME_EDGE = 0.030
         GOOD_EDGE = 0.010
     else:
         EXTREME_EDGE = 0.12
