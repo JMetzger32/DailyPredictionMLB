@@ -1732,26 +1732,39 @@ def _rate_edge(edge, edge_method=None):
         #   0.020-0.025  n= 341  53.7%   <- BEST band; an 0.020 extreme bar excluded it
         #   0.025-0.030  n= 156  50.0%
         #   0.030+       n=  96  46.9%
-        # EXTREME sits at 0.030 because that is the only point where the joint edge
-        # degrades. The old metric's 0.12 bar existed because large moneyline edges were
-        # overconfidence; that pattern does NOT reappear here, so copying the old
-        # two-tier shape by analogy (an earlier 0.020 bar) threw away the best band.
-        # Caveat both ways: at n=96 the 0.030+ cell's CI is [37.5, 57.3], so this guard
-        # is weakly evidenced -- CLAUDE.md's power note wants ~400/bucket.
-        EXTREME_EDGE = 0.030
-        GOOD_EDGE = 0.010
+        # EXTREME/BAD widened 2026-09-16 at the user's explicit direction to
+        # good=(0.01,0.03], extreme=(0.10,inf), bad=(-inf,-0.05), unsure=everything
+        # else -- i.e. unsure now covers BOTH [-0.05, 0.01] and (0.03, 0.10], a
+        # non-contiguous middle. IMPORTANT CAVEAT, checked against the actual
+        # walk-forward sample (n=8,233): the joint edge's observed range is only
+        # -0.054 to +0.042. So in practice:
+        #   - "extreme" (>0.10) is UNREACHABLE: 0 of 8,233 games ever exceed it.
+        #   - "bad" (<-0.05) is NEAR-UNREACHABLE: only 3 of 8,233 games.
+        # This effectively retires both categories for the joint metric rather than
+        # tightening them -- flagged here since it is easy to mistake this for "the
+        # same categories, just rarer" when it is closer to "these two categories
+        # don't fire anymore." See scripts/results/joint_edge_research.md.
+        if edge is None:
+            return None
+        if edge > 0.10:
+            return "extreme"
+        if edge < -0.05:
+            return "bad"
+        if 0.01 < edge <= 0.03:
+            return "good"
+        return "unsure"
     else:
         EXTREME_EDGE = 0.12
         GOOD_EDGE = 0.05
-    if edge is None:
-        return None
-    if edge > EXTREME_EDGE:
-        return "extreme"
-    if edge > GOOD_EDGE:
-        return "good"
-    if edge < -GOOD_EDGE:
-        return "bad"
-    return "unsure"
+        if edge is None:
+            return None
+        if edge > EXTREME_EDGE:
+            return "extreme"
+        if edge > GOOD_EDGE:
+            return "good"
+        if edge < -GOOD_EDGE:
+            return "bad"
+        return "unsure"
 
 
 def _implied_probs(away_ml, home_ml):

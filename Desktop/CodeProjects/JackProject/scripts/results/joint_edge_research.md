@@ -172,6 +172,41 @@ That is not enough to prove a danger zone exists — CLAUDE.md's power note want
 bucket. The guard is kept because the point estimate is the worst in the table and it
 costs only 1.2% of games, not because it is established.
 
+### Widened again 2026-09-16, at the user's explicit direction, NOT from new evidence
+
+`good=(0.01,0.03]`, `extreme=(0.10,∞)`, `bad=(-∞,-0.05)`, `unsure` = everything else
+(a non-contiguous middle spanning both `(0.03, 0.10]` and `[-0.05, 0.01]`).
+
+**`model_edge` is referenced to the side the moneyline model already picked
+(`predicted_winner`), not to home.** The cached research columns (`old_edge`/`new_edge`)
+are home-referenced, so getting this right requires flipping sign whenever the pick is
+Away: `prod_edge = new_edge_home if picked_home else -new_edge_home`. Getting this wrong
+was caught mid-analysis — an initial pass that skipped the flip produced numbers that
+looked plausible (805 games, 53.8%) but were not what production actually computes.
+
+Correct category sizes and win rates, n=8,233, sign-flip applied, `won` = did the model's
+actual pick win:
+
+```
+overall pick accuracy (baseline, all 8,233 games): 55.5%   (home picked 62.0% of the time)
+
+    good   n=1,484 (18.0%)   win% = 53.3%
+    extreme    n=0  ( 0.0%)   -- unreachable, as before
+    bad        n=2  ( 0.0%)   win% = 50.0%   -- near-unreachable, as before
+    unsure  n=6,747 (82.0%)   win% = 56.0%
+```
+
+**"good" is now BELOW the model's own baseline accuracy, and below "unsure".** The
+non-contiguous middle band absorbs the strongest part of the sample (picks where the
+joint edge is near zero, i.e. the model and market roughly agree, plus picks with mild
+self-disagreement), while "good" isolates a subset that actually underperforms doing
+nothing. This is the opposite of what "good" should mean and is flagged as a real
+finding, not a nitpick — these ranges were specified directly by the user, not derived
+from this data, and this is what they produce when checked.
+
+"extreme" (0 games) and "bad" (2 games) are effectively retired as categories on this
+metric's observed range (−0.054 to +0.042).
+
 ## Caveats
 
 - 2026 is the one season where the old edge beats the new one (48.3% vs 47.8%), and

@@ -90,19 +90,27 @@ def test_rate_edge():
     ns = _extract("_rate_edge")
     f = ns["_rate_edge"]
     assert f(None) is None
-    # Joint scale (rows written 2026-09-15 onward). The value-bet band is
-    # 0.010 < edge <= 0.030: per-band walk-forward results put the worst band just
-    # BELOW 0.010 (47.6%) and the best one at 0.020-0.025 (53.7%), so an extreme bar
-    # at 0.020 would have excluded the best-performing band.
+    # Joint scale (rows written 2026-09-15 onward). Widened 2026-09-16 at the user's
+    # explicit direction: good=(0.01,0.03], extreme=(0.10,inf), bad=(-inf,-0.05),
+    # unsure = everything else -- a NON-CONTIGUOUS middle spanning both
+    # (0.03, 0.10] and [-0.05, 0.01]. Checked against the actual walk-forward sample
+    # (n=8,233, observed range -0.054..+0.042): "extreme" is now UNREACHABLE (0
+    # games ever exceed 0.10) and "bad" is NEAR-UNREACHABLE (3 games), so this
+    # effectively retires both categories for the joint metric rather than just
+    # tightening them. See scripts/results/joint_edge_research.md.
     J = "joint_ml_rl"
-    assert f(0.031, J) == "extreme"     # > 0.030
-    assert f(0.030, J) == "good"        # boundary is exclusive on the extreme side
-    assert f(0.022, J) == "good"        # the 0.020-0.025 band must COUNT as a value bet
-    assert f(0.015, J) == "good"        # 0.010 < edge <= 0.030
-    assert f(0.010, J) == "unsure"      # boundary is exclusive on the good side
+    assert f(0.11, J) == "extreme"      # > 0.10
+    assert f(0.10, J) == "unsure"       # boundary exclusive; 0.10 itself is unsure
+    assert f(0.05, J) == "unsure"       # inside the widened upper unsure band
+    assert f(0.031, J) == "unsure"      # just above the old 0.030 extreme bar -> now unsure
+    assert f(0.030, J) == "good"        # top of the good band
+    assert f(0.022, J) == "good"
+    assert f(0.011, J) == "good"        # just above the good floor
+    assert f(0.010, J) == "unsure"      # boundary exclusive on the good side
     assert f(0.0, J) == "unsure"
-    assert f(-0.010, J) == "unsure"     # boundary is exclusive on the bad side
-    assert f(-0.011, J) == "bad"
+    assert f(-0.05, J) == "unsure"      # boundary exclusive; -0.05 itself is unsure
+    assert f(-0.011, J) == "unsure"     # what used to be "bad" is now unsure
+    assert f(-0.051, J) == "bad"        # only strictly below -0.05
     # Moneyline scale — the DEFAULT, because every row written before the joint edge
     # shipped carries one and has no edge_method. Rating those on the joint bars would
     # call almost all of them 'extreme'.

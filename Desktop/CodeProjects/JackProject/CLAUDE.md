@@ -309,6 +309,24 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   pattern does not reappear on the joint edge; don't assume it transfers.** Corrected to
   0.030, which is weakly evidenced (n=96, CI [37.5, 57.3]) and kept only because it costs
   1.2% of games. Value bets are now 34.5% of the slate at 51.9%.
+- **WIDENED 2026-09-16 at the user's explicit direction, not from evidence: good=(0.01,0.03],
+  extreme=(0.10,∞), bad=(-∞,-0.05).** `model_edge` is referenced to the side the model
+  ALREADY picked (`predicted_winner`), not to home — the cached research columns are
+  home-referenced, so checking this required flipping sign whenever the pick is Away. An
+  initial pass that skipped the flip gave a plausible-looking but wrong number (805 games,
+  53.8%); the correct one is materially different and worth reading carefully:
+  ```
+  baseline (model's own pick accuracy, all 8,233 games): 55.5%   (picks home 62.0%)
+      good     n=1,484 (18.0%)   53.3%
+      extreme  n=    0 ( 0.0%)   -- unreachable; observed edge range is only -0.054..+0.042
+      bad      n=    2 ( 0.0%)   -- near-unreachable
+      unsure   n=6,747 (82.0%)   56.0%
+  ```
+  **"good" now performs WORSE than both the baseline and "unsure."** The non-contiguous
+  middle band (spanning both (0.03,0.10] and [-0.05,0.01]) absorbs most of the sample,
+  including near-zero-edge agreement and mild self-disagreement, and outperforms the
+  isolated "good" slice. This is the opposite of what the label implies. Shipped anyway
+  per direction — see scripts/results/joint_edge_research.md for the full breakdown.
 
 ## Deploy notes (Render free tier)
 
