@@ -24,6 +24,20 @@
       Bet tracking started <strong id="tracking-date"></strong>. Only games where Vegas odds were available at prediction time are included.
     </div>
 
+    <!-- What "edge" means here. Stated up front because the number is easy to read as
+         a predicted profit, which backtesting says it is not. -->
+    <div class="alert alert-warning py-2 mb-4 small" role="alert">
+      <strong>How to read “Edge”.</strong> Edge is how far this model's probability sits
+      from the sportsbook's, after removing the book's margin — it combines the moneyline
+      and run-line markets. It is a <em>disagreement with the market, not a predicted
+      profit</em>. In backtesting over 8,233 games, the model's own picks won 55.5%
+      overall (it favors the home side often, and home teams do win more), and the
+      current “Value Bet” band actually performed <em>worse</em> than that at 53.3% —
+      below both the model's baseline and breakeven at standard −110 odds. Treat these
+      labels as “where the model differs from Vegas”, not as a ranking of bet quality,
+      and bet responsibly or not at all.
+    </div>
+
     <!-- ── Category Cards ──────────────────────────────────────── -->
     <div class="row g-3 mb-4">
 
@@ -170,7 +184,8 @@
                 <th>Matchup</th>
                 <th>Pick</th>
                 <th class="text-center">Odds</th>
-                <th class="text-center">Edge</th>
+                <th class="text-center" title="Market run line (-1.5 favorite / +1.5 underdog) and its price at bet time">Run Line</th>
+                <th class="text-center" title="Model probability minus de-vigged market probability. Combines the moneyline and run-line markets. This is a disagreement with the market, NOT a predicted profit.">Edge</th>
                 <th class="text-center" title="Expected value per $10 bet based on model probability">EV</th>
                 <th class="text-center" title="Quarter-Kelly stake, max $15/game, sized down by edge">¼K Stake</th>
                 <th class="text-center">Result</th>
@@ -248,6 +263,14 @@
               <td class="text-muted">Odds</td>
               <td id="modal-odds">—</td>
             </tr>
+            <tr id="modal-runline-row" class="d-none">
+              <td class="text-muted">Run Line</td>
+              <td id="modal-runline">—</td>
+            </tr>
+            <tr id="modal-cover-row" class="d-none">
+              <td class="text-muted" title="Model probability that the home team wins by 2+ (covers -1.5), next to the market's de-vigged probability for the same outcome">Cover Prob <span class="text-muted small">(model / market)</span></td>
+              <td id="modal-cover">—</td>
+            </tr>
             <tr>
               <td class="text-muted">Model Edge</td>
               <td id="modal-edge">—</td>
@@ -255,6 +278,10 @@
             <tr id="modal-result-row" class="d-none">
               <td class="text-muted">Result</td>
               <td id="modal-result">—</td>
+            </tr>
+            <tr id="modal-rl-result-row" class="d-none">
+              <td class="text-muted" title="Did the model's run-line call (cover / no cover) turn out right?">Run Line Result</td>
+              <td id="modal-rl-result">—</td>
             </tr>
             <tr id="modal-pl-row" class="d-none">
               <td class="text-muted">P/L</td>
@@ -289,6 +316,7 @@
         <td class="small">${b.away_team} @ ${b.home_team}</td>
         <td class="fw-semibold small">${b.pick || "—"}</td>
         <td class="text-center small">${fmtOdds(b.ml)}</td>
+        <td class="text-center small text-muted">${fmtRunLine(b)}</td>
         <td class="text-center small">${fmtEdge(b.edge)}</td>
         <td class="text-center small fw-semibold ${evCls}">${evStr}</td>
         <td class="text-center small text-muted">${fmtStake(b.kelly_stake)}</td>
@@ -376,6 +404,41 @@
     document.getElementById("modal-pick").textContent  = b.pick || "—";
     document.getElementById("modal-odds").textContent  = fmtOdds(b.ml);
     document.getElementById("modal-edge").textContent  = fmtEdge(b.edge);
+
+    // Run line: market line/price, then model vs market cover probability side by
+    // side. Both rows stay hidden when the game has no archived run line.
+    const rlRow = document.getElementById("modal-runline-row");
+    if (b.home_spread_point != null) {
+      rlRow.classList.remove("d-none");
+      document.getElementById("modal-runline").textContent = fmtRunLine(b);
+    } else {
+      rlRow.classList.add("d-none");
+    }
+    // Compare model vs market on the side that actually LAYS -1.5. The two sides are
+    // different events: "home wins by 2+" is not the complement of "away wins by 2+"
+    // (a one-run game satisfies neither), so the model probability shown must be the
+    // one for the same side the market priced.
+    const coverRow = document.getElementById("modal-cover-row");
+    const homeLays = b.home_spread_point === -1.5;
+    const mdlCover = homeLays ? b.home_cover_prob : b.away_win_by2_prob;
+    const mktCover = homeLays ? b.home_spread_implied : b.away_spread_implied;
+    if (mdlCover != null && mktCover != null) {
+      coverRow.classList.remove("d-none");
+      const who = homeLays ? (b.home_team || "Home") : (b.away_team || "Away");
+      coverRow.querySelector("td").textContent = `${who} covers -1.5 (model / market)`;
+      document.getElementById("modal-cover").textContent =
+        `${(mdlCover * 100).toFixed(1)}% / ${(mktCover * 100).toFixed(1)}%`;
+    } else {
+      coverRow.classList.add("d-none");
+    }
+    const rlResRow = document.getElementById("modal-rl-result-row");
+    if (b.correct_rl !== null && b.correct_rl !== undefined) {
+      rlResRow.classList.remove("d-none");
+      document.getElementById("modal-rl-result").textContent =
+        b.correct_rl ? "✅ Correct" : "❌ Wrong";
+    } else {
+      rlResRow.classList.add("d-none");
+    }
 
     const resultRow = document.getElementById("modal-result-row");
     const plRow     = document.getElementById("modal-pl-row");

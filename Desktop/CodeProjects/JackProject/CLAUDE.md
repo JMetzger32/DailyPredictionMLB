@@ -254,6 +254,79 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
 - betting_log rows need BOTH `bet_rating` (odds at prediction time) AND `correct`
   (resolution) to count. Odds are unrecoverable after game time; results are
   always re-fetchable. See scripts/results/phase1_root_causes.md.
+- **Run-line (spreads) market data now exists, 2021-2026** — `odds_snapshots_spreads`
+  (13,909 rows, joined via `odds_game_link_spreads`, 94.6% of games vs h2h's 96.6%;
+  the gap is early-2021 dates where no book had posted a run line at the snapshot
+  hour). Fetched 2026-09-15 with the last of the paid historical access
+  (`updates/backfill_historical_spreads.py` archives raw gzip, `scripts/parse_spread_archive.py`
+  parses it for free, forever). **That access has lapsed — the archive under
+  `Databases_and_logs/odds_archive_spreads/` cannot be re-bought at any price.**
+  Live run lines cost **1 credit/call** (verified, same as h2h — the 10x multiplier is
+  historical-only) via `get_mlb_spread_odds`.
+- **Only the ±1.5 line is stored, and that costs nothing** — books also quote 1.0/2.0/2.5
+  alt lines, but `home_covers` is defined as margin > 1.5, so any other point prices a
+  different event. Measured across 611 sampled events: 99.5% carry a two-sided ±1.5
+  quote, the modal point was never anything else, and restricting to it dropped **0**
+  events. Non-1.5 two-sided quotes turned out to be other-sport contamination in the
+  feed (points of -7.5, -12.5, 4.5), which the filter correctly rejects.
+- **`away_cover_prob` is NOT "away wins by 2+"** — it is `1 - home_cover_prob`, i.e.
+  P(home fails to win by 2+), which also counts one-run games either way. The market
+  hangs -1.5 on whichever side it favours (58% home / 42% away), so comparing the model
+  to the market needs BOTH thresholds. `scripts/train_away_runline.py` added the away
+  side (`away_covers`, keys `lr_runline_away`/`gb_runline_away`/`scaler_runline_away`,
+  output `away_win_by2_prob`). With both, model and market price the identical event on
+  every game: home lays -1.5 → `home_cover_prob`; home takes +1.5 → `1 - away_win_by2_prob`.
+  Getting this wrong looks like calibrated data until you check it — the naive version
+  showed the market implying 48% against a 36% actual rate, *inverted*.
+- **FIXED 2026-09-15: `correct_rl` had never once been set.** `_build_prediction_entry`
+  never wrote `home_cover_prob` onto log entries, so the `hcp is not None` guard in
+  `update_yesterday_results` never fired — 0 of 1,893 entries had either field, making
+  `/api/betting`'s `rl_stats` a permanent no-op. The entry builder now writes the
+  run-line fields and `betting_log` has columns for them.
+- **The shipped edge is now the JOINT moneyline+run-line edge** (`_compute_joint_edge`,
+  `joint_edge_model` in the pkl, a 4-logit second stage; `scripts/joint_edge_research.md`).
+  Honest summary: it is **better but still not profitable**. It fixes the old edge being
+  *anti-predictive* (slope −0.98 → +4.87; flat win% 47.4% → 49.8%, holding in 3 of 4
+  seasons), and its best band wins 51.8% [50.1, 53.5] at |edge| ≥ 0.010 — but breakeven
+  at −110 is **52.4%**, and the run-line terms are not significant (LR test p=0.109).
+  The second stage mostly learns to copy the market (AUC 0.5944 vs market 0.5946); the
+  only model input carrying real weight is `model_rl` (+0.0991), while `model_ml` is
+  ~zero (−0.0253). Shipped anyway at the user's explicit direction, with a plain-language
+  caveat on the betting page. **Don't cite it as beating the market.**
+- **`_rate_edge` takes an `edge_method` and the scales are NOT comparable.** The joint
+  edge is ~6x smaller (mean |edge| 0.0088 vs 0.0518), so its bars are **0.010/0.030**,
+  not 0.05/0.12 — at the old bars it flagged 3 games in 8,233. Every row written before
+  2026-09-15 holds a moneyline-scale edge and no `edge_method`, so the default is the
+  OLD scale; rows now store `edge_method` (`moneyline` | `joint_ml_rl`) and display
+  re-rates per row. Same lesson as the frozen-vintage `bet_rating` bug, one scale later.
+- **Read edge thresholds off DISJOINT BANDS, not the cumulative `|edge| >= t` sweep.**
+  The cumulative view nests every lower band inside each higher row, so a strong low
+  band silently props up every threshold above it. On the joint edge the bands are:
+  0.005-0.010 **47.6%** (worst), 0.010-0.015 52.1%, 0.015-0.020 51.1%, 0.020-0.025
+  **53.7%** (best), 0.025-0.030 50.0%, 0.030+ 46.9% (n=96). `EXTREME_EDGE` was first set
+  to 0.020 by analogy with the old metric's overconfidence tier — that excluded the
+  single best band and 497 value bets for no gain. **The old edge's "big edge = bad"
+  pattern does not reappear on the joint edge; don't assume it transfers.** Corrected to
+  0.030, which is weakly evidenced (n=96, CI [37.5, 57.3]) and kept only because it costs
+  1.2% of games. Value bets are now 34.5% of the slate at 51.9%.
+- **WIDENED 2026-09-16 at the user's explicit direction, not from evidence: good=(0.01,0.03],
+  extreme=(0.10,∞), bad=(-∞,-0.05).** `model_edge` is referenced to the side the model
+  ALREADY picked (`predicted_winner`), not to home — the cached research columns are
+  home-referenced, so checking this required flipping sign whenever the pick is Away. An
+  initial pass that skipped the flip gave a plausible-looking but wrong number (805 games,
+  53.8%); the correct one is materially different and worth reading carefully:
+  ```
+  baseline (model's own pick accuracy, all 8,233 games): 55.5%   (picks home 62.0%)
+      good     n=1,484 (18.0%)   53.3%
+      extreme  n=    0 ( 0.0%)   -- unreachable; observed edge range is only -0.054..+0.042
+      bad      n=    2 ( 0.0%)   -- near-unreachable
+      unsure   n=6,747 (82.0%)   56.0%
+  ```
+  **"good" now performs WORSE than both the baseline and "unsure."** The non-contiguous
+  middle band (spanning both (0.03,0.10] and [-0.05,0.01]) absorbs most of the sample,
+  including near-zero-edge agreement and mild self-disagreement, and outperforms the
+  isolated "good" slice. This is the opposite of what the label implies. Shipped anyway
+  per direction — see scripts/results/joint_edge_research.md for the full breakdown.
 
 ## Deploy notes (Render free tier)
 

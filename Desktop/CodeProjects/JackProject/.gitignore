@@ -18,3 +18,7 @@ credentials*.json
 # Runtime job-status state (written by app.py, per-instance)
 Databases_and_logs/job_status.json
 archive/
+
+# API key material — never commit
+odds-key
+.odds_api_key
