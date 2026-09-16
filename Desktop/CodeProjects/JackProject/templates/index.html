@@ -34,7 +34,7 @@
     </div>
     <div id="value-toggle-wrap" class="d-none ms-auto">
       <button id="value-toggle" class="btn btn-sm btn-outline-success"
-              title="Show only games in the +5pp to +12pp value band.">
+              title="Show only games in the +1pp to +3pp value band.">
         💰 Value Bets Only <span id="value-count" class="badge bg-success ms-1">0</span>
       </button>
     </div>
@@ -357,20 +357,22 @@
   //  baselines refresh automatically via the 5 AM daily job.)
 
   // ── Value-bet filter state ────────────────────────────────────────
-  // The value band is edge +5pp..+12pp — bet_rating "good" only. Games above +12pp
-  // are deliberately NOT included: they are the worst-performing tier out-of-sample
-  // (43.5% win, n=694), so surfacing them under a "Value Bets" button would invert
-  // the signal. They get the ⚠ Overconfident badge instead.
+  // The value band is bet_rating "good" — as of 2026-09-16 that means the JOINT
+  // moneyline+run-line edge is +1pp..+3pp (Main/app.py::_rate_edge,
+  // edge_method="joint_ml_rl"), not the old +5pp..+12pp moneyline-only band. This
+  // fallback parses raw model_edge directly and is used ONLY for old logged games
+  // that predate bet_rating being stored at all — it deliberately still checks the
+  // OLD 0.05/0.12 range because any game old enough to be missing bet_rating is
+  // old enough to be on the OLD moneyline-only edge scale, never the joint one.
   // Keying off bet_rating (the app's own _rate_edge output) keeps the UI from
-  // drifting if those thresholds move; model_edge is a fallback only for older
-  // entries predating the stored rating.
+  // drifting if either scale's thresholds move again.
   let valueOnly = false;
 
   function isValueBet(rating, edge) {
     if (rating) return rating === "good";
     if (edge !== "" && edge != null) {
       const e = parseFloat(edge);
-      return e > 0.05 && e <= 0.12;
+      return e > 0.05 && e <= 0.12;   // old moneyline-only scale, fallback only
     }
     return false;
   }
@@ -579,15 +581,22 @@
     if (game.away_ml != null && game.home_ml != null) {
       const awayOddsStr = game.away_ml > 0 ? `+${game.away_ml}` : `${game.away_ml}`;
       const homeOddsStr = game.home_ml > 0 ? `+${game.home_ml}` : `${game.home_ml}`;
+      // Thresholds updated 2026-09-16 for the joint moneyline+run-line edge
+      // (Main/app.py::_rate_edge, edge_method="joint_ml_rl") -- these numbers are on
+      // a completely different scale from the old moneyline-only edge (~6x smaller),
+      // so the old "+5pp to +12pp" text here was actively wrong once that shipped.
+      // See CLAUDE.md and scripts/results/joint_edge_research.md for the evidence
+      // and the honest caveat: "good" here is NOT shown to beat the model's own
+      // baseline pick accuracy, let alone the market.
       const ratingsMap = {
         good:    { cls: "bg-success text-white", text: "✓ Value Bet",
-                   tip: "Edge +5pp to +12pp — the band the betting system sizes with quarter-Kelly. Roughly break-even out-of-sample, not a guaranteed winner." },
+                   tip: "Edge +1pp to +3pp on the model's own pick, combining the moneyline and run-line markets. A disagreement with the market, not a predicted profit — backtesting does not show this band beating the model's own baseline pick accuracy." },
         extreme: { cls: "bg-warning text-dark",  text: "⚠ Overconfident",
-                   tip: "Edge above +12pp. Historically the WORST tier, not the best: 43.5% win rate out-of-sample (n=694, 95% CI [39.9, 47.2]) — the model is overconfident here, not finding value. Excluded from value bets and Kelly sizing." },
+                   tip: "Edge above +10pp. On the observed range of this metric this almost never fires; kept as a guard rather than an established finding (n=96 in backtesting, wide confidence interval). Excluded from value bets and Kelly sizing." },
         unsure:  { cls: "bg-secondary text-white", text: "~ Toss-Up",
-                   tip: "Edge within ±5pp — no meaningful disagreement with the market." },
+                   tip: "Edge between −5pp and +1pp, OR between +3pp and +10pp — no flagged disagreement with the market." },
         bad:     { cls: "bg-danger text-white",  text: "✗ No Value",
-                   tip: "Edge below −5pp — the market rates this side higher than the model does." },
+                   tip: "Edge below −5pp — the model's own second-stage signal strongly disagrees with its own pick. Rarely triggers." },
       };
       const rating = game.bet_rating ? ratingsMap[game.bet_rating] : null;
       const badgeHtml = rating
@@ -602,13 +611,30 @@
     }
 
     // Market vs model probability row
+    //
+    // FIXED 2026-09-16: this used to recompute its own "edge" from the raw
+    // moneyline-only home_win_prob/away_win_prob vs the market -- completely
+    // independent of, and inconsistent with, the "✓ Value Bet"/bet_rating badge
+    // above it, which is now driven by the joint moneyline+run-line edge
+    // (Main/app.py::_compute_joint_edge). That mismatch is what could show a badge
+    // like "Toss-Up" right next to an "Edge: +17pp" line for the same game -- the
+    // badge used the small joint scale (mean |edge| ~0.009), this row used the much
+    // larger moneyline-only scale (mean |edge| ~0.05) and never agreed with it.
+    // Now it uses game.model_edge directly (the SAME number the badge is rated
+    // from) and game.joint_home_win_prob (the second-stage probability that edge
+    // was computed from) when available, falling back to the first-stage
+    // home_win_prob only for older logged games that predate the joint edge.
     const marketRow = q(".market-model-row");
     if (game.away_implied != null && game.home_implied != null) {
-      const modelPct  = homeWin ? Math.round((game.home_win_prob || 0.5) * 100) : Math.round((game.away_win_prob || 0.5) * 100);
-      const marketPct = homeWin ? Math.round(game.home_implied * 100) : Math.round(game.away_implied * 100);
-      const edge      = modelPct - marketPct;
-      const edgeStr   = edge >= 0 ? `+${edge}pp` : `${edge}pp`;
-      const edgeCls   = edge > 0 ? "text-success" : edge < 0 ? "text-danger" : "";
+      const jointHome  = game.joint_home_win_prob;
+      const modelProb  = jointHome != null
+        ? (homeWin ? jointHome : 1 - jointHome)
+        : (homeWin ? (game.home_win_prob || 0.5) : (game.away_win_prob || 0.5));
+      const modelPct   = Math.round(modelProb * 100);
+      const marketPct  = homeWin ? Math.round(game.home_implied * 100) : Math.round(game.away_implied * 100);
+      const edgeVal    = game.model_edge != null ? game.model_edge * 100 : (modelPct - marketPct);
+      const edgeStr    = edgeVal >= 0 ? `+${edgeVal.toFixed(1)}pp` : `${edgeVal.toFixed(1)}pp`;
+      const edgeCls    = edgeVal > 0 ? "text-success" : edgeVal < 0 ? "text-danger" : "";
       marketRow.innerHTML = `Model: <strong>${modelPct}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPct}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
       marketRow.classList.remove("d-none");
     }
@@ -831,8 +857,8 @@
       document.getElementById("value-count").textContent = valueCount;
       valueBtn.disabled = valueCount === 0;
       valueBtn.title = valueCount === 0
-        ? "No games today fall in the +5pp to +12pp value band."
-        : `${valueCount} game${valueCount === 1 ? "" : "s"} in the +5pp to +12pp value band. Games above +12pp are flagged ⚠ Overconfident, not value.`;
+        ? "No games today fall in the +1pp to +3pp value band."
+        : `${valueCount} game${valueCount === 1 ? "" : "s"} in the +1pp to +3pp value band. Games above +10pp are flagged ⚠ Overconfident, not value.`;
       document.getElementById("value-toggle-wrap").classList.remove("d-none");
 
     } catch (e) {
