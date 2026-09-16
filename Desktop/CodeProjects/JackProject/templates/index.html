@@ -626,16 +626,26 @@
     // home_win_prob only for older logged games that predate the joint edge.
     const marketRow = q(".market-model-row");
     if (game.away_implied != null && game.home_implied != null) {
-      const jointHome  = game.joint_home_win_prob;
-      const modelProb  = jointHome != null
+      // FIXED 2026-09-16 (again): Model% and Market% were each independently
+      // rounded to a whole percent for display, while Edge came from the server's
+      // 4-decimal-precision model_edge -- so "Model: 58% · Market: 56%" (a visible
+      // 2pp gap) could sit next to "Edge: +0.3pp", because the true underlying
+      // values were e.g. 58.1% and 57.8%. Both numbers were individually correct;
+      // rounding them to whole percents before subtracting is what broke the
+      // arithmetic a reader would naturally try to check. Now every number in this
+      // row is derived from the SAME unrounded percentages, formatted to one
+      // decimal place, so Model - Market always equals the displayed Edge.
+      const jointHome    = game.joint_home_win_prob;
+      const modelProbRaw = jointHome != null
         ? (homeWin ? jointHome : 1 - jointHome)
         : (homeWin ? (game.home_win_prob || 0.5) : (game.away_win_prob || 0.5));
-      const modelPct   = Math.round(modelProb * 100);
-      const marketPct  = homeWin ? Math.round(game.home_implied * 100) : Math.round(game.away_implied * 100);
-      const edgeVal    = game.model_edge != null ? game.model_edge * 100 : (modelPct - marketPct);
-      const edgeStr    = edgeVal >= 0 ? `+${edgeVal.toFixed(1)}pp` : `${edgeVal.toFixed(1)}pp`;
-      const edgeCls    = edgeVal > 0 ? "text-success" : edgeVal < 0 ? "text-danger" : "";
-      marketRow.innerHTML = `Model: <strong>${modelPct}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPct}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
+      const marketProbRaw = homeWin ? game.home_implied : game.away_implied;
+      const modelPctRaw   = modelProbRaw * 100;
+      const marketPctRaw  = marketProbRaw * 100;
+      const edgeVal = game.model_edge != null ? game.model_edge * 100 : (modelPctRaw - marketPctRaw);
+      const edgeStr = edgeVal >= 0 ? `+${edgeVal.toFixed(1)}pp` : `${edgeVal.toFixed(1)}pp`;
+      const edgeCls = edgeVal > 0 ? "text-success" : edgeVal < 0 ? "text-danger" : "";
+      marketRow.innerHTML = `Model: <strong>${modelPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
       marketRow.classList.remove("d-none");
     }
 
