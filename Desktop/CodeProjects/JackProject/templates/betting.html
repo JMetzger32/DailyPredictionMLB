@@ -275,6 +275,24 @@
               <td class="text-muted">Model Edge</td>
               <td id="modal-edge">—</td>
             </tr>
+            <tr id="modal-why-header-row" class="d-none">
+              <td colspan="2" class="pt-3 pb-1">
+                <hr class="my-0 mb-2">
+                <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing:0.03em;">Why this rating</span>
+              </td>
+            </tr>
+            <tr id="modal-why-ml-row" class="d-none">
+              <td class="text-muted small">Moneyline <span class="text-muted">(model / market)</span></td>
+              <td id="modal-why-ml" class="small">—</td>
+            </tr>
+            <tr id="modal-why-rl-row" class="d-none">
+              <td class="text-muted small">Run Line <span class="text-muted">(model / market)</span></td>
+              <td id="modal-why-rl" class="small">—</td>
+            </tr>
+            <tr id="modal-why-history-row" class="d-none">
+              <td class="text-muted small" title="Walk-forward backtest, n=8,233 games, from scripts/results/joint_edge_research.md">Historically</td>
+              <td id="modal-why-history" class="small">—</td>
+            </tr>
             <tr id="modal-result-row" class="d-none">
               <td class="text-muted">Result</td>
               <td id="modal-result">—</td>
@@ -299,6 +317,8 @@
 <script>
   // ── Shared bet-row renderer (recent list + weekly detail) ─────
   let _recentBets = [];   // cached so "show recent" restores without a refetch
+  let _edgeHistory = {};  // edge_category_history from /api/betting, keyed by rating
+  let _edgeBaseline = null;
 
   function renderBetRows(rows) {
     const tbody = document.getElementById("recent-tbody");
@@ -440,6 +460,54 @@
       rlResRow.classList.add("d-none");
     }
 
+    // "Why this rating" — the four legs (model/market x moneyline/run-line) that fed
+    // the joint edge, plus how this rating's category has actually performed in
+    // backtesting. The legs answer "why did the model call this a value bet"; the
+    // history line answers "should that mean anything" -- and per
+    // scripts/results/joint_edge_research.md, for "good" the honest answer is that
+    // it does NOT beat the model's own baseline pick accuracy, which this makes
+    // visible rather than letting the green badge alone imply otherwise.
+    const whyHeaderRow = document.getElementById("modal-why-header-row");
+    const whyMlRow      = document.getElementById("modal-why-ml-row");
+    const whyRlRow       = document.getElementById("modal-why-rl-row");
+    const whyHistoryRow  = document.getElementById("modal-why-history-row");
+    let showWhy = false;
+
+    if (b.model_ml_prob != null && b.market_ml_prob != null) {
+      whyMlRow.classList.remove("d-none");
+      document.getElementById("modal-why-ml").textContent =
+        `${(b.model_ml_prob * 100).toFixed(1)}% / ${(b.market_ml_prob * 100).toFixed(1)}%`;
+      showWhy = true;
+    } else {
+      whyMlRow.classList.add("d-none");
+    }
+    if (b.model_rl_prob != null && b.market_rl_prob != null) {
+      whyRlRow.classList.remove("d-none");
+      document.getElementById("modal-why-rl").textContent =
+        `${(b.model_rl_prob * 100).toFixed(1)}% / ${(b.market_rl_prob * 100).toFixed(1)}%`;
+      showWhy = true;
+    } else {
+      whyRlRow.classList.add("d-none");
+    }
+    // edge_category_history is specific to the JOINT edge's categories -- "good"
+    // means something completely different (and has different historical stats,
+    // documented separately in CLAUDE.md) on an old moneyline-scale row, so this
+    // must not show for those even though the label string is the same.
+    const hist = (b.edge_method === "joint_ml_rl" && b.bet_rating != null)
+      ? _edgeHistory[b.bet_rating] : null;
+    if (hist && hist.n >= 30) {
+      whyHistoryRow.classList.remove("d-none");
+      const baseStr = _edgeBaseline != null ? ` vs a ${_edgeBaseline}% baseline for all picks` : "";
+      const cls = _edgeBaseline != null && hist.win_pct < _edgeBaseline ? "text-danger" : "";
+      document.getElementById("modal-why-history").innerHTML =
+        `"${b.bet_rating}" bets won <strong class="${cls}">${hist.win_pct}%</strong> ` +
+        `(n=${hist.n})${baseStr} in backtesting.`;
+      showWhy = true;
+    } else {
+      whyHistoryRow.classList.add("d-none");
+    }
+    whyHeaderRow.classList.toggle("d-none", !showWhy);
+
     const resultRow = document.getElementById("modal-result-row");
     const plRow     = document.getElementById("modal-pl-row");
     if (b.correct !== null && b.correct !== undefined) {
@@ -467,6 +535,9 @@
 
       document.getElementById("loading").classList.add("d-none");
       document.getElementById("content").classList.remove("d-none");
+
+      _edgeHistory  = data.edge_category_history || {};
+      _edgeBaseline = data.edge_category_baseline ?? null;
 
       // Closing Line Value — rendered here (not a separate fetch) since it
       // comes from the same /api/betting payload as everything else below.

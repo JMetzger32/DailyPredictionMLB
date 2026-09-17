@@ -432,7 +432,7 @@ def test_week_key():
 
 
 def test_bet_row_kelly():
-    ns = _extract("_pl_for_bet", "_kelly_stake", "_bet_row")
+    ns = _extract("_pl_for_bet", "_kelly_stake", "_rate_edge", "_edge_breakdown", "_bet_row")
     f = ns["_bet_row"]
     b = {"predicted_winner": "Home", "home_win_prob": 0.62, "predicted_team_ml": -140,
          "correct": 1, "date": "2026-07-06", "game_pk": 1, "model_edge": 0.06}
@@ -532,6 +532,46 @@ def test_compute_joint_edge_side_selection():
     no_rl = dict(pred, away_win_by2_prob=None)
     assert f(no_rl, ml, {"home_spread_implied": 0.45,
                          "home_spread_point": 1.5}, FakeModel()) == (None, None)
+
+
+def test_edge_breakdown():
+    """The modal's 'why this rating' legs must be oriented to the side the model
+    actually PICKED, not to home -- same failure mode _compute_joint_edge itself
+    guards against. away_win_by2_prob is the only correct source for the run-line
+    leg when home takes +1.5 (1 - home_cover_prob is a DIFFERENT event, see
+    CLAUDE.md)."""
+    ns = _extract("_edge_breakdown")
+    f = ns["_edge_breakdown"]
+
+    # home picked, home lays -1.5
+    b = {"predicted_winner": "Home", "home_win_prob": 0.55, "home_implied": 0.52,
+         "home_spread_point": -1.5, "home_cover_prob": 0.42,
+         "home_spread_implied": 0.45}
+    r = f(b)
+    assert r["model_ml_prob"] == 0.55 and r["market_ml_prob"] == 0.52
+    assert r["model_rl_prob"] == 0.42 and r["market_rl_prob"] == 0.45
+
+    # away picked, home takes +1.5 (so away lays -1.5) -- everything must flip,
+    # and the run-line leg must come from away_win_by2_prob, not home_cover_prob
+    b2 = {"predicted_winner": "Away", "home_win_prob": 0.55, "home_implied": 0.52,
+          "home_spread_point": 1.5, "away_win_by2_prob": 0.31,
+          "home_spread_implied": 0.58}
+    r2 = f(b2)
+    assert abs(r2["model_ml_prob"] - 0.45) < 1e-9    # 1 - home_win_prob
+    assert abs(r2["market_ml_prob"] - 0.48) < 1e-9   # 1 - home_implied
+    assert abs(r2["model_rl_prob"] - 0.31) < 1e-9    # away_win_by2_prob directly (picked=away)
+    assert abs(r2["market_rl_prob"] - 0.42) < 1e-9   # 1 - home_spread_implied
+
+    # away_implied fallback when home_implied wasn't persisted
+    b3 = {"predicted_winner": "Home", "home_win_prob": 0.6, "away_implied": 0.4,
+          "home_spread_point": -1.5, "home_cover_prob": 0.5, "home_spread_implied": 0.5}
+    assert f(b3)["market_ml_prob"] == 0.6
+
+    # missing run-line data -> both RL legs None, ML legs still populated
+    b4 = {"predicted_winner": "Home", "home_win_prob": 0.6, "home_implied": 0.5}
+    r4 = f(b4)
+    assert r4["model_ml_prob"] == 0.6 and r4["model_rl_prob"] is None
+    assert r4["market_rl_prob"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -1893,6 +1893,61 @@ def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
     return round(model_p - market_p, 4), round(joint_home_prob, 4)
 
 
+# Per-category historical performance from scripts/results/joint_edge_research.md
+# ("Widened again 2026-09-16" section) -- the SIGN-CORRECTED numbers (edge oriented
+# to the side the model actually picked, not to home). Static reference data, not
+# recomputed per-request. Update this alongside _rate_edge's thresholds if they move
+# again; the numbers are dataset-specific to that walk-forward sample (n=8,233).
+EDGE_CATEGORY_HISTORY = {
+    "good":    {"win_pct": 53.3, "n": 1484},
+    "unsure":  {"win_pct": 56.0, "n": 6747},
+    "bad":     {"win_pct": 50.0, "n": 2},      # n too small to mean anything
+    "extreme": {"win_pct": None, "n": 0},      # unreachable on the observed edge range
+}
+EDGE_CATEGORY_BASELINE = 55.5   # the model's own pick accuracy across all 8,233 games
+
+
+def _edge_breakdown(b):
+    """Reconstruct the four legs behind a resolved bet's joint edge, oriented to the
+    side actually picked -- lets a reader see WHY a game got its rating instead of
+    just the final number. Mirrors _compute_joint_edge's orientation logic exactly,
+    but works off already-PERSISTED fields (betting_log columns) for display, rather
+    than computing a fresh edge. Any missing leg comes back as None (older rows, or
+    a game with no run line ever attached)."""
+    pick_is_home = b.get("predicted_winner") == "Home"
+
+    hwp = b.get("home_win_prob")
+    model_ml = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
+    home_impl = b.get("home_implied")
+    if home_impl is None:
+        away_impl = b.get("away_implied")
+        home_impl = 1 - away_impl if away_impl is not None else None
+    market_ml = home_impl if pick_is_home else (1 - home_impl) if home_impl is not None else None
+
+    home_point = b.get("home_spread_point")
+    model_rl_home = None
+    if home_point == -1.5:
+        model_rl_home = b.get("home_cover_prob")
+    elif home_point == 1.5:
+        awd = b.get("away_win_by2_prob")
+        model_rl_home = None if awd is None else 1 - awd
+    market_rl_home = b.get("home_spread_implied")   # always "P(home covers ITS OWN
+    # line)" regardless of which side lays -1.5 -- de-vigged home/away implied are
+    # complementary events (no push at a half-point line), so this needs no
+    # home_point branch, unlike the model side. See CLAUDE.md's run-line notes.
+    model_rl = (model_rl_home if pick_is_home else (1 - model_rl_home)
+               if model_rl_home is not None else None)
+    market_rl = (market_rl_home if pick_is_home else (1 - market_rl_home)
+                if market_rl_home is not None else None)
+
+    return {
+        "model_ml_prob":  model_ml,
+        "market_ml_prob": market_ml,
+        "model_rl_prob":  model_rl,
+        "market_rl_prob": market_rl,
+    }
+
+
 def _odds_and_edge_fields(away_retro, home_retro, pred_result, odds_map,
                           spread_odds_map=None):
     """Moneyline fields + run-line fields + the joint edge, as one flat dict.
@@ -2812,6 +2867,10 @@ def _bet_row(b, kelly=None):
         "away_win_by2_prob":   b.get("away_win_by2_prob"),
         "correct_rl":     None if b.get("correct_rl") is None else bool(b.get("correct_rl")),
         "edge_method":    b.get("edge_method"),
+        # Always re-derived, never trusted from a frozen column -- same rule as
+        # every other _rate_edge call site (see its docstring).
+        "bet_rating":     _rate_edge(b.get("model_edge"), b.get("edge_method")),
+        **_edge_breakdown(b),
     }
     if kelly is not None:
         stake = _kelly_stake(win_p, ml, *kelly, edge=b.get("model_edge"))
@@ -3027,6 +3086,11 @@ def betting_stats():
         "kelly":           kelly_summary,
         "diagnostics":     diagnostics,
         "last_updated":    datetime.now().isoformat(),
+        # Static walk-forward backtest reference (scripts/results/joint_edge_research.md,
+        # n=8,233) so the UI can show "why" a rating means what it means, from the same
+        # source of truth as _rate_edge's thresholds rather than a hardcoded JS copy.
+        "edge_category_history": EDGE_CATEGORY_HISTORY,
+        "edge_category_baseline": EDGE_CATEGORY_BASELINE,
     })
 
 
