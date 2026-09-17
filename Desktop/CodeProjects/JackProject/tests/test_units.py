@@ -489,49 +489,63 @@ def test_compute_joint_edge_side_selection():
     """The model probability fed to the joint edge must match the side the market
     priced at -1.5. 'home wins by 2+' and 'away wins by 2+' are different events (a
     one-run game is neither), so picking the wrong one silently compares unlike
-    things -- the bug this test exists to prevent."""
+    things -- the bug this test exists to prevent.
+
+    Also: as of 2026-09-17, this function decides its OWN pick from joint_home_prob
+    and IGNORES pred_result["predicted_winner"] entirely -- the joint model IS the
+    model whenever it can run, not a number computed for whatever the moneyline
+    ensemble had already picked. Passing a pred_result with the "wrong" pre-existing
+    predicted_winner must not change the result at all."""
     ns = _extract("_logit", "_compute_joint_edge")
     import math as _math
     ns["math"] = _math
     f = ns["_compute_joint_edge"]
 
     class FakeModel:
-        """Echoes back which run-line probability it was handed, via the 3rd feature."""
-        def __init__(self): self.seen = None
+        """Echoes back which run-line probability it was handed, via the 3rd feature,
+        and returns a configurable home-win probability."""
+        def __init__(self, home_prob=0.6):
+            self.seen = None
+            self.home_prob = home_prob
         def predict_proba(self, X):
             self.seen = X[0][2]                       # logit(model_rl)
-            return [[0.4, 0.6]]
+            return [[1 - self.home_prob, self.home_prob]]
 
     pred = {"predicted_winner": "Home", "home_win_prob": 0.55, "away_win_prob": 0.45,
             "home_cover_prob": 0.42, "away_win_by2_prob": 0.31}
     ml = {"home_implied": 0.52}
 
-    # home lays -1.5 -> must use home_cover_prob
-    m1 = FakeModel()
-    edge, jp = f(pred, ml, {"home_spread_implied": 0.45, "home_spread_point": -1.5}, m1)
+    # home lays -1.5 -> must use home_cover_prob; model favors Home -> picks Home
+    m1 = FakeModel(0.6)
+    edge, jp, picked = f(pred, ml, {"home_spread_implied": 0.45, "home_spread_point": -1.5}, m1)
     assert abs(m1.seen - _math.log(0.42 / 0.58)) < 1e-9
-    assert jp == 0.6 and abs(edge - (0.6 - 0.52)) < 1e-9   # picked Home
+    assert jp == 0.6 and picked == "Home"
+    assert abs(edge - (0.6 - 0.52)) < 1e-9
 
     # home takes +1.5 -> must use 1 - away_win_by2_prob, NOT 1 - home_cover_prob
-    m2 = FakeModel()
+    m2 = FakeModel(0.6)
     f(pred, ml, {"home_spread_implied": 0.55, "home_spread_point": 1.5}, m2)
     assert abs(m2.seen - _math.log(0.69 / 0.31)) < 1e-9
     assert abs(m2.seen - _math.log(0.58 / 0.42)) > 1e-6    # the wrong-side value
 
-    # away pick flips which market prob the edge is measured against
-    pred_away = dict(pred, predicted_winner="Away")
-    e_away, _ = f(pred_away, ml, {"home_spread_implied": 0.45,
-                                  "home_spread_point": -1.5}, FakeModel())
-    assert abs(e_away - (0.4 - 0.48)) < 1e-9
+    # The joint model DECIDES the pick from its own probability -- a pred_result
+    # claiming predicted_winner="Home" must still get picked="Away" when the joint
+    # model itself favors away, and the edge must be measured for THAT side.
+    m3 = FakeModel(0.35)   # favors Away (65%)
+    edge3, jp3, picked3 = f(pred, ml, {"home_spread_implied": 0.45,
+                                       "home_spread_point": -1.5}, m3)
+    assert picked3 == "Away" and jp3 == 0.35
+    assert abs(edge3 - ((1 - 0.35) - (1 - 0.52))) < 1e-9
 
-    # any missing input -> (None, None) so callers fall back to the moneyline edge
+    # any missing input -> (None, None, None) so callers fall back to the moneyline
+    # ensemble's own pick entirely -- a single model ran, nothing to reconcile
     assert f(pred, ml, {"home_spread_implied": None, "home_spread_point": -1.5},
-             FakeModel()) == (None, None)
+             FakeModel()) == (None, None, None)
     assert f(pred, ml, {"home_spread_implied": 0.45, "home_spread_point": -1.5},
-             None) == (None, None)
+             None) == (None, None, None)
     no_rl = dict(pred, away_win_by2_prob=None)
     assert f(no_rl, ml, {"home_spread_implied": 0.45,
-                         "home_spread_point": 1.5}, FakeModel()) == (None, None)
+                         "home_spread_point": 1.5}, FakeModel()) == (None, None, None)
 
 
 def test_edge_breakdown():
@@ -572,6 +586,73 @@ def test_edge_breakdown():
     r4 = f(b4)
     assert r4["model_ml_prob"] == 0.6 and r4["model_rl_prob"] is None
     assert r4["market_rl_prob"] is None
+
+    # moneyline_home_win_prob (the ensemble's OWN number) must win over home_win_prob
+    # (which may now be the joint model's) whenever both are present -- else the
+    # "Moneyline" leg would silently show the wrong model's output.
+    b5 = {"predicted_winner": "Home", "home_win_prob": 0.644,
+          "moneyline_home_win_prob": 0.595, "home_implied": 0.52}
+    assert f(b5)["model_ml_prob"] == 0.595
+    # old rows (before 2026-09-17) have no moneyline_home_win_prob at all -> fall
+    # back to home_win_prob, which for THEM is still the correct moneyline value
+    b6 = {"predicted_winner": "Home", "home_win_prob": 0.58, "home_implied": 0.52}
+    assert f(b6)["model_ml_prob"] == 0.58
+
+
+def test_odds_and_edge_fields_joint_model_is_primary():
+    """The joint model must become THE model for the whole card once it can run --
+    overwriting home_win_prob/away_win_prob/predicted_winner/confidence, not just
+    adding a second number alongside the moneyline ensemble's own pick. This is what
+    the 2026-09-17 fix exists to guarantee: no two different probabilities for the
+    same game anywhere in the app."""
+    ns = _extract("_logit", "_rate_edge", "_compute_odds_fields",
+                  "_compute_runline_odds_fields", "_compute_joint_edge",
+                  "_odds_and_edge_fields")
+    import math as _math
+    ns["math"] = _math
+
+    class FakeModel:
+        def __init__(self, home_prob):
+            self.home_prob = home_prob
+        def predict_proba(self, X):
+            return [[1 - self.home_prob, self.home_prob]]
+
+    # moneyline ensemble picked Home (55%); joint model will favor Away (35% home)
+    ns["_artifacts"] = {"joint_edge_model": FakeModel(0.35)}
+    pred = {"predicted_winner": "Home", "home_win_prob": 0.55, "away_win_prob": 0.45,
+            "home_cover_prob": 0.42, "away_win_by2_prob": 0.31}
+    odds_map = {("AWY", "HOM"): {"away_ml": 110, "home_ml": -130,
+                                 "away_implied": 0.48, "home_implied": 0.52}}
+    spread_map = {("AWY", "HOM"): {"away_point": 1.5, "home_point": -1.5,
+                                   "away_spread_ml": -110, "home_spread_ml": -110,
+                                   "away_spread_implied": 0.55, "home_spread_implied": 0.45}}
+
+    fields = ns["_odds_and_edge_fields"]("AWY", "HOM", pred, odds_map, spread_map)
+
+    # pred_result itself is mutated -- callers that read it AFTER this call (e.g.
+    # _build_prediction_entry) must see the joint model's pick, not the original.
+    assert pred["predicted_winner"] == "Away"
+    assert pred["home_win_prob"] == 0.35
+    assert abs(pred["away_win_prob"] - 0.65) < 1e-9
+    assert abs(pred["confidence"] - 0.3) < 1e-9
+
+    # the returned fields dict must ALSO carry the override (needed wherever a dict
+    # literal reads result[...] before spreading this function's return later)
+    assert fields["predicted_winner"] == "Away"
+    assert fields["home_win_prob"] == 0.35
+    assert fields["edge_method"] == "joint_ml_rl"
+    assert fields["predicted_team_ml"] == 110          # away_ml, now that Away is picked
+
+    # the moneyline ensemble's OWN number survives under its own name
+    assert fields["moneyline_home_win_prob"] == 0.55
+
+    # when the joint model can't run at all (no model in _artifacts), the moneyline
+    # ensemble's own pick is untouched -- one model ran, nothing to override
+    ns["_artifacts"] = {}
+    pred2 = {"predicted_winner": "Home", "home_win_prob": 0.55, "away_win_prob": 0.45,
+             "home_cover_prob": 0.42, "away_win_by2_prob": 0.31}
+    fields2 = ns["_odds_and_edge_fields"]("AWY", "HOM", pred2, odds_map, spread_map)
+    assert pred2["predicted_winner"] == "Home" and fields2["edge_method"] == "moneyline"
 
 
 # ---------------------------------------------------------------------------

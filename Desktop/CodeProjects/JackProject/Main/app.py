@@ -386,10 +386,10 @@ def _upsert_betting_entries(entries):
                     home_cover_prob, away_cover_prob, away_win_by2_prob, correct_rl,
                     away_spread_point, home_spread_point, away_spread_ml, home_spread_ml,
                     away_spread_implied, home_spread_implied, joint_home_win_prob,
-                    edge_method,
+                    edge_method, moneyline_home_win_prob,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           datetime('now'), datetime('now'))
                 ON CONFLICT(game_pk) DO UPDATE SET
                     date             = COALESCE(excluded.date, betting_log.date),
@@ -426,6 +426,7 @@ def _upsert_betting_entries(entries):
                     home_spread_implied = COALESCE(excluded.home_spread_implied, betting_log.home_spread_implied),
                     joint_home_win_prob = COALESCE(excluded.joint_home_win_prob, betting_log.joint_home_win_prob),
                     edge_method      = COALESCE(excluded.edge_method, betting_log.edge_method),
+                    moneyline_home_win_prob = COALESCE(excluded.moneyline_home_win_prob, betting_log.moneyline_home_win_prob),
                     updated_at       = datetime('now')
             """, (
                 pk,
@@ -463,6 +464,7 @@ def _upsert_betting_entries(entries):
                 entry.get("home_spread_implied"),
                 entry.get("joint_home_win_prob"),
                 entry.get("edge_method"),
+                entry.get("moneyline_home_win_prob"),
             ))
 
         conn.commit()
@@ -726,6 +728,11 @@ def _build_prediction_entry(game, result, odds_data=None):
         "home_spread_implied": odds_data.get("home_spread_implied"),
         "spread_books":        odds_data.get("spread_books", []),
         "joint_home_win_prob": odds_data.get("joint_home_win_prob"),
+        # The moneyline ensemble's OWN probability, preserved separately because
+        # home_win_prob above may now be the joint model's -- see
+        # _odds_and_edge_fields's docstring. Without this, the "why this rating"
+        # breakdown would silently show the wrong number for the moneyline leg.
+        "moneyline_home_win_prob": odds_data.get("moneyline_home_win_prob"),
         "edge_method":         odds_data.get("edge_method"),
         # Set once at creation, never overwritten by any result-resolution path.
         "prediction_timestamp": datetime.now(_ET).isoformat(),
@@ -1848,7 +1855,7 @@ def _logit(p):
 
 
 def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
-    """The shipped edge: second-stage P(home win) from both markets, minus the h2h price.
+    """The shipped model: second-stage P(home win) from both markets.
 
     Inputs are the four logits the model was fit on (see
     scripts/train_joint_edge_model.py): the model's and market's moneyline
@@ -1860,17 +1867,30 @@ def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
     Using 1 - home_cover_prob for the second case would silently compare different
     events (it also counts one-run games), which is the bug this guards against.
 
-    Returns (edge_for_picked_side, home_win_prob_from_second_stage), or (None, None)
-    when any input is missing -- callers fall back to the moneyline-only edge.
+    The joint model IS the pick whenever it can run -- not a second opinion layered
+    on top of the moneyline ensemble's own pick. 2026-09-16's shipped version
+    computed edge for whichever side the MONEYLINE model had already picked, which
+    on this dataset flips on ~1/5 games (the joint model's own preferred side
+    disagrees with the moneyline model's), producing a card that showed a "value
+    bet" on a side the combined model itself rated below 50%. season-wise this
+    model beats the moneyline-only ensemble at picking the ACTUAL winner in every
+    season measured (56.8% vs 55.5% overall accuracy, see
+    scripts/results/joint_edge_research.md) -- so once it can run, it should decide
+    the pick, not just be consulted for a side-effect number.
+
+    Returns (edge, joint_home_prob, predicted_winner) for the pick this function
+    itself makes, or (None, None, None) when any input is missing -- callers fall
+    back to the moneyline-only ensemble's own pick entirely (a single model ran,
+    so there is nothing to reconcile).
     """
     if joint_model is None:
-        return None, None
+        return None, None, None
     mkt_home = ml_fields.get("home_implied")
     mkt_rl_home = rl_fields.get("home_spread_implied")
     home_point = rl_fields.get("home_spread_point")
     mdl_home = pred_result.get("home_win_prob")
     if None in (mkt_home, mkt_rl_home, home_point, mdl_home):
-        return None, None
+        return None, None, None
 
     if home_point == -1.5:
         mdl_rl_home = pred_result.get("home_cover_prob")
@@ -1878,19 +1898,19 @@ def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
         awd = pred_result.get("away_win_by2_prob")
         mdl_rl_home = None if awd is None else 1.0 - awd
     if mdl_rl_home is None:
-        return None, None
+        return None, None, None
 
     try:
         feats = [[_logit(mdl_home), _logit(mkt_home),
                   _logit(mdl_rl_home), _logit(mkt_rl_home)]]
         joint_home_prob = float(joint_model.predict_proba(feats)[0][1])
     except Exception:
-        return None, None
+        return None, None, None
 
-    predicted = pred_result["predicted_winner"]
+    predicted = "Home" if joint_home_prob > 0.5 else "Away"
     model_p = joint_home_prob if predicted == "Home" else 1 - joint_home_prob
     market_p = mkt_home if predicted == "Home" else 1 - mkt_home
-    return round(model_p - market_p, 4), round(joint_home_prob, 4)
+    return round(model_p - market_p, 4), round(joint_home_prob, 4), predicted
 
 
 # Per-category historical performance from scripts/results/joint_edge_research.md
@@ -1898,13 +1918,25 @@ def _compute_joint_edge(pred_result, ml_fields, rl_fields, joint_model):
 # to the side the model actually picked, not to home). Static reference data, not
 # recomputed per-request. Update this alongside _rate_edge's thresholds if they move
 # again; the numbers are dataset-specific to that walk-forward sample (n=8,233).
+#
+# STALE AS OF 2026-09-17: these per-category (good/unsure/bad) numbers were measured
+# when the joint model only overrode the EDGE for whichever side the moneyline
+# ensemble had already picked. Now the joint model decides the PICK itself (see
+# _compute_joint_edge), which flips the pick on ~1/5 games relative to that
+# measurement -- so these category win rates are approximate, not re-verified
+# against the new pick methodology. EDGE_CATEGORY_BASELINE below IS the freshly
+# re-measured number under the new methodology (56.8% overall walk-forward
+# accuracy, joint model vs 55.5% moneyline-only vs 56.6% market -- see the
+# season-by-season table in this session's chat history / re-derive via
+# scripts/joint_edge_research.py). Re-running the category segmentation under the
+# new methodology is a real follow-up, not done here.
 EDGE_CATEGORY_HISTORY = {
     "good":    {"win_pct": 53.3, "n": 1484},
     "unsure":  {"win_pct": 56.0, "n": 6747},
     "bad":     {"win_pct": 50.0, "n": 2},      # n too small to mean anything
     "extreme": {"win_pct": None, "n": 0},      # unreachable on the observed edge range
 }
-EDGE_CATEGORY_BASELINE = 55.5   # the model's own pick accuracy across all 8,233 games
+EDGE_CATEGORY_BASELINE = 56.8   # joint model's own walk-forward pick accuracy, all 8,233 games
 
 
 def _edge_breakdown(b):
@@ -1916,7 +1948,14 @@ def _edge_breakdown(b):
     a game with no run line ever attached)."""
     pick_is_home = b.get("predicted_winner") == "Home"
 
-    hwp = b.get("home_win_prob")
+    # home_win_prob may now BE the joint model's probability (see
+    # _odds_and_edge_fields), so the moneyline leg must come from
+    # moneyline_home_win_prob specifically. Rows from before 2026-09-17 never had
+    # that override applied, so home_win_prob is still the correct moneyline value
+    # for them -- hence the fallback, not a preference for the newer field.
+    hwp = b.get("moneyline_home_win_prob")
+    if hwp is None:
+        hwp = b.get("home_win_prob")
     model_ml = hwp if pick_is_home else (1 - hwp) if hwp is not None else None
     home_impl = b.get("home_implied")
     if home_impl is None:
@@ -1950,23 +1989,58 @@ def _edge_breakdown(b):
 
 def _odds_and_edge_fields(away_retro, home_retro, pred_result, odds_map,
                           spread_odds_map=None):
-    """Moneyline fields + run-line fields + the joint edge, as one flat dict.
+    """Moneyline fields + run-line fields + the joint model, as one flat dict.
 
-    `model_edge`/`bet_rating` carry the JOINT (moneyline+run-line) edge whenever both
-    markets are available, and fall back to the moneyline-only edge when the run line
-    is missing -- the field names are unchanged so every existing consumer keeps
-    working. `edge_method` records which one a row actually got, because the two are
-    on different scales (~6x) and mixing them unlabelled is how the old bet_rating
-    vintage bug happened. See scripts/results/joint_edge_research.md.
+    The joint model IS the model whenever it can run (odds for both markets are
+    available) -- it overwrites `home_win_prob`/`away_win_prob`/`predicted_winner`/
+    `confidence` in `pred_result` (mutated in place) AND in the returned dict, so
+    every consumer -- the win-probability bar, the pick, the edge, the badge -- shows
+    ONE number for a game, not the moneyline ensemble's opinion in one place and the
+    joint model's in another. Before 2026-09-17 this only overrode the edge, still
+    computed for whichever side the moneyline ensemble had already picked; on this
+    dataset the joint model's own preferred side disagrees with that pick on a real,
+    non-rare fraction of games (~1/5), which is what produced a card showing a
+    "value bet" on a side the combined model itself rated below 50%. See
+    _compute_joint_edge's docstring and scripts/results/joint_edge_research.md.
+
+    The moneyline ensemble's OWN probability is preserved under
+    `moneyline_home_win_prob` (unconditionally, even when the joint model can't run)
+    so the "why this rating" breakdown (_edge_breakdown) and any future audit can
+    still see what the first-stage model actually said, once `home_win_prob` no
+    longer means that by itself.
+
+    edge_method records which model actually produced this row -- "joint_ml_rl" when
+    both markets were available, else "moneyline" (the ONLY model that ran, not a
+    second opinion to reconcile against anything).
     """
     fields = _compute_odds_fields(away_retro, home_retro, pred_result, odds_map)
     fields.update(_compute_runline_odds_fields(away_retro, home_retro, spread_odds_map))
     fields["edge_method"] = "moneyline"
     fields["joint_home_win_prob"] = None
+    fields["moneyline_home_win_prob"] = pred_result.get("home_win_prob")
 
-    joint_edge, joint_home_prob = _compute_joint_edge(
+    joint_edge, joint_home_prob, joint_predicted = _compute_joint_edge(
         pred_result, fields, fields, _artifacts.get("joint_edge_model"))
     if joint_edge is not None:
+        home_prob = round(joint_home_prob, 3)
+        away_prob = round(1 - joint_home_prob, 3)
+        confidence = round(abs(joint_home_prob - 0.5) * 2, 3)
+
+        pred_result["home_win_prob"] = home_prob
+        pred_result["away_win_prob"] = away_prob
+        pred_result["predicted_winner"] = joint_predicted
+        pred_result["confidence"] = confidence
+
+        fields["home_win_prob"] = home_prob
+        fields["away_win_prob"] = away_prob
+        fields["predicted_winner"] = joint_predicted
+        fields["confidence"] = confidence
+        # predicted_team_ml was computed by _compute_odds_fields against whichever
+        # side the MONEYLINE ensemble had picked -- both away_ml/home_ml are always
+        # present in `fields` regardless of pick, so just re-select by the new side.
+        fields["predicted_team_ml"] = (fields["home_ml"] if joint_predicted == "Home"
+                                       else fields["away_ml"])
+
         fields["model_edge"] = joint_edge
         fields["bet_rating"] = _rate_edge(joint_edge, "joint_ml_rl")
         fields["joint_home_win_prob"] = joint_home_prob

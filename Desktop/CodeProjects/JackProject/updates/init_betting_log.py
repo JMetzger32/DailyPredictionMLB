@@ -32,6 +32,11 @@ ADDED_COLUMNS = {
     # 'moneyline' | 'joint_ml_rl' -- which formula produced this row's model_edge. The
     # two are on ~6x different scales, so a row's edge is uninterpretable without it.
     "edge_method":         "TEXT",
+    # 2026-09-17: the joint model now overwrites home_win_prob/predicted_winner
+    # whenever it can run, so the moneyline ensemble's OWN probability is preserved
+    # here separately -- otherwise "why this rating" has no way to show what the
+    # first-stage model actually said, once home_win_prob no longer means that alone.
+    "moneyline_home_win_prob": "REAL",
 }
 
 

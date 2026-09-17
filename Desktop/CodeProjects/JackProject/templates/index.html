@@ -215,10 +215,17 @@
 
         <!-- Win probability bar -->
         <div class="px-3 pt-3 pb-2">
+          <!-- ONE model, one number, everywhere on this card -- combines the
+               moneyline and run-line markets when both are available, otherwise
+               the moneyline-only ensemble is the only model that ran. Before
+               2026-09-17 the bar and the Market row below could show two different
+               probabilities for the same team (the moneyline ensemble's own pick
+               vs. a second-stage number computed afterward) -- fixed by having the
+               combined model become the pick itself, not a second opinion. -->
           <div class="text-muted" style="font-size:0.65rem;"
                data-bs-toggle="tooltip" data-bs-placement="top"
-               title="This bar is the moneyline-only model (LR+GB+XGB ensemble) — the number that decides the pick. The 'Model' shown further down in the Market row is a SEPARATE, second-stage model that combines the moneyline and run-line markets and is used only to size the Edge/rating; the two can and do disagree.">
-            Moneyline Model
+               title="Combines the moneyline and run-line markets when both are available (falls back to moneyline-only if odds haven't attached yet). This one number is used everywhere on this card — the pick, this bar, and the Edge below.">
+            Model
           </div>
           <div class="d-flex justify-content-between mb-1">
             <span class="small fw-semibold away-prob-label"></span>
@@ -616,59 +623,25 @@
     }
 
     // Market vs model probability row
-    //
-    // FIXED 2026-09-16: this used to recompute its own "edge" from the raw
-    // moneyline-only home_win_prob/away_win_prob vs the market -- completely
-    // independent of, and inconsistent with, the "✓ Value Bet"/bet_rating badge
-    // above it, which is now driven by the joint moneyline+run-line edge
-    // (Main/app.py::_compute_joint_edge). That mismatch is what could show a badge
-    // like "Toss-Up" right next to an "Edge: +17pp" line for the same game -- the
-    // badge used the small joint scale (mean |edge| ~0.009), this row used the much
-    // larger moneyline-only scale (mean |edge| ~0.05) and never agreed with it.
-    // Now it uses game.model_edge directly (the SAME number the badge is rated
-    // from) and game.joint_home_win_prob (the second-stage probability that edge
-    // was computed from) when available, falling back to the first-stage
-    // home_win_prob only for older logged games that predate the joint edge.
     const marketRow = q(".market-model-row");
     if (game.away_implied != null && game.home_implied != null) {
-      // FIXED 2026-09-16 (again): Model% and Market% were each independently
-      // rounded to a whole percent for display, while Edge came from the server's
-      // 4-decimal-precision model_edge -- so "Model: 58% · Market: 56%" (a visible
-      // 2pp gap) could sit next to "Edge: +0.3pp", because the true underlying
-      // values were e.g. 58.1% and 57.8%. Both numbers were individually correct;
-      // rounding them to whole percents before subtracting is what broke the
-      // arithmetic a reader would naturally try to check. Now every number in this
-      // row is derived from the SAME unrounded percentages, formatted to one
-      // decimal place, so Model - Market always equals the displayed Edge.
-      const jointHome    = game.joint_home_win_prob;
-      const modelProbRaw = jointHome != null
-        ? (homeWin ? jointHome : 1 - jointHome)
-        : (homeWin ? (game.home_win_prob || 0.5) : (game.away_win_prob || 0.5));
+      // FIXED 2026-09-17: game.home_win_prob/away_win_prob/predicted_winner are now
+      // ALWAYS the one model this card uses (see the caption above the bar) -- the
+      // backend overwrites them with the combined model's own numbers whenever it
+      // can run, rather than leaving this row to separately reconstruct a second,
+      // different probability (joint_home_win_prob) alongside the bar's moneyline-
+      // only one. Model% here is therefore always identical to the bar above it,
+      // and Edge is computed from the SAME unrounded percentages as Model/Market so
+      // the visible arithmetic always checks out (FIXED 2026-09-16: whole-percent
+      // rounding used to break that before Edge was added to the same precision).
+      const modelProbRaw  = homeWin ? (game.home_win_prob || 0.5) : (game.away_win_prob || 0.5);
       const marketProbRaw = homeWin ? game.home_implied : game.away_implied;
       const modelPctRaw   = modelProbRaw * 100;
       const marketPctRaw  = marketProbRaw * 100;
       const edgeVal = game.model_edge != null ? game.model_edge * 100 : (modelPctRaw - marketPctRaw);
       const edgeStr = edgeVal >= 0 ? `+${edgeVal.toFixed(1)}pp` : `${edgeVal.toFixed(1)}pp`;
       const edgeCls = edgeVal > 0 ? "text-success" : edgeVal < 0 ? "text-danger" : "";
-      // "Combined Model" (not "Model") because it deliberately differs from the
-      // moneyline-only number in the win-probability bar above -- this is the
-      // second-stage model that also uses the run-line market, and is what Edge/
-      // rating are actually computed from. Two different models, same card.
-      const modelLabel = jointHome != null ? "Combined Model" : "Model";
-      let html = `${modelLabel}: <strong>${modelPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
-      // Flag the (real, not rare) case where the combined model actually favors the
-      // OTHER side than the one picked/shown in the win-probability bar above --
-      // this is not a bug, it's the run-line market pulling the second-stage number
-      // below 50% for the picked side even though the moneyline model liked it.
-      // A positive Edge can still occur here (the market can be even less keen on
-      // the pick than the combined model is) -- surfacing this so that isn't read
-      // as a contradiction.
-      if (jointHome != null && (jointHome > 0.5) !== homeWin) {
-        const otherTeam = homeWin ? awayName : homeName;
-        html += `<div class="text-warning-emphasis mt-1" style="font-size:0.68rem;">` +
-          `⚠ Combined model actually favors ${otherTeam} (${(100 - modelPctRaw).toFixed(1)}%) here.</div>`;
-      }
-      marketRow.innerHTML = html;
+      marketRow.innerHTML = `Model: <strong>${modelPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Market: <strong>${marketPctRaw.toFixed(1)}%</strong> &nbsp;·&nbsp; Edge: <strong class="${edgeCls}">${edgeStr}</strong>`;
       marketRow.classList.remove("d-none");
     }
 
