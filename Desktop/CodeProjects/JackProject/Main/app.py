@@ -2548,12 +2548,26 @@ def predictions():
             **_odds_and_edge_fields(away, home, result, odds_map, spread_map),
         }
 
-        # For PAST dates, the card must show the prediction that was actually logged
-        # pre-game — not a recompute under current baselines (which can silently differ
-        # from the accuracy page and from what users saw on game day). Display extras
-        # (SP stats, OBP, contributions) stay freshly computed; only the prediction
-        # fields are overlaid from the stored entry.
-        if stored and target_date < _today_et():
+        # The card must show the prediction that was actually logged pre-game -- not a
+        # recompute under current baselines/odds (which can silently differ from what
+        # `correct` above was scored against). Display extras (SP stats, OBP,
+        # contributions) stay freshly computed; only the prediction fields are
+        # overlaid from the stored entry.
+        #
+        # FIXED 2026-09-17: this used to only trigger for target_date < today, on the
+        # assumption that a same-day recompute couldn't drift far from the morning's
+        # logged pick. That assumption broke once the joint model started deciding the
+        # pick (see _compute_joint_edge/_odds_and_edge_fields): its inputs include
+        # market odds, which move all day and can flip which side it favors well
+        # before or even after a game starts, while `correct` a few lines up is (by
+        # design, see the "prediction immutability" comment above) always scored
+        # against the STORED pick. Without this, a resolved TODAY game could show a
+        # freshly-recomputed predicted_winner that matches the actual result while
+        # `correct` -- correctly scored against the earlier, different, stored pick --
+        # said False right next to it. Freezing on resolution (not just on date)
+        # closes that regardless of which model produced the pick.
+        if stored and (target_date < _today_et()
+                       or stored.get("actual_winner") not in (None, "Tie")):
             for k in ("home_win_prob", "away_win_prob", "predicted_winner",
                       "predicted_total"):
                 if stored.get(k) is not None:

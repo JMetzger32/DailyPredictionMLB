@@ -327,6 +327,28 @@ Live at dailypredictionmlb.onrender.com (Render **free tier** — see Deploy not
   including near-zero-edge agreement and mild self-disagreement, and outperforms the
   isolated "good" slice. This is the opposite of what the label implies. Shipped anyway
   per direction — see scripts/results/joint_edge_research.md for the full breakdown.
+- **2026-09-17: the joint model now decides the pick itself, not just the edge**
+  (`_compute_joint_edge` returns its own `predicted_winner`, ignoring whatever the
+  moneyline ensemble had picked) — fixes a card showing two different win
+  probabilities for the same team, because the bar (moneyline-only) and the Market
+  row (joint) were two different models with nothing reconciling them. Justified by
+  season-wise walk-forward accuracy: joint 56.8% overall beats moneyline-only 55.5%
+  in every season (2023 57.7/55.6, 2024 57.5/56.0, 2025 55.8/55.6, 2026 55.8/54.4);
+  it still never clearly beats market accuracy (56.6%), and this says nothing about
+  whether flagged value bets are profitable (they're not, per the entry above).
+- **FIXED 2026-09-17: a resolved TODAY game could show a fresh-recompute pick that
+  matched the actual result right next to `correct: False`.** `/api/predictions`'s
+  "show the logged pre-game pick, not a recompute" freeze only triggered for
+  `target_date < today` — never for a game that started and finished within today,
+  even though `correct` a few lines up is (by design, "prediction immutability")
+  always scored against the STORED pick, never the fresh one. Before the joint
+  model this was latent (a same-day moneyline-only recompute rarely differed from
+  the morning's log); once the pick depends on market odds that move all day, it
+  flips often enough to be visible — reported directly: a Dodgers game whose
+  morning log picked Home, lost 2-8, correctly scored `correct: False`, but the
+  live page recomputed a fresh Away pick (matching the actual result) using odds
+  that had moved since morning. Fix: freeze the displayed pick/probability whenever
+  `stored.get("actual_winner")` is set, not only when the calendar date has passed.
 
 ## Deploy notes (Render free tier)
 
