@@ -4826,5 +4826,97 @@
       "away_implied": 0.5499,
       "home_implied": 0.4501
     }
+  },
+  "2026-09-18": {
+    "CHN|CIN": {
+      "away_ml": -134,
+      "home_ml": 115,
+      "away_implied": 0.5527,
+      "home_implied": 0.4473
+    },
+    "KCA|PIT": {
+      "away_ml": -102,
+      "home_ml": -114,
+      "away_implied": 0.4866,
+      "home_implied": 0.5134
+    },
+    "MIL|BAL": {
+      "away_ml": -132,
+      "home_ml": 111,
+      "away_implied": 0.5465,
+      "home_implied": 0.4535
+    },
+    "ATH|CLE": {
+      "away_ml": 153,
+      "home_ml": -180,
+      "away_implied": 0.3811,
+      "home_implied": 0.6189
+    },
+    "BOS|TBA": {
+      "away_ml": 117,
+      "home_ml": -136,
+      "away_implied": 0.4449,
+      "home_implied": 0.5551
+    },
+    "PHI|NYN": {
+      "away_ml": 105,
+      "home_ml": -122,
+      "away_implied": 0.4696,
+      "home_implied": 0.5304
+    },
+    "DET|CHA": {
+      "away_ml": 117,
+      "home_ml": -136,
+      "away_implied": 0.4441,
+      "home_implied": 0.5559
+    },
+    "TOR|TEX": {
+      "away_ml": -115,
+      "home_ml": -102,
+      "away_implied": 0.5144,
+      "home_implied": 0.4856
+    },
+    "ATL|HOU": {
+      "away_ml": -100,
+      "home_ml": -116,
+      "away_implied": 0.4819,
+      "home_implied": 0.5181
+    },
+    "SEA|COL": {
+      "away_ml": -187,
+      "home_ml": 158,
+      "away_implied": 0.6273,
+      "home_implied": 0.3727
+    },
+    "WAS|SLN": {
+      "away_ml": 112,
+      "home_ml": -130,
+      "away_implied": 0.454,
+      "home_implied": 0.546
+    },
+    "MIN|ANA": {
+      "away_ml": -107,
+      "home_ml": -109,
+      "away_implied": 0.497,
+      "home_implied": 0.503
+    },
+    "NYA|ARI": {
+      "away_ml": -142,
+      "home_ml": 122,
+      "away_implied": 0.5658,
+      "home_implied": 0.4342
+    },
+    "MIA|SDN": {
+      "away_ml": 130,
+      "home_ml": -152,
+      "away_implied": 0.4194,
+      "home_implied": 0.5806
+    },
+    "SFN|LAN": {
+      "away_ml": 253,
+      "home_ml": -306,
+      "away_implied": 0.2734,
+      "home_implied": 0.7266
+    }
   }
 }
