@@ -5010,5 +5010,49 @@
       "away_implied": 0.6476,
       "home_implied": 0.3524
     }
+  },
+  "2026-09-20": {
+    "MIN|ANA": {
+      "away_ml": -10000,
+      "home_ml": 10000,
+      "away_implied": 0.9901,
+      "home_implied": 0.0099
+    },
+    "NYA|ARI": {
+      "away_ml": 3397,
+      "home_ml": -16711,
+      "away_implied": 0.028,
+      "home_implied": 0.972
+    },
+    "SFN|LAN": {
+      "away_ml": 1702,
+      "home_ml": -5617,
+      "away_implied": 0.0535,
+      "home_implied": 0.9465
+    },
+    "DET|CHA": {
+      "away_ml": 191,
+      "home_ml": -257,
+      "away_implied": 0.323,
+      "home_implied": 0.677
+    },
+    "MIL|BAL": {
+      "away_ml": -210,
+      "home_ml": 177,
+      "away_implied": 0.6526,
+      "home_implied": 0.3474
+    },
+    "TOR|BAL": {
+      "away_ml": -106,
+      "home_ml": -110,
+      "away_implied": 0.4956,
+      "home_implied": 0.5044
+    },
+    "MIN|SFN": {
+      "away_ml": -120,
+      "home_ml": 104,
+      "away_implied": 0.5266,
+      "home_implied": 0.4734
+    }
   }
 }
