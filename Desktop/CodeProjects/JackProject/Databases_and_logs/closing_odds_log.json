@@ -5037,22 +5037,28 @@
       "home_implied": 0.677
     },
     "MIL|BAL": {
-      "away_ml": -210,
-      "home_ml": 177,
-      "away_implied": 0.6526,
-      "home_implied": 0.3474
+      "away_ml": -2905,
+      "home_ml": 1052,
+      "away_implied": 0.9176,
+      "home_implied": 0.0824
     },
     "TOR|BAL": {
       "away_ml": -106,
-      "home_ml": -110,
-      "away_implied": 0.4956,
-      "home_implied": 0.5044
+      "home_ml": -109,
+      "away_implied": 0.4967,
+      "home_implied": 0.5033
     },
     "MIN|SFN": {
-      "away_ml": -120,
-      "home_ml": 104,
-      "away_implied": 0.5266,
-      "home_implied": 0.4734
+      "away_ml": -115,
+      "home_ml": -101,
+      "away_implied": 0.5165,
+      "home_implied": 0.4835
+    },
+    "WAS|DET": {
+      "away_ml": 130,
+      "home_ml": -152,
+      "away_implied": 0.4195,
+      "home_implied": 0.5805
     }
   }
 }
