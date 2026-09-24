@@ -5324,5 +5324,115 @@
       "away_implied": 0.3595,
       "home_implied": 0.6405
     }
+  },
+  "2026-09-24": {
+    "MIL|PHI": {
+      "away_ml": -152,
+      "home_ml": 116,
+      "away_implied": 0.5655,
+      "home_implied": 0.4345
+    },
+    "CLE|BOS": {
+      "away_ml": 110,
+      "home_ml": -127,
+      "away_implied": 0.4593,
+      "home_implied": 0.5407
+    },
+    "TBA|NYA": {
+      "away_ml": 125,
+      "home_ml": -146,
+      "away_implied": 0.4281,
+      "home_implied": 0.5719
+    },
+    "CIN|ATL": {
+      "away_ml": 193,
+      "home_ml": -229,
+      "away_implied": 0.3294,
+      "home_implied": 0.6706
+    },
+    "HOU|ATH": {
+      "away_ml": -170,
+      "home_ml": 144,
+      "away_implied": 0.6061,
+      "home_implied": 0.3939
+    },
+    "ANA|SEA": {
+      "away_ml": 113,
+      "home_ml": -130,
+      "away_implied": 0.4535,
+      "home_implied": 0.5465
+    },
+    "SDN|LAN": {
+      "away_ml": 147,
+      "home_ml": -172,
+      "away_implied": 0.3907,
+      "home_implied": 0.6093
+    },
+    "PIT|DET": {
+      "away_ml": -111,
+      "home_ml": -102,
+      "away_implied": 0.5108,
+      "home_implied": 0.4892
+    },
+    "TBA|PHI": {
+      "away_ml": 131,
+      "home_ml": -151,
+      "away_implied": 0.4184,
+      "home_implied": 0.5816
+    },
+    "NYN|WAS": {
+      "away_ml": -135,
+      "home_ml": 113,
+      "away_implied": 0.5509,
+      "home_implied": 0.4491
+    },
+    "CIN|TOR": {
+      "away_ml": 114,
+      "home_ml": -136,
+      "away_implied": 0.4472,
+      "home_implied": 0.5528
+    },
+    "ATL|MIA": {
+      "away_ml": -124,
+      "home_ml": 105,
+      "away_implied": 0.532,
+      "home_implied": 0.468
+    },
+    "COL|CHA": {
+      "away_ml": 187,
+      "home_ml": -217,
+      "away_implied": 0.3375,
+      "home_implied": 0.6625
+    },
+    "CLE|KCA": {
+      "away_ml": -135,
+      "home_ml": 118,
+      "away_implied": 0.5566,
+      "home_implied": 0.4434
+    },
+    "SLN|MIL": {
+      "away_ml": 148,
+      "home_ml": -170,
+      "away_implied": 0.3907,
+      "home_implied": 0.6093
+    },
+    "TEX|MIN": {
+      "away_ml": -107,
+      "home_ml": -107,
+      "away_implied": 0.5,
+      "home_implied": 0.5
+    },
+    "ARI|SDN": {
+      "away_ml": 118,
+      "home_ml": -136,
+      "away_implied": 0.4431,
+      "home_implied": 0.5569
+    },
+    "LAN|SFN": {
+      "away_ml": -377,
+      "home_ml": 300,
+      "away_implied": 0.7597,
+      "home_implied": 0.2403
+    }
   }
 }
