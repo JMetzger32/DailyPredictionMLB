@@ -5434,5 +5434,97 @@
       "away_implied": 0.7622,
       "home_implied": 0.2378
     }
+  },
+  "2026-09-25": {
+    "BAL|NYA": {
+      "away_ml": -107,
+      "home_ml": -109,
+      "away_implied": 0.4985,
+      "home_implied": 0.5015
+    },
+    "CHN|BOS": {
+      "away_ml": -117,
+      "home_ml": -112,
+      "away_implied": 0.5044,
+      "home_implied": 0.4956
+    },
+    "TBA|PHI": {
+      "away_ml": 163,
+      "home_ml": -203,
+      "away_implied": 0.3619,
+      "home_implied": 0.6381
+    },
+    "NYN|WAS": {
+      "away_ml": -136,
+      "home_ml": 114,
+      "away_implied": 0.5528,
+      "home_implied": 0.4472
+    },
+    "PIT|DET": {
+      "away_ml": -100,
+      "home_ml": -116,
+      "away_implied": 0.4818,
+      "home_implied": 0.5182
+    },
+    "CIN|TOR": {
+      "away_ml": 134,
+      "home_ml": -158,
+      "away_implied": 0.411,
+      "home_implied": 0.589
+    },
+    "ATL|MIA": {
+      "away_ml": -114,
+      "home_ml": -102,
+      "away_implied": 0.5129,
+      "home_implied": 0.4871
+    },
+    "COL|CHA": {
+      "away_ml": 194,
+      "home_ml": -227,
+      "away_implied": 0.329,
+      "home_implied": 0.671
+    },
+    "CLE|KCA": {
+      "away_ml": -125,
+      "home_ml": 109,
+      "away_implied": 0.5376,
+      "home_implied": 0.4624
+    },
+    "SLN|MIL": {
+      "away_ml": 160,
+      "home_ml": -185,
+      "away_implied": 0.3723,
+      "home_implied": 0.6277
+    },
+    "TEX|MIN": {
+      "away_ml": -124,
+      "home_ml": 107,
+      "away_implied": 0.5343,
+      "home_implied": 0.4657
+    },
+    "ARI|SDN": {
+      "away_ml": 106,
+      "home_ml": -120,
+      "away_implied": 0.4706,
+      "home_implied": 0.5294
+    },
+    "HOU|ATH": {
+      "away_ml": -181,
+      "home_ml": 154,
+      "away_implied": 0.6205,
+      "home_implied": 0.3795
+    },
+    "ANA|SEA": {
+      "away_ml": 160,
+      "home_ml": -184,
+      "away_implied": 0.3726,
+      "home_implied": 0.6274
+    },
+    "LAN|SFN": {
+      "away_ml": -317,
+      "home_ml": 266,
+      "away_implied": 0.7356,
+      "home_implied": 0.2644
+    }
   }
 }
