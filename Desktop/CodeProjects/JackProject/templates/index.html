@@ -94,6 +94,8 @@
         <div class="d-flex align-items-center gap-1 flex-shrink-0">
           <span class="badge bg-success arb-badge d-none" style="font-size:0.62rem;" title="Arbitrage opportunity detected across sportsbooks">ARB <span class="arb-pct"></span></span>
           <span class="badge bg-warning text-dark st-badge d-none" style="font-size:0.65rem;">ST</span>
+          <span class="badge bg-primary playoff-badge d-none" style="font-size:0.62rem;"
+                title="Playoff game — the model was trained only on regular-season games, so its calibration is unproven here (rest days, bullpen usage, and starter workload all differ in the postseason)">PLAYOFF</span>
           <span class="badge bg-secondary retro-badge d-none" style="font-size:0.62rem;"
                 title="Retro pick — this prediction was generated after the game was played (missed by the morning job), so it is excluded from accuracy stats">RETRO</span>
           <span class="badge bg-secondary game-time-badge"></span>
@@ -421,6 +423,7 @@
     const awayName = game.away_team_name || game.away_team || "Away";
     const homeName = game.home_team_name || game.home_team || "Home";
     const isST     = game.game_type === "S";
+    const isPlayoff = ["F", "D", "L", "W"].includes(game.game_type);
 
     // Matchup label with team records
     const awayRec = (game.away_wins !== undefined)
@@ -431,6 +434,10 @@
 
     // Spring Training badge
     if (isST) q(".st-badge").classList.remove("d-none");
+
+    // Playoff badge — calibration note lives in the tooltip since the model
+    // never sees postseason games during training
+    if (isPlayoff) q(".playoff-badge").classList.remove("d-none");
 
     // Retro-pick badge — prediction generated after the game finished (post-hoc)
     if (game.post_game_created) q(".retro-badge").classList.remove("d-none");

@@ -220,6 +220,71 @@
       </div>
     </div>
 
+    <!-- ── Playoff Betting: fully separate section, never mixed into the RS
+         numbers above — the model has zero postseason games in its training
+         data, so its edge/calibration here is unproven. ─────────────────── -->
+    <div id="playoff-section" class="d-none mt-5">
+      <hr class="my-4">
+      <h5 class="fw-semibold mb-2">Playoff Betting <span class="badge bg-primary ms-1" style="font-size:0.65rem;">PO</span></h5>
+      <div class="alert alert-warning py-2 mb-3 small" role="alert">
+        <strong>Different calibration.</strong> The model was trained only on regular-season
+        games — the postseason has no games in its training data at all. Rest days, bullpen
+        usage, and starter workload all shift in October, so treat this section as
+        informational, not as evidence the regular-season edge/ROI numbers above carry over.
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100 text-center py-3">
+            <div class="fs-4 fw-bold" id="po-bet-record">—</div>
+            <div class="text-muted small">Value Bets Record</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100 text-center py-3">
+            <div class="fs-4 fw-bold" id="po-bet-accuracy">—</div>
+            <div class="text-muted small">Value Bets Accuracy</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100 text-center py-3">
+            <div class="fs-4 fw-bold" id="po-bet-netpl">—</div>
+            <div class="text-muted small">Net P/L ($10/game)</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100 text-center py-3">
+            <div class="fs-4 fw-bold" id="po-bet-roi">—</div>
+            <div class="text-muted small">ROI</div>
+          </div>
+        </div>
+      </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Recent Playoff Bets <span class="text-muted small fw-normal">(click a row for game details)</span></h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-dark">
+                <tr>
+                  <th>Date</th>
+                  <th>Matchup</th>
+                  <th>Pick</th>
+                  <th class="text-center">Odds</th>
+                  <th class="text-center">Run Line</th>
+                  <th class="text-center">Edge</th>
+                  <th class="text-center">EV</th>
+                  <th class="text-center">¼K Stake</th>
+                  <th class="text-center">Result</th>
+                  <th class="text-end">P/L</th>
+                  <th class="text-end">¼K P/L</th>
+                </tr>
+              </thead>
+              <tbody id="playoff-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- No data state -->
     <div id="no-data" class="text-center py-5 d-none">
       <p class="text-muted fs-5">No betting data yet.</p>
@@ -320,8 +385,8 @@
   let _edgeHistory = {};  // edge_category_history from /api/betting, keyed by rating
   let _edgeBaseline = null;
 
-  function renderBetRows(rows) {
-    const tbody = document.getElementById("recent-tbody");
+  function renderBetRows(rows, tbodyId) {
+    const tbody = document.getElementById(tbodyId || "recent-tbody");
     tbody.innerHTML = "";
     rows.forEach(b => {
       const tr = document.createElement("tr");
@@ -555,8 +620,11 @@
       const tu = data.toss_ups;
       const nv = data.no_value;
       const totalGames = (vb.games || 0) + (tu.games || 0) + (nv.games || 0);
+      const poTotalGames = data.playoffs && data.playoffs.all ? (data.playoffs.all.games || 0) : 0;
 
-      if (totalGames === 0) {
+      // Only bail to the empty state when BOTH RS and playoffs have nothing —
+      // otherwise an empty regular season would also hide a non-empty playoff section.
+      if (totalGames === 0 && poTotalGames === 0) {
         const noData = document.getElementById("no-data");
         noData.classList.remove("d-none");
         // Visitor-friendly empty state; technical detail lives in the API's
@@ -703,6 +771,25 @@
             <td class="text-end pe-3 fw-bold ${plCls}">${fmtPL(t.net_pl)}</td>`;
           tbody.appendChild(tr);
         });
+      }
+
+      // Playoff section — separate from everything above, since these entries
+      // are excluded from value_bets/toss_ups/no_value/recent_bets/team_stats.
+      const po = data.playoffs;
+      if (po && po.all && po.all.games > 0) {
+        document.getElementById("playoff-section").classList.remove("d-none");
+        document.getElementById("po-bet-record").textContent   = fmtRecord(po.value_bets);
+        document.getElementById("po-bet-accuracy").textContent = fmtAccuracy(po.value_bets);
+        if (po.value_bets.games > 0) {
+          const plCls = po.value_bets.net_pl >= 0 ? "text-success" : "text-danger";
+          document.getElementById("po-bet-netpl").textContent = fmtPL(po.value_bets.net_pl);
+          document.getElementById("po-bet-netpl").className   = `fs-4 fw-bold ${plCls}`;
+          if (po.value_bets.roi !== null) {
+            document.getElementById("po-bet-roi").textContent = `${po.value_bets.roi >= 0 ? "+" : ""}${(po.value_bets.roi * 100).toFixed(1)}%`;
+            document.getElementById("po-bet-roi").className   = `fs-4 fw-bold ${plCls}`;
+          }
+        }
+        renderBetRows(po.recent_bets || [], "playoff-tbody");
       }
 
     } catch (e) {

@@ -1398,6 +1398,8 @@ except Exception as _e:
 # bets until the next restart (observed 2026-07-19: July 16-18 bets invisible).
 try:
     _blog = _load_betting_log()           # what was restored from GitHub
+    _blog_before_merge = dict(_blog)      # shallow copy: enough for a structural == below,
+                                           # since merge only reassigns whole per-day lists
     _restored_total = sum(len(v) for v in _blog.values())
     _full_log = _load_log()
     for _d, _entries in _full_log.items():
@@ -1423,13 +1425,19 @@ try:
         _upsert_betting_entries(_all_log_entries + _all_blog_entries)
         print(f"[startup] betting_log upserted from {len(_all_log_entries)} log + "
               f"{len(_all_blog_entries)} odds entries", flush=True)
-    # Only push if we have at least as many entries as what was restored.
-    # Prevents a failed restore (empty backup) from overwriting a larger
-    # GitHub backup with a smaller merged result on the next deploy.
-    if _blog_total >= _restored_total:
-        _push_betting_log_to_github()
-    else:
+    # Only push if we have at least as many entries as what was restored (prevents a
+    # failed restore -- empty backup -- from overwriting a larger GitHub backup with a
+    # smaller merged result) AND the merge actually changed something. Render's free
+    # tier spins the process down after ~15 min idle, so this startup block runs on
+    # EVERY cold boot -- pushing unconditionally on `>=` committed (and re-deployed,
+    # burning Render's monthly build/memory allowance) an identical no-op backup on
+    # every single visit after a gap, not once-or-twice a day as intended.
+    if _blog_total < _restored_total:
         print(f"[startup] Skipping push — merged ({_blog_total}) < restored ({_restored_total}); keeping larger GitHub backup", flush=True)
+    elif _blog == _blog_before_merge:
+        print(f"[startup] Skipping push — betting_log unchanged since GitHub restore ({_blog_total} entries)", flush=True)
+    else:
+        _push_betting_log_to_github()
 except Exception as _be:
     print(f"[startup] betting_log merge failed: {_be}", flush=True)
 
@@ -2639,6 +2647,16 @@ _accuracy_cache: dict = {"ts": 0.0, "payload": None}
 _ACCURACY_CACHE_TTL = 60  # 1 minute — short TTL to catch stale baselines
 
 
+def _is_playoff(game_type):
+    """True for postseason game types (F=wild card, D=division series,
+    L=championship series, W=world series). The model (Main/MLBModel.py) is
+    trained only on regular-season games -- Databases_and_logs/mlb_allseasons.db's
+    `games` table has no postseason rows at all -- so playoff predictions run
+    through the same ensemble with zero playoff-specific calibration. Kept as a
+    named helper so every accuracy/betting split below uses the same definition."""
+    return game_type in {"F", "D", "L", "W"}
+
+
 @app.route("/api/accuracy")
 def accuracy():
     """
@@ -2764,17 +2782,22 @@ def accuracy():
         }
 
     # Separate by game type
-    regular = []
-    spring  = []
+    regular  = []
+    spring   = []
+    playoffs = []
     for day_entries in log.values():
         for entry in day_entries:
-            if entry.get("game_type") == "S":
+            gt = entry.get("game_type")
+            if gt == "S":
                 spring.append(entry)
+            elif _is_playoff(gt):
+                playoffs.append(entry)
             else:
                 regular.append(entry)
 
     rs_stats = compute_stats(regular)
     st_stats = compute_stats(spring)
+    po_stats = compute_stats(playoffs)
 
     # Overlay live MLB standings as authoritative actual_record for RS teams
     try:
@@ -2802,7 +2825,8 @@ def accuracy():
         if week < 1:
             continue
         for e in day_entries:
-            if e.get("game_type") == "S" or e.get("correct") is None:
+            gt = e.get("game_type")
+            if gt == "S" or _is_playoff(gt) or e.get("correct") is None:
                 continue
             weekly_acc[week]["games"] += 1
             if e["correct"]:
@@ -2824,7 +2848,8 @@ def accuracy():
     ou_errors = []
     for day_entries in log.values():
         for e in day_entries:
-            if e.get("game_type") == "S" or e.get("ou_correct") is None:
+            gt = e.get("game_type")
+            if gt == "S" or _is_playoff(gt) or e.get("ou_correct") is None:
                 continue
             ou_total += 1
             if e["ou_correct"]:
@@ -2847,6 +2872,7 @@ def accuracy():
     response = jsonify({
         "regular_season":  rs_stats,
         "spring_training": st_stats,
+        "playoffs":        po_stats,
         "by_week":         by_week,
         "ou_stats":        ou_stats,
         "home_win_rate":   home_win_rate,
@@ -2955,6 +2981,8 @@ def _bet_row(b, kelly=None):
         "away_win_by2_prob":   b.get("away_win_by2_prob"),
         "correct_rl":     None if b.get("correct_rl") is None else bool(b.get("correct_rl")),
         "edge_method":    b.get("edge_method"),
+        "game_type":      b.get("game_type"),
+        "is_playoff":     _is_playoff(b.get("game_type")),
         # Always re-derived, never trusted from a frozen column -- same rule as
         # every other _rate_edge call site (see its docstring).
         "bet_rating":     _rate_edge(b.get("model_edge"), b.get("edge_method")),
@@ -3000,8 +3028,12 @@ def betting_stats():
     """Return betting accuracy stats broken down by bet_rating category."""
     all_entries_raw = _load_betting_log_from_db()
 
-    # Only include RS entries with odds data that are resolved
-    all_entries = _qualifying_bets(all_entries_raw)
+    # Only include entries with odds data that are resolved; then split RS vs
+    # playoffs so the two are never blended into one accuracy/ROI number -- the
+    # model has zero playoff games in its training data (see _is_playoff).
+    qualifying_entries = _qualifying_bets(all_entries_raw)
+    all_entries     = [e for e in qualifying_entries if not _is_playoff(e.get("game_type"))]
+    playoff_entries = [e for e in qualifying_entries if _is_playoff(e.get("game_type"))]
 
     # Diagnostics: when the page is empty, say WHY. The historical failure mode is rows
     # where bet_rating and correct never coexist (odds attach to today, resolutions to the
@@ -3010,7 +3042,7 @@ def betting_stats():
         "rows_total":       len(all_entries_raw),
         "rows_with_rating": sum(1 for e in all_entries_raw if e.get("bet_rating") is not None),
         "rows_resolved":    sum(1 for e in all_entries_raw if e.get("correct") is not None),
-        "rows_qualifying":  len(all_entries),
+        "rows_qualifying":  len(qualifying_entries),
     }
     if diagnostics["rows_total"] > 0 and diagnostics["rows_qualifying"] == 0:
         # data_gap_note is shown to site visitors — keep it friendly and generic.
@@ -3109,7 +3141,8 @@ def betting_stats():
 
     # Tracking start date (first entry with odds data, RS only)
     odds_entries = [e for e in all_entries_raw
-                    if e.get("bet_rating") is not None and e.get("game_type") != "S"]
+                    if e.get("bet_rating") is not None and e.get("game_type") != "S"
+                    and not _is_playoff(e.get("game_type"))]
     tracking_start = min((e["date"] for e in odds_entries), default=None)
 
     # Team-by-team stats for value bets
@@ -3142,7 +3175,8 @@ def betting_stats():
 
     # Closing Line Value stats (entries with clv logged)
     clv_entries = [e for e in all_entries_raw
-                   if e.get("clv") is not None and e.get("game_type") != "S"]
+                   if e.get("clv") is not None and e.get("game_type") != "S"
+                   and not _is_playoff(e.get("game_type"))]
     clv_values = [e["clv"] for e in clv_entries]
     clv_stats = {
         "games":    len(clv_values),
@@ -3160,6 +3194,28 @@ def betting_stats():
         "accuracy": round(rl_correct / len(rl_entries), 3) if rl_entries else None,
     }
 
+    # ── Playoffs: kept as a fully separate section, never blended into the RS
+    # numbers above. The model has zero postseason games in its training data
+    # (see _is_playoff docstring), so playoff calibration/edge is unproven --
+    # the frontend surfaces that caveat next to this block, not a claim of parity.
+    playoff_categories = {"good": [], "unsure": [], "bad": [], "extreme": []}
+    for e in playoff_entries:
+        rating = _rate_edge(e.get("model_edge"), e.get("edge_method"))
+        if rating in playoff_categories:
+            playoff_categories[rating].append(e)
+
+    playoff_sorted = sorted(playoff_entries, key=lambda e: (e["date"], e.get("game_pk", 0)))
+    recent_playoff_bets = [_bet_row(b, kelly=kelly_params) for b in reversed(playoff_sorted[-20:])]
+
+    playoff_stats = {
+        "all":          cat_stats(playoff_entries),
+        "value_bets":   cat_stats(playoff_categories["good"]),
+        "toss_ups":     cat_stats(playoff_categories["unsure"]),
+        "no_value":     cat_stats(playoff_categories["bad"]),
+        "extreme_edge": cat_stats(playoff_categories["extreme"]),
+        "recent_bets":  recent_playoff_bets,
+    }
+
     return jsonify({
         "value_bets":      cat_stats(categories["good"]),
         "toss_ups":        cat_stats(categories["unsure"]),
@@ -3173,6 +3229,7 @@ def betting_stats():
         "rl_stats":        rl_stats,
         "kelly":           kelly_summary,
         "diagnostics":     diagnostics,
+        "playoffs":        playoff_stats,
         "last_updated":    datetime.now().isoformat(),
         # Static walk-forward backtest reference (scripts/results/joint_edge_research.md,
         # n=8,233) so the UI can show "why" a rating means what it means, from the same
@@ -3184,9 +3241,12 @@ def betting_stats():
 
 @app.route("/api/betting/weekly")
 def betting_weekly():
-    """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows."""
+    """Value bets grouped by ISO week. ?week=2026-Wnn returns that week's bet rows.
+    Regular season only -- playoffs are tracked separately (see /api/betting's
+    `playoffs` key) since the model has no postseason training data."""
     value_bets = [e for e in _qualifying_bets(_load_betting_log_from_db())
-                  if _rate_edge(e.get("model_edge"), e.get("edge_method")) == "good"]
+                  if not _is_playoff(e.get("game_type"))
+                  and _rate_edge(e.get("model_edge"), e.get("edge_method")) == "good"]
     value_bets.sort(key=lambda e: (e["date"], e.get("game_pk", 0)))
 
     week_param = request.args.get("week")
@@ -3236,6 +3296,7 @@ def calibration():
     entries = [
         e for day in log.values() for e in day
         if e.get("game_type") != "S"
+        and not _is_playoff(e.get("game_type"))
         and e.get("correct") is not None
         and e.get("home_win_prob") is not None
     ]

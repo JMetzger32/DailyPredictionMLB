@@ -47,12 +47,23 @@
           <div class="text-muted small">Spring Training Acc.</div>
         </div>
       </div>
+      <div class="col-6 col-md-3 d-none" id="po-pct-tile">
+        <div class="card border-0 shadow-sm text-center py-3">
+          <div class="fs-2 fw-bold text-primary" id="po-pct">—</div>
+          <div class="text-muted small">Playoff Acc.</div>
+        </div>
+      </div>
     </div>
 
     <!-- Tabs -->
     <ul class="nav nav-tabs mb-3" id="accuracy-tabs">
       <li class="nav-item">
         <button class="nav-link active" id="tab-rs" onclick="showTab('rs')">Regular Season</button>
+      </li>
+      <li class="nav-item d-none" id="tab-po-wrap">
+        <button class="nav-link" id="tab-po" onclick="showTab('po')">
+          Playoffs <span class="badge bg-primary ms-1" style="font-size:0.65rem;">PO</span>
+        </button>
       </li>
       <li class="nav-item" id="tab-st-wrap">
         <button class="nav-link" id="tab-st" onclick="showTab('st')">
@@ -79,6 +90,33 @@
           </tr>
         </thead>
         <tbody id="rs-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Playoffs table -->
+    <div id="pane-po" class="d-none">
+      <div class="alert alert-warning py-2 mb-3 small" role="alert">
+        <strong>Different calibration.</strong> The model is trained only on regular-season
+        games — the postseason has no games in its training data at all. Rest days, bullpen
+        usage, and starter workload all shift in October, so this record should not be read
+        as evidence of the same accuracy as the regular season above.
+      </div>
+      <div id="po-no-data" class="text-center py-4 text-muted d-none">
+        No playoff predictions recorded yet.
+      </div>
+      <table class="table table-sm table-hover align-middle" id="po-table" style="display:none">
+        <thead class="table-dark">
+          <tr>
+            <th class="ps-3">#</th>
+            <th>Team</th>
+            <th class="text-center">Actual W-L</th>
+            <th class="text-center">Win Pred %</th>
+            <th class="text-center">Loss Pred %</th>
+            <th class="text-center">Overall %</th>
+            <th style="width:140px">Bar</th>
+          </tr>
+        </thead>
+        <tbody id="po-tbody"></tbody>
       </table>
     </div>
 
@@ -137,8 +175,10 @@
 <script>
   function showTab(tab) {
     document.getElementById("pane-rs").classList.toggle("d-none", tab !== "rs");
+    document.getElementById("pane-po").classList.toggle("d-none", tab !== "po");
     document.getElementById("pane-st").classList.toggle("d-none", tab !== "st");
     document.getElementById("tab-rs").classList.toggle("active", tab === "rs");
+    document.getElementById("tab-po").classList.toggle("active", tab === "po");
     document.getElementById("tab-st").classList.toggle("active", tab === "st");
   }
 
@@ -195,6 +235,7 @@
 
       const rs = data.regular_season;
       const st = data.spring_training;
+      const po = data.playoffs;
 
       // Summary cards
       document.getElementById("rs-correct").textContent = rs.overall.correct;
@@ -232,14 +273,29 @@
         stPctEl.textContent = "—";
       }
 
+      if (po && po.overall.games > 0) {
+        document.getElementById("po-pct-tile").classList.remove("d-none");
+        const poPctEl = document.getElementById("po-pct");
+        poPctEl.textContent = (po.overall.accuracy * 100).toFixed(1) + "%";
+        poPctEl.className = "fs-2 fw-bold " + accuracyColor(po.overall.accuracy);
+      }
+
       buildTable("rs-tbody", rs.teams, "rs-no-data", "rs-table");
       buildTable("st-tbody", st.teams, "st-no-data", "st-table");
+      if (po) buildTable("po-tbody", po.teams, "po-no-data", "po-table");
+
+      // Playoffs tab only appears once there's something to show in it
+      if (po && po.overall.games > 0) {
+        document.getElementById("tab-po-wrap").classList.remove("d-none");
+      }
 
       if (rs.overall.games > 0) {
         showTab("rs");
         document.getElementById("tab-st-wrap").classList.add("ms-auto");
         document.getElementById("st-archived-badge").classList.remove("d-none");
         document.getElementById("tab-st").classList.add("text-muted");
+      } else if (po && po.overall.games > 0) {
+        showTab("po");
       } else if (st.overall.games > 0) {
         showTab("st");
       }

@@ -408,6 +408,15 @@ def test_qualifying_bets():
     assert f(broken_state + [healthy, spring]) == [healthy], "RS rows with both must qualify; ST excluded"
 
 
+def test_is_playoff():
+    ns = _extract("_is_playoff")
+    f = ns["_is_playoff"]
+    for gt in ("F", "D", "L", "W"):
+        assert f(gt) is True, f"{gt} should be treated as a playoff game type"
+    for gt in ("R", "S", None, "", "A"):
+        assert f(gt) is False, f"{gt} should NOT be treated as a playoff game type"
+
+
 def test_kelly_stake():
     ns = _extract("_kelly_stake")
     f = ns["_kelly_stake"]
@@ -432,7 +441,7 @@ def test_week_key():
 
 
 def test_bet_row_kelly():
-    ns = _extract("_pl_for_bet", "_kelly_stake", "_rate_edge", "_edge_breakdown", "_bet_row")
+    ns = _extract("_pl_for_bet", "_kelly_stake", "_rate_edge", "_edge_breakdown", "_is_playoff", "_bet_row")
     f = ns["_bet_row"]
     b = {"predicted_winner": "Home", "home_win_prob": 0.62, "predicted_team_ml": -140,
          "correct": 1, "date": "2026-07-06", "game_pk": 1, "model_edge": 0.06}
