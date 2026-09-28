@@ -5623,26 +5623,26 @@
     "PHI|ATL": {
       "away_ml": 164,
       "home_ml": -200,
-      "away_implied": 0.3627,
-      "home_implied": 0.6373
+      "away_implied": 0.3624,
+      "home_implied": 0.6376
     },
     "CHA|HOU": {
       "away_ml": 116,
-      "home_ml": -140,
-      "away_implied": 0.4429,
-      "home_implied": 0.5571
+      "home_ml": -139,
+      "away_implied": 0.4437,
+      "home_implied": 0.5563
     },
     "BOS|NYA": {
-      "away_ml": 132,
-      "home_ml": -154,
-      "away_implied": 0.4148,
-      "home_implied": 0.5852
+      "away_ml": 129,
+      "home_ml": -152,
+      "away_implied": 0.4203,
+      "home_implied": 0.5797
     },
     "CHN|SDN": {
       "away_ml": 105,
-      "home_ml": -122,
-      "away_implied": 0.47,
-      "home_implied": 0.53
+      "home_ml": -123,
+      "away_implied": 0.4683,
+      "home_implied": 0.5317
     }
   }
 }
