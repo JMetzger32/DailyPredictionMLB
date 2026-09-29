@@ -5649,26 +5649,26 @@
     "PHI|ATL": {
       "away_ml": 163,
       "home_ml": -192,
-      "away_implied": 0.3661,
-      "home_implied": 0.6339
+      "away_implied": 0.366,
+      "home_implied": 0.634
     },
     "CHA|HOU": {
-      "away_ml": 109,
-      "home_ml": -126,
-      "away_implied": 0.4614,
-      "home_implied": 0.5386
+      "away_ml": 108,
+      "home_ml": -125,
+      "away_implied": 0.4645,
+      "home_implied": 0.5355
     },
     "BOS|NYA": {
       "away_ml": 118,
-      "home_ml": -137,
-      "away_implied": 0.4421,
-      "home_implied": 0.5579
+      "home_ml": -136,
+      "away_implied": 0.4433,
+      "home_implied": 0.5567
     },
     "CHN|SDN": {
-      "away_ml": 108,
+      "away_ml": 107,
       "home_ml": -124,
-      "away_implied": 0.4651,
-      "home_implied": 0.5349
+      "away_implied": 0.4664,
+      "home_implied": 0.5336
     }
   }
 }
