@@ -90002,7 +90002,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0104,
       "predicted_total": 10.2,
       "home_est_score": 5.9,
       "away_est_score": 4.3,
@@ -90100,7 +90100,12 @@
       "moneyline_home_win_prob": 0.518,
       "edge_method": "joint_ml_rl",
       "prediction_timestamp": "2026-10-01T10:15:02.195532-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -106,
+      "closing_home_ml": -110,
+      "closing_away_implied": 0.4955,
+      "closing_home_implied": 0.5045,
+      "edge_vs_close": -0.0005
     }
   ]
 }
