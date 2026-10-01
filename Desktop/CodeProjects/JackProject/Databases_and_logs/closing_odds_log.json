@@ -5722,5 +5722,31 @@
       "away_implied": 0.5128,
       "home_implied": 0.4872
     }
+  },
+  "2026-10-01": {
+    "PHI|ATL": {
+      "away_ml": -106,
+      "home_ml": -110,
+      "away_implied": 0.4955,
+      "home_implied": 0.5045
+    },
+    "CHA|CLE": {
+      "away_ml": 130,
+      "home_ml": -152,
+      "away_implied": 0.4185,
+      "home_implied": 0.5815
+    },
+    "NYA|TBA": {
+      "away_ml": 116,
+      "home_ml": -134,
+      "away_implied": 0.4475,
+      "home_implied": 0.5525
+    },
+    "SDN|MIL": {
+      "away_ml": 187,
+      "home_ml": -222,
+      "away_implied": 0.3361,
+      "home_implied": 0.6639
+    }
   }
 }
