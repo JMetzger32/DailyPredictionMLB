@@ -139523,5 +139523,176 @@
       "closing_home_implied": 0.5666,
       "edge_vs_close": -0.0246
     }
+  ],
+  "2026-10-01": [
+    {
+      "game_pk": 849844,
+      "date": "2026-10-01",
+      "game_type": "F",
+      "away_team": "PHI",
+      "away_team_name": "Philadelphia Phillies",
+      "home_team": "ATL",
+      "home_team_name": "Atlanta Braves",
+      "predicted_winner": "Home",
+      "away_win_prob": 0.496,
+      "home_win_prob": 0.504,
+      "confidence": 0.004,
+      "calibration_bucket": "50-60%",
+      "away_ml": -111,
+      "home_ml": -105,
+      "away_implied": 0.5059,
+      "home_implied": 0.4941,
+      "bet_rating": "good",
+      "predicted_team_ml": -105,
+      "model_edge": 0.0104,
+      "odds_books": [
+        {
+          "name": "FanDuel",
+          "away_ml": -110,
+          "home_ml": -106
+        },
+        {
+          "name": "BetMGM",
+          "away_ml": -115,
+          "home_ml": -105
+        },
+        {
+          "name": "Bovada",
+          "away_ml": -111,
+          "home_ml": -109
+        },
+        {
+          "name": "LowVig.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_ml": -107,
+          "home_ml": -103
+        },
+        {
+          "name": "DraftKings",
+          "away_ml": -109,
+          "home_ml": -111
+        },
+        {
+          "name": "BetRivers",
+          "away_ml": -114,
+          "home_ml": -105
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_ml": -114,
+          "home_ml": -103
+        }
+      ],
+      "arbitrage": null,
+      "actual_winner": null,
+      "away_score": null,
+      "home_score": null,
+      "correct": null,
+      "brier_score": null,
+      "log_loss": null,
+      "clv": null,
+      "predicted_total": 10.2,
+      "home_est_score": 5.9,
+      "away_est_score": 4.3,
+      "actual_total": null,
+      "ou_correct": null,
+      "x_scaled_features": [
+        -0.5448261631297813,
+        -0.5675239886762488,
+        -0.5651568543268637,
+        0.9718334469685893,
+        -1.193955768185508,
+        0.3713893899197246,
+        0.6716891765595048,
+        0.7259678219879663,
+        0.6700796648278396,
+        0.8147714903826627,
+        -0.7498516696689181,
+        -0.6761664213306541,
+        -0.033909915571940265,
+        0.006268312499366913,
+        0.004274741346501226,
+        -0.008411758092699362,
+        0.00449667950148343,
+        0.007868270156964225
+      ],
+      "home_cover_prob": 0.351,
+      "away_cover_prob": 0.649,
+      "away_win_by2_prob": 0.376,
+      "correct_rl": null,
+      "away_spread_point": -1.5,
+      "home_spread_point": 1.5,
+      "away_spread_ml": 157,
+      "home_spread_ml": -185,
+      "away_spread_implied": 0.3746,
+      "home_spread_implied": 0.6254,
+      "spread_books": [
+        {
+          "name": "FanDuel",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 162,
+          "home_spread_ml": -196
+        },
+        {
+          "name": "Bovada",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 160,
+          "home_spread_ml": -185
+        },
+        {
+          "name": "LowVig.ag",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 162,
+          "home_spread_ml": -184
+        },
+        {
+          "name": "BetOnline.ag",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 161,
+          "home_spread_ml": -184
+        },
+        {
+          "name": "DraftKings",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 154,
+          "home_spread_ml": -187
+        },
+        {
+          "name": "BetRivers",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 145,
+          "home_spread_ml": -180
+        },
+        {
+          "name": "MyBookie.ag",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 154,
+          "home_spread_ml": -180
+        },
+        {
+          "name": "BetUS",
+          "away_point": -1.5,
+          "home_point": 1.5,
+          "away_spread_ml": 160,
+          "home_spread_ml": -185
+        }
+      ],
+      "joint_home_win_prob": 0.5045,
+      "moneyline_home_win_prob": 0.518,
+      "edge_method": "joint_ml_rl",
+      "prediction_timestamp": "2026-10-01T10:15:02.195532-04:00",
+      "model_version": "24c1e93ac246"
+    }
   ]
 }
