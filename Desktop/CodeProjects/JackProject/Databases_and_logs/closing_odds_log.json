@@ -5774,5 +5774,31 @@
       "away_implied": 0.3581,
       "home_implied": 0.6419
     }
+  },
+  "2026-10-03": {
+    "ATL|LAN": {
+      "away_ml": 1451,
+      "home_ml": -6248,
+      "away_implied": 0.0615,
+      "home_implied": 0.9385
+    },
+    "NYA|TBA": {
+      "away_ml": 131,
+      "home_ml": -163,
+      "away_implied": 0.4109,
+      "home_implied": 0.5891
+    },
+    "SDN|MIL": {
+      "away_ml": 177,
+      "home_ml": -209,
+      "away_implied": 0.3478,
+      "home_implied": 0.6522
+    },
+    "CHA|CLE": {
+      "away_ml": 132,
+      "home_ml": -154,
+      "away_implied": 0.4152,
+      "home_implied": 0.5848
+    }
   }
 }
