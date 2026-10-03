@@ -5753,14 +5753,14 @@
     "CHA|CLE": {
       "away_ml": 130,
       "home_ml": -152,
-      "away_implied": 0.4184,
-      "home_implied": 0.5816
+      "away_implied": 0.4186,
+      "home_implied": 0.5814
     },
     "ATL|LAN": {
       "away_ml": 186,
       "home_ml": -220,
-      "away_implied": 0.3372,
-      "home_implied": 0.6628
+      "away_implied": 0.3375,
+      "home_implied": 0.6625
     },
     "NYA|TBA": {
       "away_ml": 114,
@@ -5769,10 +5769,10 @@
       "home_implied": 0.5488
     },
     "SDN|MIL": {
-      "away_ml": 170,
-      "home_ml": -201,
-      "away_implied": 0.3564,
-      "home_implied": 0.6436
+      "away_ml": 169,
+      "home_ml": -199,
+      "away_implied": 0.3581,
+      "home_implied": 0.6419
     }
   }
 }
