@@ -5904,5 +5904,19 @@
       "away_implied": 0.5013,
       "home_implied": 0.4987
     }
+  },
+  "2026-10-08": {
+    "CLE|CHA": {
+      "away_ml": -115,
+      "home_ml": -101,
+      "away_implied": 0.5151,
+      "home_implied": 0.4849
+    },
+    "LAN|MIL": {
+      "away_ml": -104,
+      "home_ml": -112,
+      "away_implied": 0.4916,
+      "home_implied": 0.5084
+    }
   }
 }
