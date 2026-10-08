@@ -141518,7 +141518,7 @@
       "correct": true,
       "brier_score": 0.249,
       "log_loss": 0.6911,
-      "clv": null,
+      "clv": 0.036,
       "predicted_total": 7.5,
       "home_est_score": 3.7,
       "away_est_score": 3.8,
@@ -141616,7 +141616,12 @@
       "moneyline_home_win_prob": 0.372,
       "edge_method": "joint_ml_rl",
       "prediction_timestamp": "2026-10-07T10:15:01.968211-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -114,
+      "closing_home_ml": -103,
+      "closing_away_implied": 0.5125,
+      "closing_home_implied": 0.4875,
+      "edge_vs_close": -0.0115
     },
     {
       "game_pk": 849822,
@@ -141856,7 +141861,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0025,
       "predicted_total": 7.5,
       "home_est_score": 4.9,
       "away_est_score": 2.6,
@@ -141954,7 +141959,12 @@
       "moneyline_home_win_prob": 0.595,
       "edge_method": "joint_ml_rl",
       "prediction_timestamp": "2026-10-07T10:15:03.768797-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": 134,
+      "closing_home_ml": -176,
+      "closing_away_implied": 0.401,
+      "closing_home_implied": 0.599,
+      "edge_vs_close": -0.011
     },
     {
       "game_pk": 849827,
@@ -142025,7 +142035,7 @@
       "correct": null,
       "brier_score": null,
       "log_loss": null,
-      "clv": null,
+      "clv": 0.0095,
       "predicted_total": 7.5,
       "home_est_score": 4.3,
       "away_est_score": 3.2,
@@ -142123,7 +142133,12 @@
       "moneyline_home_win_prob": 0.503,
       "edge_method": "joint_ml_rl",
       "prediction_timestamp": "2026-10-07T10:15:04.669110-04:00",
-      "model_version": "24c1e93ac246"
+      "model_version": "24c1e93ac246",
+      "closing_away_ml": -108,
+      "closing_home_ml": -107,
+      "closing_away_implied": 0.5013,
+      "closing_home_implied": 0.4987,
+      "edge_vs_close": 0.0087
     }
   ]
 }
