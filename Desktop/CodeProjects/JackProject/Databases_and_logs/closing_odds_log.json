@@ -5881,10 +5881,10 @@
   },
   "2026-10-07": {
     "CLE|CHA": {
-      "away_ml": -1076,
-      "home_ml": 560,
-      "away_implied": 0.8579,
-      "home_implied": 0.1421
+      "away_ml": -114,
+      "home_ml": -103,
+      "away_implied": 0.5125,
+      "home_implied": 0.4875
     },
     "LAN|ATL": {
       "away_ml": -133,
@@ -5893,16 +5893,16 @@
       "home_implied": 0.4639
     },
     "TBA|NYA": {
-      "away_ml": 144,
-      "home_ml": -170,
-      "away_implied": 0.3938,
-      "home_implied": 0.6062
+      "away_ml": 134,
+      "home_ml": -176,
+      "away_implied": 0.401,
+      "home_implied": 0.599
     },
     "MIL|SDN": {
-      "away_ml": -106,
-      "home_ml": -110,
-      "away_implied": 0.4959,
-      "home_implied": 0.5041
+      "away_ml": -108,
+      "home_ml": -107,
+      "away_implied": 0.5013,
+      "home_implied": 0.4987
     }
   }
 }
