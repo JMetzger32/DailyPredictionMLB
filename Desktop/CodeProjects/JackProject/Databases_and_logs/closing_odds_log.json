@@ -5921,16 +5921,16 @@
   },
   "2026-10-09": {
     "CHA|CLE": {
-      "away_ml": 117,
+      "away_ml": 118,
       "home_ml": -136,
-      "away_implied": 0.4436,
-      "home_implied": 0.5564
+      "away_implied": 0.4439,
+      "home_implied": 0.5561
     },
     "LAN|MIL": {
       "away_ml": -106,
-      "home_ml": -110,
-      "away_implied": 0.4959,
-      "home_implied": 0.5041
+      "home_ml": -111,
+      "away_implied": 0.4945,
+      "home_implied": 0.5055
     }
   }
 }
