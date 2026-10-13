@@ -5974,5 +5974,19 @@
       "away_implied": 0.3959,
       "home_implied": 0.6041
     }
+  },
+  "2026-10-13": {
+    "CLE|TBA": {
+      "away_ml": 115,
+      "home_ml": -133,
+      "away_implied": 0.4497,
+      "home_implied": 0.5503
+    },
+    "MIL|LAN": {
+      "away_ml": 150,
+      "home_ml": -177,
+      "away_implied": 0.3849,
+      "home_implied": 0.6151
+    }
   }
 }
