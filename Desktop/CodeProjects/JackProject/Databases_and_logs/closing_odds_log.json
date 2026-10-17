@@ -6024,5 +6024,13 @@
       "away_implied": 0.511,
       "home_implied": 0.489
     }
+  },
+  "2026-10-17": {
+    "TBA|CLE": {
+      "away_ml": -112,
+      "home_ml": -104,
+      "away_implied": 0.5091,
+      "home_implied": 0.4909
+    }
   }
 }
