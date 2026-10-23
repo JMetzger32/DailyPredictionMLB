@@ -6067,10 +6067,10 @@
   },
   "2026-10-22": {
     "TBA|MIL": {
-      "away_ml": 155,
-      "home_ml": -183,
-      "away_implied": 0.3781,
-      "home_implied": 0.6219
+      "away_ml": 156,
+      "home_ml": -184,
+      "away_implied": 0.3757,
+      "home_implied": 0.6243
     }
   }
 }
