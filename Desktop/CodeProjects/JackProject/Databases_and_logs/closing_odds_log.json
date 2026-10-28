@@ -6112,5 +6112,13 @@
       "away_implied": 0.5279,
       "home_implied": 0.4721
     }
+  },
+  "2026-10-28": {
+    "MIL|TBA": {
+      "away_ml": -145,
+      "home_ml": 124,
+      "away_implied": 0.5704,
+      "home_implied": 0.4296
+    }
   }
 }
